@@ -1,7 +1,10 @@
 # SNMP device emulator
+#
+install:
+    uv sync
 
 # Run on the default SNMP port 161 (requires root)
-run:
+run: install
     sudo SNMP_PORT=161 .venv/bin/python snmp_emulator.py
 
 # Run on unprivileged port 1161 (no sudo needed)
