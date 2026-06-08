@@ -8,7 +8,7 @@ COPY emulator/pyproject.toml ./emulator/
 COPY trouble-shooter/pyproject.toml ./trouble-shooter/
 
 # Install runtime deps only (excludes trouble-shooter dev/test deps)
-RUN uv sync --frozen --no-dev --no-install-project
+RUN uv sync --frozen --no-dev --no-install-workspace
 
 # Copy emulator source
 COPY emulator/emulator/ ./emulator/emulator/
