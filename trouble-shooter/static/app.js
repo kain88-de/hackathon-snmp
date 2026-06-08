@@ -1,5 +1,16 @@
 const form = document.getElementById("check-form");
 const results = document.getElementById("results");
+const walkSection = document.getElementById("walk-section");
+
+// View toggle
+document.querySelectorAll(".view-btn").forEach((btn) => {
+  btn.addEventListener("click", () => {
+    document.querySelectorAll(".view-btn").forEach((b) => b.classList.remove("active"));
+    document.querySelectorAll(".view-pane").forEach((p) => { p.hidden = true; });
+    btn.classList.add("active");
+    document.getElementById(`view-${btn.dataset.view}`).hidden = false;
+  });
+});
 
 form.addEventListener("submit", async (e) => {
   e.preventDefault();
@@ -34,7 +45,35 @@ form.addEventListener("submit", async (e) => {
   if (data.snmp.sysDescr) addRow(table, "sysDescr", textEl(data.snmp.sysDescr));
   if (data.snmp.error)    addRow(table, "Error", errorEl(data.snmp.error));
   results.appendChild(table);
+
+  if (data.snmp.reachable) {
+    walkSection.hidden = false;
+    doWalk(host, community, port);
+  }
 });
+
+async function doWalk(host, community, port) {
+  try {
+    const resp = await fetch("/api/walk", {
+      method: "POST",
+      headers: { "Content-Type": "application/json" },
+      body: JSON.stringify({ host, community, port }),
+    });
+    const data = await resp.json();
+    renderWalk(data.oids);
+  } catch (err) {
+    renderWalkError(err.message);
+  }
+}
+
+function renderWalk(oids) {
+  // TODO: populate tree / table / raw views with real data
+  console.log("walk result", oids);
+}
+
+function renderWalkError(msg) {
+  document.getElementById("view-tree").appendChild(errorEl(`Walk failed: ${msg}`));
+}
 
 function addRow(table, label, valueEl) {
   const tr = table.insertRow();

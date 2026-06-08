@@ -9,6 +9,7 @@ from pydantic import BaseModel
 
 from pysnmp.hlapi.v3arch.asyncio import (
     get_cmd,
+    walk_cmd,
     SnmpEngine,
     CommunityData,
     UdpTransportTarget,
@@ -31,6 +32,21 @@ class CheckRequest(BaseModel):
     host: str
     community: str = "public"
     port: int = 161
+
+
+class WalkRequest(BaseModel):
+    host: str
+    community: str = "public"
+    port: int = 161
+    root_oid: str = "1.3.6.1.2.1"
+
+
+@app.post("/api/walk")
+async def walk_device(req: WalkRequest):
+    if not _valid_host(req.host):
+        raise HTTPException(status_code=400, detail="Invalid host")
+    oids = await _snmp_walk(req.host, req.community, req.port, req.root_oid)
+    return {"oids": oids}
 
 
 @app.post("/api/check")

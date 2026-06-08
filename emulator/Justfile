@@ -1,5 +1,9 @@
 # SNMP device emulator
-#
+
+ip1 := "127.0.0.2"
+ip2 := "127.0.0.3"
+image := "snmp-emulator"
+
 install:
     uv sync
 
@@ -16,15 +20,32 @@ test:
     snmpget -v2c -c public 127.0.0.1:1161 sysDescr.0
     snmpget -v2c -c public 127.0.0.1:1161 1.3.6.1.2.1.2.2.1.2.1
 
-# Build image and start two containers via pod file
-containers-start:
-    ./start-containers.sh
+# Build the container image
+build:
+    sudo podman build -t {{image}} -f Containerfile .
+
+# Add loopback aliases for the two device IPs (survives until reboot)
+setup-net:
+    #!/usr/bin/env bash
+    for ip in {{ip1}} {{ip2}}; do
+        if ip addr show lo | grep -q "${ip}/"; then
+            echo "= $ip already present"
+        else
+            sudo ip addr add "${ip}/8" dev lo
+            echo "+ $ip added"
+        fi
+    done
+
+# Build image, configure network, and start both pods
+containers-start: build setup-net
+    sudo podman play kube pods.yaml --down 2>/dev/null || true
+    sudo podman play kube pods.yaml
 
 # Stop and tear down the pods
 containers-stop:
     sudo podman play kube pods.yaml --down
 
-# Follow logs from both pods
+# Follow logs from both pods (Ctrl-C to quit)
 containers-logs:
     sudo podman logs -f snmp-device-1-emulator &
     sudo podman logs -f snmp-device-2-emulator
