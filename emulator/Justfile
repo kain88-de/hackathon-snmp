@@ -16,15 +16,15 @@ test:
     snmpget -v2c -c public 127.0.0.1:1161 sysDescr.0
     snmpget -v2c -c public 127.0.0.1:1161 1.3.6.1.2.1.2.2.1.2.1
 
-# Build and start two containers on 127.0.0.2 and 127.0.0.3 port 161
+# Build image and start two containers via pod file
 containers-start:
     ./start-containers.sh
 
-# Stop and remove the containers
+# Stop and tear down the pods
 containers-stop:
-    sudo podman rm -f snmp-device-1 snmp-device-2
+    sudo podman play kube pods.yaml --down
 
-# Follow logs from both containers
+# Follow logs from both pods
 containers-logs:
-    sudo podman logs -f snmp-device-1 &
-    sudo podman logs -f snmp-device-2
+    sudo podman logs -f snmp-device-1-emulator &
+    sudo podman logs -f snmp-device-2-emulator

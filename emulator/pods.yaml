@@ -1,0 +1,48 @@
+---
+# Two SNMP emulator pods, each on a different loopback IP.
+# Usage:
+#   sudo podman play kube pods.yaml           # start
+#   sudo podman play kube pods.yaml --down    # stop
+#
+# Requires loopback aliases to be set first:
+#   sudo ip addr add 127.0.0.2/8 dev lo
+#   sudo ip addr add 127.0.0.3/8 dev lo
+
+apiVersion: v1
+kind: Pod
+metadata:
+  name: snmp-device-1
+  labels:
+    app: snmp-emulator
+spec:
+  containers:
+    - name: emulator
+      image: localhost/snmp-emulator:latest
+      ports:
+        - containerPort: 161
+          hostPort: 161
+          hostIP: 127.0.0.2
+          protocol: UDP
+      env:
+        - name: SNMP_COMMUNITY
+          value: public
+
+---
+apiVersion: v1
+kind: Pod
+metadata:
+  name: snmp-device-2
+  labels:
+    app: snmp-emulator
+spec:
+  containers:
+    - name: emulator
+      image: localhost/snmp-emulator:latest
+      ports:
+        - containerPort: 161
+          hostPort: 161
+          hostIP: 127.0.0.3
+          protocol: UDP
+      env:
+        - name: SNMP_COMMUNITY
+          value: public
