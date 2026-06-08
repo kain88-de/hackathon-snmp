@@ -1,3 +1,4 @@
+import asyncio
 import ipaddress
 import re
 import subprocess
@@ -40,13 +41,15 @@ class WalkRequest(BaseModel):
     community: str = "public"
     port: int = 1161
     root_oid: str = "1.3.6.1.2.1"
+    timeout: int = 5
+    total_timeout: int = 30
 
 
 @app.post("/api/walk")
 async def walk_device(req: WalkRequest):
     if not _valid_host(req.host):
         raise HTTPException(status_code=400, detail="Invalid host")
-    oids = await _snmp_walk(req.host, req.community, req.port, req.root_oid)
+    oids = await _snmp_walk(req.host, req.community, req.port, req.root_oid, req.timeout, req.total_timeout)
     return {"oids": oids}
 
 
@@ -99,30 +102,33 @@ async def _snmp_get(host: str, community: str, port: int) -> dict:
     return {"reachable": True, "sysDescr": sys_descr}
 
 
-async def _snmp_walk(host: str, community: str, port: int, root_oid: str) -> list:
+async def _snmp_walk(host: str, community: str, port: int, root_oid: str, timeout: int = 5, total_timeout: int = 30) -> list:
     engine = SnmpEngine()
     results = []
     try:
-        t = time.monotonic()
-        async for error_indication, error_status, _, var_binds in walk_cmd(
-            engine,
-            CommunityData(community),
-            await UdpTransportTarget.create((host, port), timeout=2, retries=1),
-            ContextData(),
-            ObjectType(ObjectIdentity(root_oid)),
-        ):
-            elapsed_ms = round((time.monotonic() - t) * 1000)
+        async with asyncio.timeout(total_timeout):
             t = time.monotonic()
-            if error_indication:
-                break
-            if error_status and int(error_status):
-                break
-            for var_bind in var_binds:
-                results.append({
-                    "oid": str(var_bind[0]),
-                    "value": str(var_bind[1]),
-                    "ms": elapsed_ms,
-                })
+            async for error_indication, error_status, _, var_binds in walk_cmd(
+                engine,
+                CommunityData(community),
+                await UdpTransportTarget.create((host, port), timeout=timeout, retries=1),
+                ContextData(),
+                ObjectType(ObjectIdentity(root_oid)),
+            ):
+                elapsed_ms = round((time.monotonic() - t) * 1000)
+                t = time.monotonic()
+                if error_indication:
+                    break
+                if error_status and int(error_status):
+                    break
+                for var_bind in var_binds:
+                    results.append({
+                        "oid": str(var_bind[0]),
+                        "value": str(var_bind[1]),
+                        "ms": elapsed_ms,
+                    })
+    except TimeoutError:
+        pass
     finally:
         engine.close_dispatcher()
     return results
