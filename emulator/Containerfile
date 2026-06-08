@@ -2,11 +2,11 @@ FROM ghcr.io/astral-sh/uv:python3.14-bookworm-slim
 
 WORKDIR /app
 
-# Install dependencies first (cached layer — only invalidated when lock file changes)
 COPY pyproject.toml uv.lock ./
 RUN uv sync --frozen --no-install-project
 
-COPY mibs.py snmp_emulator.py ./
+COPY emulator/ ./emulator/
+COPY snmp_emulator.py ./
 
 ENV SNMP_PORT=1161 \
     SNMP_HOST=0.0.0.0 \
