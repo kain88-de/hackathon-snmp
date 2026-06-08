@@ -17,10 +17,13 @@ def main() -> None:
 
     server = EmulatorServer(config, port=port, host=host)
     server.start()
+    n_oids = len(server._oid_tree)
     print(f"SNMP emulator  udp://{host}:{server.port}  community={config.community}")
-    print(f"Slow prefixes: {config.slow_prefixes}  delay={config.slow_delay}s")
-    print(f"Interfaces: {config.n_interfaces}")
+    print(f"Slow prefix: {config.slow_prefixes}  delay={config.slow_delay}s")
+    print(f"MIB tree: {n_oids} OIDs  ({config.n_interfaces} interfaces)")
+    print()
     print("Listening... (Ctrl-C to stop)")
+    print()
 
     try:
         signal.pause()

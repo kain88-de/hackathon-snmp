@@ -111,6 +111,8 @@ class EmulatorServer:
         return any(s.startswith(p) for p in self._config.slow_prefixes)
 
     def _process(self, data: bytes, addr) -> bytes | None:
+        t0 = time.monotonic()
+
         try:
             ver = api.decodeMessageVersion(data)
             pMod = api.PROTOCOL_MODULES[ver]
@@ -168,9 +170,16 @@ class EmulatorServer:
         else:
             return None
 
+        if req_binds:
+            first_oid = ".".join(map(str, tuple(req_binds[0][0])))
+            tag = "[SLOW]" if slow else "[FAST]"
+            print(f"{tag} {pdu_name:<22} {first_oid}", end="", flush=True)
+
         if slow:
             self._reset_event.wait(timeout=self._config.slow_delay)
             if self._reset_event.is_set():
+                if req_binds:
+                    print("  →  dropped", flush=True)
                 return None
 
         rspMsg = pMod.apiMessage.get_response(reqMsg)
@@ -178,4 +187,8 @@ class EmulatorServer:
         pMod.apiPDU.set_varbinds(rspPDU, rsp_binds)
         pMod.apiPDU.set_error_status(rspPDU, 0)
         pMod.apiPDU.set_error_index(rspPDU, 0)
+
+        if req_binds:
+            print(f"  →  {time.monotonic() - t0:.2f}s", flush=True)
+
         return encoder.encode(rspMsg)
