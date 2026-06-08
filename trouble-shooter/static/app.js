@@ -6,6 +6,7 @@ form.addEventListener("submit", async (e) => {
 
   const host = document.getElementById("host").value.trim();
   const community = document.getElementById("community").value.trim();
+  const port = parseInt(document.getElementById("port").value, 10);
 
   results.hidden = false;
   results.replaceChildren();
@@ -15,7 +16,7 @@ form.addEventListener("submit", async (e) => {
     const resp = await fetch("/api/check", {
       method: "POST",
       headers: { "Content-Type": "application/json" },
-      body: JSON.stringify({ host, community }),
+      body: JSON.stringify({ host, community, port }),
     });
     data = await resp.json();
   } catch (err) {
@@ -29,7 +30,7 @@ form.addEventListener("submit", async (e) => {
 
   const table = document.createElement("table");
   addRow(table, "Ping", reachableEl(data.ping));
-  addRow(table, "SNMP (UDP 161)", reachableEl(data.snmp.reachable));
+  addRow(table, `SNMP (UDP ${port})`, reachableEl(data.snmp.reachable));
   if (data.snmp.sysDescr) addRow(table, "sysDescr", textEl(data.snmp.sysDescr));
   if (data.snmp.error)    addRow(table, "Error", errorEl(data.snmp.error));
   results.appendChild(table);
