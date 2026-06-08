@@ -9,3 +9,21 @@ dependencies = [
     "pysnmp>=7.1.27",
     "uvicorn[standard]",
 ]
+
+[dependency-groups]
+dev = ["emulator", "pytest", "httpx"]
+
+[tool.uv.sources]
+emulator = { workspace = true }
+
+[tool.pytest.ini_options]
+pythonpath = ["."]
+testpaths = ["tests"]
+
+[tool.hatch.build.targets.wheel]
+sources = ["."]
+include = ["main.py"]
+
+[build-system]
+requires = ["hatchling"]
+build-backend = "hatchling.build"
