@@ -22,7 +22,7 @@ test:
 
 # Build the container image
 build:
-    podman build -t {{image}} -f Containerfile .
+    podman build -t {{image}} -f emulator/Containerfile ..
 
 # Add loopback aliases for the two device IPs (survives until reboot)
 setup-net:

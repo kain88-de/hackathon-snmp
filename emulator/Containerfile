@@ -2,11 +2,17 @@ FROM ghcr.io/astral-sh/uv:python3.14-bookworm-slim
 
 WORKDIR /app
 
+# Workspace root + all member manifests needed for lockfile resolution
 COPY pyproject.toml uv.lock ./
-RUN uv sync --frozen --no-install-project
+COPY emulator/pyproject.toml ./emulator/
+COPY trouble-shooter/pyproject.toml ./trouble-shooter/
 
-COPY emulator/ ./emulator/
-COPY snmp_emulator.py ./
+# Install runtime deps only (excludes trouble-shooter dev/test deps)
+RUN uv sync --frozen --no-dev --no-install-project
+
+# Copy emulator source
+COPY emulator/emulator/ ./emulator/emulator/
+COPY emulator/snmp_emulator.py ./emulator/
 
 ENV SNMP_PORT=1161 \
     SNMP_HOST=0.0.0.0 \
@@ -14,4 +20,4 @@ ENV SNMP_PORT=1161 \
 
 EXPOSE 1161/udp
 
-CMD ["uv", "run", "python", "snmp_emulator.py"]
+CMD ["uv", "run", "--directory", "emulator", "python", "snmp_emulator.py"]
