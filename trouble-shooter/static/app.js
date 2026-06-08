@@ -78,16 +78,19 @@ function renderWalkTable(oids) {
   const table = document.createElement("table");
   const thead = table.createTHead();
   const hr = thead.insertRow();
-  ["OID", "Value"].forEach((h) => {
+  ["OID", "Value", "ms"].forEach((h) => {
     const th = document.createElement("th");
     th.textContent = h;
     hr.appendChild(th);
   });
   const tbody = table.createTBody();
-  oids.forEach(({ oid, value }) => {
+  oids.forEach(({ oid, value, ms }) => {
     const tr = tbody.insertRow();
     tr.insertCell().textContent = oid;
     tr.insertCell().textContent = value;
+    const msCell = tr.insertCell();
+    msCell.textContent = ms;
+    if (ms > 500) msCell.className = "slow";
   });
   pane.appendChild(table);
 }

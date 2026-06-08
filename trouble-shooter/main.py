@@ -1,6 +1,7 @@
 import ipaddress
 import re
 import subprocess
+import time
 
 from fastapi import FastAPI, HTTPException
 from fastapi.responses import FileResponse
@@ -31,13 +32,13 @@ def index():
 class CheckRequest(BaseModel):
     host: str
     community: str = "public"
-    port: int = 161
+    port: int = 1161
 
 
 class WalkRequest(BaseModel):
     host: str
     community: str = "public"
-    port: int = 161
+    port: int = 1161
     root_oid: str = "1.3.6.1.2.1"
 
 
@@ -102,6 +103,7 @@ async def _snmp_walk(host: str, community: str, port: int, root_oid: str) -> lis
     engine = SnmpEngine()
     results = []
     try:
+        t = time.monotonic()
         async for error_indication, error_status, _, var_binds in walk_cmd(
             engine,
             CommunityData(community),
@@ -109,12 +111,18 @@ async def _snmp_walk(host: str, community: str, port: int, root_oid: str) -> lis
             ContextData(),
             ObjectType(ObjectIdentity(root_oid)),
         ):
+            elapsed_ms = round((time.monotonic() - t) * 1000)
+            t = time.monotonic()
             if error_indication:
                 break
             if error_status and int(error_status):
                 break
             for var_bind in var_binds:
-                results.append({"oid": str(var_bind[0]), "value": str(var_bind[1])})
+                results.append({
+                    "oid": str(var_bind[0]),
+                    "value": str(var_bind[1]),
+                    "ms": elapsed_ms,
+                })
     finally:
         engine.close_dispatcher()
     return results
