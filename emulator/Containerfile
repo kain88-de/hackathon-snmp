@@ -10,9 +10,10 @@ COPY trouble-shooter/pyproject.toml ./trouble-shooter/
 # Install runtime deps only (excludes trouble-shooter dev/test deps)
 RUN uv sync --frozen --no-dev --no-install-workspace
 
-# Copy emulator source
+# Copy emulator source and install the package into the venv
 COPY emulator/emulator/ ./emulator/emulator/
 COPY emulator/snmp_emulator.py ./emulator/
+RUN uv sync --frozen --no-dev --package emulator
 
 ENV SNMP_PORT=1161 \
     SNMP_HOST=0.0.0.0 \
@@ -20,4 +21,4 @@ ENV SNMP_PORT=1161 \
 
 EXPOSE 1161/udp
 
-CMD ["uv", "run", "--directory", "emulator", "python", "snmp_emulator.py"]
+CMD ["uv", "run", "--no-sync", "--directory", "emulator", "python", "snmp_emulator.py"]
