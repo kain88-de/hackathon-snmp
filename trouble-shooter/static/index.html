@@ -1,0 +1,28 @@
+<!DOCTYPE html>
+<html lang="en">
+<head>
+  <meta charset="UTF-8" />
+  <meta name="viewport" content="width=device-width, initial-scale=1.0" />
+  <title>SNMP Troubleshooter</title>
+  <link rel="stylesheet" href="/static/style.css" />
+</head>
+<body>
+  <h1>SNMP Troubleshooter</h1>
+
+  <form id="check-form">
+    <label>
+      Host / IP
+      <input type="text" id="host" placeholder="192.168.1.1" required />
+    </label>
+    <label>
+      Community string
+      <input type="text" id="community" value="public" />
+    </label>
+    <button type="submit">Check</button>
+  </form>
+
+  <section id="results" hidden></section>
+
+  <script src="/static/app.js"></script>
+</body>
+</html>

@@ -1,0 +1,11 @@
+[project]
+name = "trouble-shooter"
+version = "0.1.0"
+description = "SNMP Troubleshooter"
+readme = "README.md"
+requires-python = ">=3.12"
+dependencies = [
+    "fastapi",
+    "pysnmp>=7.1.27",
+    "uvicorn[standard]",
+]

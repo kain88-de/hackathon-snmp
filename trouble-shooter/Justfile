@@ -1,0 +1,3 @@
+run:
+    -fuser -k 8080/tcp
+    uv run python main.py
