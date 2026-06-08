@@ -54,6 +54,11 @@ class EmulatorServer:
             self._thread.join(timeout=2.0)
             self._thread = None
 
+    def reset(self) -> None:
+        self._reset_event.set()
+        time.sleep(0.2)  # hold set long enough to catch late-arriving slow requests
+        self._reset_event.clear()
+
     def _bind(self) -> None:
         sock = socket.socket(socket.AF_INET, socket.SOCK_DGRAM)
         sock.setsockopt(socket.SOL_SOCKET, socket.SO_REUSEADDR, 1)
@@ -82,7 +87,7 @@ class EmulatorServer:
                     time.sleep(0.01)
                 continue
             resp = self._process(data, addr)
-            if resp is not None and not self._reset_event.is_set():
+            if resp is not None:
                 try:
                     sock.sendto(resp, addr)
                 except OSError:
@@ -121,7 +126,6 @@ class EmulatorServer:
         req_binds = pMod.apiPDU.get_varbinds(reqPDU)
         rsp_binds = []
         slow = False
-
         if pdu_name == "GetRequestPDU":
             for oid, _ in req_binds:
                 t = tuple(oid)

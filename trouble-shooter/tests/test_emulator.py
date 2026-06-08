@@ -76,3 +76,44 @@ def test_server_slow_prefix_adds_delay():
         assert elapsed >= 0.1
     finally:
         server.stop()
+
+
+def test_reset_server_still_responds_after_reset():
+    config = EmulatorConfig(slow_prefixes=(), slow_delay=0.0)
+    server = EmulatorServer(config)
+    server.start()
+    try:
+        server.reset()
+        err, var_binds = asyncio.run(_snmp_get(server.port, "1.3.6.1.2.1.1.1.0"))
+        assert err is None
+        assert "Emulated" in str(var_binds[0][1])
+    finally:
+        server.stop()
+
+
+def test_reset_drops_in_flight_slow_response():
+    config = EmulatorConfig(slow_prefixes=("1.3.6.1.2.1.2",), slow_delay=0.3)
+    server = EmulatorServer(config)
+    server.start()
+    try:
+        received = []
+
+        def slow_get():
+            err, var_binds = asyncio.run(
+                _snmp_get(server.port, "1.3.6.1.2.1.2.1.0", timeout=1.0)
+            )
+            if err is None:
+                received.append(var_binds)
+
+        t = threading.Thread(target=slow_get)
+        t.start()
+        time.sleep(0.05)
+        server.reset()
+        t.join(timeout=1.5)
+
+        assert received == [], "slow response should have been dropped by reset"
+
+        err, var_binds = asyncio.run(_snmp_get(server.port, "1.3.6.1.2.1.1.1.0"))
+        assert err is None
+    finally:
+        server.stop()
