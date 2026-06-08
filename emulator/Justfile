@@ -22,7 +22,7 @@ test:
 
 # Build the container image
 build:
-    sudo podman build -t {{image}} -f Containerfile .
+    podman build -t {{image}} -f Containerfile .
 
 # Add loopback aliases for the two device IPs (survives until reboot)
 setup-net:
@@ -38,14 +38,14 @@ setup-net:
 
 # Build image, configure network, and start both pods
 containers-start: build setup-net
-    sudo podman play kube pods.yaml --down 2>/dev/null || true
-    sudo podman play kube pods.yaml
+    podman play kube pods.yaml --down 2>/dev/null || true
+    podman play kube pods.yaml
 
 # Stop and tear down the pods
 containers-stop:
-    sudo podman play kube pods.yaml --down
+    podman play kube pods.yaml --down
 
 # Follow logs from both pods (Ctrl-C to quit)
 containers-logs:
-    sudo podman logs -f snmp-device-1-emulator &
-    sudo podman logs -f snmp-device-2-emulator
+    podman logs -f snmp-device-1-emulator &
+    podman logs -f snmp-device-2-emulator

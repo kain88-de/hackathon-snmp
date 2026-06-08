@@ -8,10 +8,10 @@ RUN uv sync --frozen --no-install-project
 
 COPY mibs.py snmp_emulator.py ./
 
-ENV SNMP_PORT=161 \
+ENV SNMP_PORT=1161 \
     SNMP_HOST=0.0.0.0 \
     SNMP_COMMUNITY=public
 
-EXPOSE 161/udp
+EXPOSE 1161/udp
 
 CMD ["uv", "run", "python", "snmp_emulator.py"]
