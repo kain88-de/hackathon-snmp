@@ -98,6 +98,28 @@ async def _snmp_get(host: str, community: str, port: int) -> dict:
     return {"reachable": True, "sysDescr": sys_descr}
 
 
+async def _snmp_walk(host: str, community: str, port: int, root_oid: str) -> list:
+    engine = SnmpEngine()
+    results = []
+    try:
+        async for error_indication, error_status, _, var_binds in walk_cmd(
+            engine,
+            CommunityData(community),
+            await UdpTransportTarget.create((host, port), timeout=2, retries=1),
+            ContextData(),
+            ObjectType(ObjectIdentity(root_oid)),
+        ):
+            if error_indication:
+                break
+            if error_status and int(error_status):
+                break
+            for var_bind in var_binds:
+                results.append({"oid": str(var_bind[0]), "value": str(var_bind[1])})
+    finally:
+        engine.close_dispatcher()
+    return results
+
+
 if __name__ == "__main__":
     import uvicorn
     uvicorn.run("main:app", host="0.0.0.0", port=8080, reload=True)

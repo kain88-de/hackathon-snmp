@@ -35,35 +35,9 @@
       <button class="view-btn" data-view="raw">Raw</button>
     </div>
 
-    <div id="view-tree" class="view-pane">
-      <ul class="oid-tree">
-        <li class="oid-node">
-          <span class="oid-toggle">▶</span>
-          <span class="oid-label">1.3.6.1.2.1</span>
-          <span class="oid-name">mib-2</span>
-          <ul>
-            <li class="oid-node leaf">
-              <span class="oid-label">1.3.6.1.2.1.1.1.0</span>
-              <span class="oid-name">sysDescr</span>
-              <span class="oid-value stub">—</span>
-            </li>
-          </ul>
-        </li>
-      </ul>
-    </div>
-
-    <div id="view-table" class="view-pane" hidden>
-      <table>
-        <thead><tr><th>OID</th><th>Name</th><th>Value</th></tr></thead>
-        <tbody>
-          <tr><td class="stub">1.3.6.1.2.1.1.1.0</td><td class="stub">sysDescr</td><td class="stub">—</td></tr>
-        </tbody>
-      </table>
-    </div>
-
-    <div id="view-raw" class="view-pane" hidden>
-      <pre class="raw-output stub">{ "1.3.6.1.2.1.1.1.0": "—" }</pre>
-    </div>
+    <div id="view-tree" class="view-pane"></div>
+    <div id="view-table" class="view-pane" hidden></div>
+    <div id="view-raw" class="view-pane" hidden></div>
   </section>
 
   <script src="/static/app.js"></script>
