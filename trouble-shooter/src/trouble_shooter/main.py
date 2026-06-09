@@ -1,12 +1,14 @@
 import asyncio
 import ipaddress
+import json
 import logging
 import re
 import subprocess
 import time
+from collections.abc import AsyncGenerator
 
 from fastapi import FastAPI, HTTPException
-from fastapi.responses import FileResponse
+from fastapi.responses import FileResponse, StreamingResponse
 from fastapi.staticfiles import StaticFiles
 from pydantic import BaseModel, Field
 from pysnmp.hlapi.v3arch.asyncio import (
@@ -21,7 +23,7 @@ from pysnmp.hlapi.v3arch.asyncio import (
     walk_cmd,
 )
 
-from trouble_shooter.detector import SnmpProber, diagnose
+from trouble_shooter.detector import SnmpProber, diagnose, diagnose_stream
 from trouble_shooter.detector.models import Bucket, DetectorConfig
 
 logging.basicConfig(level=logging.INFO, format="%(levelname)s %(name)s %(message)s")
@@ -138,6 +140,31 @@ async def diagnose_device(req: DiagnoseRequest) -> dict[str, object]:
         ],
         "elapsed_total_ms": report.elapsed_total_ms,
     }
+
+
+@app.post("/api/diagnose/stream")
+async def diagnose_device_stream(req: DiagnoseRequest) -> StreamingResponse:
+    if not _valid_host(req.host):
+        raise HTTPException(status_code=400, detail="Invalid host")
+    prober = SnmpProber(req.host, req.username, req.port, req.auth_password, req.timeout, req.retries)
+    buckets = [Bucket(name=b.name, max_ms=b.max_ms) for b in req.buckets]
+    config = DetectorConfig(
+        root_oid=req.root_oid,
+        bulk_size=req.bulk_size,
+        timeout=req.timeout,
+        retries=req.retries,
+        total_timeout=req.total_timeout,
+        pinpoint=req.pinpoint,
+    )
+
+    async def generate() -> AsyncGenerator[str, None]:
+        try:
+            async for event in diagnose_stream(prober, buckets=buckets, config=config):
+                yield f"data: {json.dumps(event)}\n\n"
+        except Exception as exc:
+            yield f"data: {json.dumps({'type': 'error', 'detail': str(exc)})}\n\n"
+
+    return StreamingResponse(generate(), media_type="text/event-stream")
 
 
 @app.post("/api/check")

@@ -1,5 +1,6 @@
 from __future__ import annotations
 
+import json
 from typing import TYPE_CHECKING
 
 if TYPE_CHECKING:
@@ -81,3 +82,38 @@ def test_diagnose_endpoint_region_excludes_oids_field(
         assert "batch_ms" in region
         assert "oid_count" in region
         assert "oids" not in region
+
+
+def test_diagnose_stream_endpoint_returns_sse_events(
+    client: TestClient, emulator_clean: EmulatorServer
+) -> None:
+    resp = client.post(
+        "/api/diagnose/stream",
+        json={
+            "host": "127.0.0.1",
+            "port": emulator_clean.port,
+            "root_oid": "1.3.6.1.2.1.1",
+            "bulk_size": 10,
+            "timeout": 2.0,
+            "retries": 1,
+            "total_timeout": 30.0,
+            "pinpoint": False,
+            "buckets": _BUCKETS,
+            **_CREDS,
+        },
+    )
+    assert resp.status_code == 200
+    assert "text/event-stream" in resp.headers["content-type"]
+
+    lines = [line for line in resp.text.split("\n") if line.startswith("data: ")]
+    events = [json.loads(line[6:]) for line in lines]
+
+    oids_events = [e for e in events if e["type"] == "oids"]
+    done_events = [e for e in events if e["type"] == "done"]
+
+    assert len(oids_events) > 0
+    assert len(done_events) == 1
+    assert done_events[0]["complete"] is True
+    assert done_events[0]["reason"] == "END_OF_MIB"
+    all_oids = [o["oid"] for e in oids_events for o in e["oids"]]
+    assert len(all_oids) > 0
