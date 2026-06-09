@@ -1,9 +1,8 @@
+from emulator import EmulatorServer
 from starlette.testclient import TestClient
 
-from emulator import EmulatorServer
 
-
-def test_check_reachable_device(client: TestClient, emulator_fast: EmulatorServer):
+def test_check_reachable_device(client: TestClient, emulator_fast: EmulatorServer) -> None:
     resp = client.post(
         "/api/check",
         json={
@@ -18,7 +17,7 @@ def test_check_reachable_device(client: TestClient, emulator_fast: EmulatorServe
     assert "Emulated" in data["snmp"]["sysDescr"]
 
 
-def test_check_wrong_community(client: TestClient, emulator_fast: EmulatorServer):
+def test_check_wrong_community(client: TestClient, emulator_fast: EmulatorServer) -> None:
     resp = client.post(
         "/api/check",
         json={
@@ -33,7 +32,7 @@ def test_check_wrong_community(client: TestClient, emulator_fast: EmulatorServer
     assert resp.json()["snmp"]["reachable"] is False
 
 
-def test_check_unreachable_port(client: TestClient):
+def test_check_unreachable_port(client: TestClient) -> None:
     resp = client.post(
         "/api/check",
         json={
@@ -48,7 +47,7 @@ def test_check_unreachable_port(client: TestClient):
     assert resp.json()["snmp"]["reachable"] is False
 
 
-def test_check_invalid_host(client: TestClient):
+def test_check_invalid_host(client: TestClient) -> None:
     resp = client.post(
         "/api/check",
         json={

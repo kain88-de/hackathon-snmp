@@ -27,7 +27,7 @@ def main() -> None:
 
     try:
         signal.pause()
-    except (KeyboardInterrupt, SystemExit):
+    except KeyboardInterrupt, SystemExit:
         pass
     finally:
         server.stop()

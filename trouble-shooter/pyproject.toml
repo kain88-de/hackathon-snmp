@@ -16,6 +16,7 @@ dev = [
     "pytest",
     "httpx2",
     "pyinstrument>=5.1.2",
+    "types-pyasn1>=0.6.0.20260408",
 ]
 
 [tool.uv.sources]
@@ -41,3 +42,16 @@ preset="strict"
 [build-system]
 requires = ["hatchling"]
 build-backend = "hatchling.build"
+
+[tool.ruff]
+extend = "../pyproject.toml"
+target-version = "py314"
+
+[tool.ruff.lint]
+ignore = [
+    "S603", # subprocess with trusted input — host is validated before call
+    "S104", # binding to all interfaces — intentional for dev server
+]
+
+[tool.ruff.lint.per-file-ignores]
+"tests/**" = ["S101"] # allow assert in tests

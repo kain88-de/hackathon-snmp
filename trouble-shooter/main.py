@@ -8,16 +8,15 @@ from fastapi import FastAPI, HTTPException
 from fastapi.responses import FileResponse
 from fastapi.staticfiles import StaticFiles
 from pydantic import BaseModel
-
 from pysnmp.hlapi.v3arch.asyncio import (
+    CommunityData,
+    ContextData,
+    ObjectIdentity,
+    ObjectType,
+    SnmpEngine,
+    UdpTransportTarget,
     get_cmd,
     walk_cmd,
-    SnmpEngine,
-    CommunityData,
-    UdpTransportTarget,
-    ContextData,
-    ObjectType,
-    ObjectIdentity,
 )
 
 app = FastAPI()
@@ -26,7 +25,7 @@ app.mount("/static", StaticFiles(directory="static"), name="static")
 
 
 @app.get("/")
-def index():
+def index() -> FileResponse:
     return FileResponse("static/index.html")
 
 
@@ -48,7 +47,7 @@ class WalkRequest(BaseModel):
 
 
 @app.post("/api/walk")
-async def walk_device(req: WalkRequest):
+async def walk_device(req: WalkRequest) -> dict[str, list[dict[str, str | int]]]:
     if not _valid_host(req.host):
         raise HTTPException(status_code=400, detail="Invalid host")
     oids = await _snmp_walk(
@@ -58,7 +57,7 @@ async def walk_device(req: WalkRequest):
 
 
 @app.post("/api/check")
-async def check_device(req: CheckRequest):
+async def check_device(req: CheckRequest) -> dict[str, object]:
     if not _valid_host(req.host):
         raise HTTPException(status_code=400, detail="Invalid host")
     ping_ok = _ping(req.host)
@@ -78,7 +77,7 @@ def _ping(host: str) -> bool:
     if not _valid_host(host):
         return False
     result = subprocess.run(
-        ["ping", "-c", "1", "-W", "2", "--", host],
+        ["/usr/bin/ping", "-c", "1", "-W", "2", "--", host],
         capture_output=True,
     )
     return result.returncode == 0
@@ -92,9 +91,7 @@ async def _snmp_get(
         error_indication, error_status, error_index, var_binds = await get_cmd(
             engine,
             CommunityData(community),
-            await UdpTransportTarget.create(
-                (host, port), timeout=timeout, retries=retries
-            ),
+            await UdpTransportTarget.create((host, port), timeout=timeout, retries=retries),
             ContextData(),
             ObjectType(ObjectIdentity("SNMPv2-MIB", "sysDescr", 0)),
         )
@@ -129,9 +126,7 @@ async def _snmp_walk(
             async for error_indication, error_status, _, var_binds in walk_cmd(
                 engine,
                 CommunityData(community),
-                await UdpTransportTarget.create(
-                    (host, port), timeout=timeout, retries=1
-                ),
+                await UdpTransportTarget.create((host, port), timeout=timeout, retries=1),
                 ContextData(),
                 ObjectType(ObjectIdentity(root_oid)),
             ):

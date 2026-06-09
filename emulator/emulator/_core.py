@@ -4,9 +4,10 @@ import threading
 import time
 from dataclasses import dataclass
 
-from pyasn1.codec.ber import decoder, encoder  # type: ignore[import-untyped]
-from pyasn1.type.univ import ObjectIdentifier  # type: ignore[import-untyped]
+from pyasn1.codec.ber import decoder, encoder
+from pyasn1.type.univ import ObjectIdentifier
 from pysnmp.proto import api, rfc1902
+from pysnmp.proto.api import v2c as snmp_v2c
 
 from ._mibs import SnmpValue, build_oid_tree
 
@@ -23,9 +24,7 @@ class EmulatorConfig:
 
 
 class EmulatorServer:
-    def __init__(
-        self, config: EmulatorConfig, port: int = 0, host: str = "127.0.0.1"
-    ) -> None:
+    def __init__(self, config: EmulatorConfig, port: int = 0, host: str = "127.0.0.1") -> None:
         self._config = config
         self._host = host
         self._port = port
@@ -122,10 +121,7 @@ class EmulatorServer:
         except Exception:
             return None
 
-        if (
-            bytes(p_mod.apiMessage.get_community(req_msg)).decode()
-            != self._config.community
-        ):
+        if bytes(p_mod.apiMessage.get_community(req_msg)).decode() != self._config.community:
             return None
 
         req_pdu = p_mod.apiMessage.get_pdu(req_msg)
@@ -138,9 +134,7 @@ class EmulatorServer:
                 t = tuple(oid)
                 slow = slow or self._is_slow(t)
                 val = self._lookup(t)
-                rsp_binds.append(
-                    (oid, val if val is not None else rfc1902.OctetString(""))
-                )
+                rsp_binds.append((oid, val if val is not None else rfc1902.OctetString("")))
 
         elif pdu_name == "GetNextRequestPDU":
             for oid, _ in req_binds:
@@ -155,8 +149,8 @@ class EmulatorServer:
                 rsp_binds.append((ObjectIdentifier(next_oid), val))
 
         elif pdu_name == "GetBulkRequestPDU":
-            non_rep = int(p_mod.apiBulkPDU.get_non_repeaters(req_pdu))  # type: ignore[attr-defined]
-            max_rep = int(p_mod.apiBulkPDU.get_max_repetitions(req_pdu))  # type: ignore[attr-defined]
+            non_rep = int(snmp_v2c.apiBulkPDU.get_non_repeaters(req_pdu))
+            max_rep = int(snmp_v2c.apiBulkPDU.get_max_repetitions(req_pdu))
             for oid, _ in req_binds[:non_rep]:
                 t = tuple(oid)
                 next_oid, val = self._lookup_next(t)

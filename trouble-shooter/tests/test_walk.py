@@ -1,9 +1,8 @@
+from emulator import EmulatorServer
 from starlette.testclient import TestClient
 
-from emulator import EmulatorServer
 
-
-def test_walk_returns_oids(client: TestClient, emulator_fast: EmulatorServer):
+def test_walk_returns_oids(client: TestClient, emulator_fast: EmulatorServer) -> None:
     resp = client.post(
         "/api/walk",
         json={
@@ -23,7 +22,7 @@ def test_walk_returns_oids(client: TestClient, emulator_fast: EmulatorServer):
 
 def test_walk_covers_system_and_interface_groups(
     client: TestClient, emulator_fast: EmulatorServer
-):
+) -> None:
     resp = client.post(
         "/api/walk",
         json={
@@ -41,9 +40,7 @@ def test_walk_covers_system_and_interface_groups(
     assert any("1.3.6.1.2.1.2" in oid for oid in oid_strings), "interface group missing"
 
 
-def test_walk_slow_subtree_takes_longer(
-    client: TestClient, emulator_slow: EmulatorServer
-):
+def test_walk_slow_subtree_takes_longer(client: TestClient, emulator_slow: EmulatorServer) -> None:
     resp = client.post(
         "/api/walk",
         json={
@@ -64,7 +61,7 @@ def test_walk_slow_subtree_takes_longer(
 
 def test_walk_total_timeout_returns_empty(
     client: TestClient, emulator_fast: EmulatorServer
-):
+) -> None:
     resp = client.post(
         "/api/walk",
         json={
@@ -80,7 +77,7 @@ def test_walk_total_timeout_returns_empty(
     assert resp.json()["oids"] == []
 
 
-def test_walk_invalid_host(client: TestClient):
+def test_walk_invalid_host(client: TestClient) -> None:
     resp = client.post(
         "/api/walk",
         json={
