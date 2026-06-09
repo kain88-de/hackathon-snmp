@@ -228,22 +228,22 @@ document.getElementById('run').addEventListener('click', runDiagnose);
 async function runDiagnose() {
   const btn = document.getElementById('run');
   btn.disabled = true;
-  setStatus('Running diagnosis…');
+  setStatus('Starting…');
   clearResults();
 
   const req = {
-    host:       document.getElementById('host').value.trim(),
+    host:          document.getElementById('host').value.trim(),
     username:      document.getElementById('username').value.trim(),
     auth_password: document.getElementById('auth_password').value,
-    port:       parseInt(document.getElementById('port').value, 10),
-    bulk_size:  parseInt(document.getElementById('bulk_size').value, 10),
-    root_oid:   document.getElementById('root_oid').value.trim(),
-    buckets:    getBucketDefs(),
+    port:          parseInt(document.getElementById('port').value, 10),
+    bulk_size:     parseInt(document.getElementById('bulk_size').value, 10),
+    root_oid:      document.getElementById('root_oid').value.trim(),
+    buckets:       getBucketDefs(),
   };
 
-  let data;
+  let resp;
   try {
-    const resp = await fetch('/api/diagnose', {
+    resp = await fetch('/api/diagnose/stream', {
       method: 'POST',
       headers: { 'Content-Type': 'application/json' },
       body: JSON.stringify(req),
@@ -252,17 +252,45 @@ async function runDiagnose() {
       const err = await resp.json().catch(() => ({}));
       throw new Error(err.detail || `HTTP ${resp.status}`);
     }
-    data = await resp.json();
   } catch (e) {
     setStatus('Error: ' + e.message, true);
     btn.disabled = false;
     return;
   }
 
-  setStatus('');
-  renderSummary(data);
-  renderWaterfall(data.oids);
-  btn.disabled = false;
+  const allOids = [];
+  const reader = resp.body.getReader();
+  const decoder = new TextDecoder();
+  let buf = '';
+
+  try {
+    while (true) {
+      const { done, value } = await reader.read();
+      if (done) break;
+      buf += decoder.decode(value, { stream: true });
+      const lines = buf.split('\n');
+      buf = lines.pop();
+      for (const line of lines) {
+        if (!line.startsWith('data: ')) continue;
+        let event;
+        try { event = JSON.parse(line.slice(6)); } catch { continue; }
+        if (event.type === 'oids') {
+          allOids.push(...event.oids);
+          setStatus(`Walking… ${allOids.length} OIDs`);
+        } else if (event.type === 'done') {
+          setStatus('');
+          renderSummary({ ...event, oids: allOids });
+          renderWaterfall(allOids);
+        } else if (event.type === 'error') {
+          setStatus('Error: ' + event.detail, true);
+        }
+      }
+    }
+  } catch (e) {
+    setStatus('Stream error: ' + e.message, true);
+  } finally {
+    btn.disabled = false;
+  }
 }
 
 function setStatus(msg, isErr) {
