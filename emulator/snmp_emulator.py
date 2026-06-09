@@ -7,7 +7,8 @@ from emulator import EmulatorConfig, EmulatorServer
 
 def main() -> None:
     config = EmulatorConfig(
-        community=os.environ.get("SNMP_COMMUNITY", "public"),
+        username=os.environ.get("SNMP_USERNAME", "monitor"),
+        auth_password=os.environ.get("SNMP_AUTH_PASSWORD", "authpass1"),
         slow_prefixes=tuple(os.environ.get("SLOW_PREFIXES", "1.3.6.1.2.1.2.2.1").split(",")),
         slow_delay=float(os.environ.get("SLOW_DELAY", "0.1")),
         n_interfaces=int(os.environ.get("N_INTERFACES", "4")),
@@ -18,7 +19,7 @@ def main() -> None:
     server = EmulatorServer(config, port=port, host=host)
     server.start()
     n_oids = len(server._oid_tree)
-    print(f"SNMP emulator  udp://{host}:{server.port}  community={config.community}")
+    print(f"SNMP emulator  udp://{host}:{server.port}  user={config.username}")
     print(f"Slow prefix: {config.slow_prefixes}  delay={config.slow_delay}s")
     print(f"MIB tree: {n_oids} OIDs  ({config.n_interfaces} interfaces)")
     print()
@@ -27,7 +28,7 @@ def main() -> None:
 
     try:
         signal.pause()
-    except (KeyboardInterrupt, SystemExit):
+    except KeyboardInterrupt, SystemExit:
         pass
     finally:
         server.stop()

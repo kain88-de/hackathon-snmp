@@ -4,13 +4,14 @@ import time
 from typing import TYPE_CHECKING
 
 from pysnmp.hlapi.v3arch.asyncio import (
-    CommunityData,
     ContextData,
     ObjectIdentity,
     ObjectType,
     SnmpEngine,
     UdpTransportTarget,
+    UsmUserData,
     get_cmd,
+    usmHMACMD5AuthProtocol,
 )
 
 from emulator import EmulatorConfig, EmulatorServer
@@ -23,12 +24,13 @@ async def _snmp_get(
     engine: SnmpEngine,
     port: int,
     oid: str,
-    community: str = "public",
-    timeout: float = 0.3,
+    username: str = "monitor",
+    auth_password: str = "authpass1",  # noqa: S107
+    timeout: float = 0.5,
 ) -> tuple[errind.ErrorIndication | None, tuple[ObjectType, ...]]:
     err, _status, _, var_binds = await get_cmd(
         engine,
-        CommunityData(community),
+        UsmUserData(username, authKey=auth_password, authProtocol=usmHMACMD5AuthProtocol),
         await UdpTransportTarget.create(("127.0.0.1", port), timeout=timeout, retries=0),
         ContextData(),
         ObjectType(ObjectIdentity(oid)),
@@ -58,17 +60,31 @@ def test_server_port_is_assigned_when_zero() -> None:
         server.stop()
 
 
-async def test_server_uses_community_string(snmp_engine: SnmpEngine) -> None:
-    config = EmulatorConfig(community="secret", slow_prefixes=(), slow_delay=0.0)
+async def test_server_rejects_wrong_credentials(snmp_engine: SnmpEngine) -> None:
+    config = EmulatorConfig(
+        username="monitor",
+        auth_password="authpass1",  # noqa: S106
+        slow_prefixes=(),
+        slow_delay=0.0,
+    )
     server = EmulatorServer(config)
     server.start()
     try:
-        err, _ = await _snmp_get(snmp_engine, server.port, "1.3.6.1.2.1.1.1.0", community="wrong")
-        assert err is not None
+        wrong_engine = SnmpEngine()
+        try:
+            err, _ = await _snmp_get(
+                wrong_engine,
+                server.port,
+                "1.3.6.1.2.1.1.1.0",
+                username="unknown",
+                auth_password="authpass1",  # noqa: S106
+                timeout=0.5,
+            )
+            assert err is not None
+        finally:
+            wrong_engine.close_dispatcher()
 
-        err, _var_binds = await _snmp_get(
-            snmp_engine, server.port, "1.3.6.1.2.1.1.1.0", community="secret"
-        )
+        err, _var_binds = await _snmp_get(snmp_engine, server.port, "1.3.6.1.2.1.1.1.0")
         assert err is None
     finally:
         server.stop()
@@ -109,12 +125,11 @@ async def test_reset_drops_in_flight_slow_response(snmp_engine: SnmpEngine) -> N
         received: list[object] = []
 
         def slow_get() -> None:
-            # runs in a separate thread with its own event loop — needs its own engine
             async def _do() -> None:
                 engine = SnmpEngine()
                 try:
                     err, var_binds = await _snmp_get(
-                        engine, server.port, "1.3.6.1.2.1.2.1.0", timeout=0.3
+                        engine, server.port, "1.3.6.1.2.1.2.1.0", timeout=1.0
                     )
                     if err is None:
                         received.append(var_binds)
@@ -125,9 +140,9 @@ async def test_reset_drops_in_flight_slow_response(snmp_engine: SnmpEngine) -> N
 
         t = threading.Thread(target=slow_get)
         t.start()
-        await asyncio.sleep(0.05)
+        await asyncio.sleep(0.15)  # allow SNMPv3 engine-ID discovery + request to arrive
         server.reset()
-        t.join(timeout=1.5)
+        t.join(timeout=2.0)
 
         assert received == [], "slow response should have been dropped by reset"
 
