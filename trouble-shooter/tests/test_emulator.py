@@ -2,21 +2,29 @@ import asyncio
 import threading
 import time
 
-import pytest
 from emulator import EmulatorConfig, EmulatorServer
 from pysnmp.hlapi.v3arch.asyncio import (
-    CommunityData, ContextData, ObjectIdentity, ObjectType,
-    SnmpEngine, UdpTransportTarget, get_cmd,
+    CommunityData,
+    ContextData,
+    ObjectIdentity,
+    ObjectType,
+    SnmpEngine,
+    UdpTransportTarget,
+    get_cmd,
 )
 
 
-async def _snmp_get(port: int, oid: str, community: str = "public", timeout: float = 1.0):
+async def _snmp_get(
+    port: int, oid: str, community: str = "public", timeout: float = 1.0
+):
     engine = SnmpEngine()
     try:
         err, status, _, var_binds = await get_cmd(
             engine,
             CommunityData(community),
-            await UdpTransportTarget.create(("127.0.0.1", port), timeout=timeout, retries=0),
+            await UdpTransportTarget.create(
+                ("127.0.0.1", port), timeout=timeout, retries=0
+            ),
             ContextData(),
             ObjectType(ObjectIdentity(oid)),
         )
@@ -53,11 +61,15 @@ def test_server_uses_community_string():
     server.start()
     try:
         # wrong community — should get no response (timeout error)
-        err, _ = asyncio.run(_snmp_get(server.port, "1.3.6.1.2.1.1.1.0", community="wrong"))
+        err, _ = asyncio.run(
+            _snmp_get(server.port, "1.3.6.1.2.1.1.1.0", community="wrong")
+        )
         assert err is not None
 
         # correct community — should respond
-        err, var_binds = asyncio.run(_snmp_get(server.port, "1.3.6.1.2.1.1.1.0", community="secret"))
+        err, var_binds = asyncio.run(
+            _snmp_get(server.port, "1.3.6.1.2.1.1.1.0", community="secret")
+        )
         assert err is None
     finally:
         server.stop()
@@ -69,6 +81,7 @@ def test_server_slow_prefix_adds_delay():
     server.start()
     try:
         import time
+
         t = time.monotonic()
         err, _ = asyncio.run(_snmp_get(server.port, "1.3.6.1.2.1.2.1.0", timeout=2.0))
         elapsed = time.monotonic() - t
@@ -96,7 +109,7 @@ def test_reset_drops_in_flight_slow_response():
     server = EmulatorServer(config)
     server.start()
     try:
-        received = []
+        received: list[object] = []
 
         def slow_get():
             err, var_binds = asyncio.run(

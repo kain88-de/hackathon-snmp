@@ -25,7 +25,7 @@ def emulator_slow():
 
 
 @pytest.fixture(autouse=True)
-def reset_emulators(emulator_fast, emulator_slow):
+def reset_emulators(emulator_fast: EmulatorServer, emulator_slow: EmulatorServer):
     yield
     emulator_fast.reset()
     emulator_slow.reset()

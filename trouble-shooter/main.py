@@ -86,7 +86,7 @@ def _ping(host: str) -> bool:
 
 async def _snmp_get(
     host: str, community: str, port: int, timeout: float = 2.0, retries: int = 1
-) -> dict:
+) -> dict[str, object]:
     engine = SnmpEngine()
     try:
         error_indication, error_status, error_index, var_binds = await get_cmd(
@@ -120,7 +120,7 @@ async def _snmp_walk(
     root_oid: str,
     timeout: int = 5,
     total_timeout: int = 30,
-) -> list:
+) -> list[dict[str, str | int]]:
     engine = SnmpEngine()
     results = []
     try:
