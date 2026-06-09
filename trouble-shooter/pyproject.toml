@@ -16,6 +16,7 @@ dev = [
     "pytest",
     "httpx2",
     "pyinstrument>=5.1.2",
+    "pyrefly>=0.19.0",
     "types-pyasn1>=0.6.0.20260408",
     "pytest-asyncio>=1.4.0",
     "pytest-random-order",

@@ -2,8 +2,13 @@ run:
     -fuser -k 8080/tcp
     uv run python -m trouble_shooter.main
 
-test:
+unit:
+    uv run pytest tests/unit --durations=10 -q
+
+integration:
     uv run pytest tests/integration --durations=10 -q
+
+test: unit integration
 
 types:
     uv run pyrefly check --remove-unused-ignores

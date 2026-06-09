@@ -7,7 +7,7 @@ import time
 from fastapi import FastAPI, HTTPException
 from fastapi.responses import FileResponse
 from fastapi.staticfiles import StaticFiles
-from pydantic import BaseModel
+from pydantic import BaseModel, Field
 from pysnmp.hlapi.v3arch.asyncio import (
     CommunityData,
     ContextData,
@@ -18,6 +18,9 @@ from pysnmp.hlapi.v3arch.asyncio import (
     get_cmd,
     walk_cmd,
 )
+
+from trouble_shooter.detector import SnmpProber, diagnose
+from trouble_shooter.detector.models import Bucket, DetectorConfig
 
 app = FastAPI()
 
@@ -46,6 +49,30 @@ class WalkRequest(BaseModel):
     total_timeout: int = 30
 
 
+class BucketSpec(BaseModel):
+    name: str
+    max_ms: int | None = None
+
+
+class DiagnoseRequest(BaseModel):
+    host: str
+    community: str = "public"
+    port: int = 1161
+    root_oid: str = "1.3.6.1.2.1"
+    bulk_size: int = 10
+    timeout: float = 5.0
+    retries: int = 2
+    total_timeout: float = 60.0
+    pinpoint: bool = True
+    buckets: list[BucketSpec] = Field(
+        default_factory=lambda: [
+            BucketSpec(name="OK", max_ms=500),
+            BucketSpec(name="SLOW", max_ms=3000),
+            BucketSpec(name="CRITICAL", max_ms=None),
+        ]
+    )
+
+
 @app.post("/api/walk")
 async def walk_device(req: WalkRequest) -> dict[str, list[dict[str, str | int]]]:
     if not _valid_host(req.host):
@@ -54,6 +81,43 @@ async def walk_device(req: WalkRequest) -> dict[str, list[dict[str, str | int]]]
         req.host, req.community, req.port, req.root_oid, req.timeout, req.total_timeout
     )
     return {"oids": oids}
+
+
+@app.post("/api/diagnose")
+async def diagnose_device(req: DiagnoseRequest) -> dict[str, object]:
+    if not _valid_host(req.host):
+        raise HTTPException(status_code=400, detail="Invalid host")
+    prober = SnmpProber(req.host, req.community, req.port, req.timeout, req.retries)
+    buckets = [Bucket(name=b.name, max_ms=b.max_ms) for b in req.buckets]
+    config = DetectorConfig(
+        root_oid=req.root_oid,
+        bulk_size=req.bulk_size,
+        timeout=req.timeout,
+        retries=req.retries,
+        total_timeout=req.total_timeout,
+        pinpoint=req.pinpoint,
+    )
+    report = await diagnose(prober, buckets=buckets, config=config)
+    return {
+        "complete": report.complete,
+        "stopped_at": report.stopped_at,
+        "reason": report.reason.value,
+        "summary": report.summary,
+        "regions": [
+            {
+                "prefix": r.prefix,
+                "bucket": r.bucket,
+                "batch_ms": r.batch_ms,
+                "oid_count": r.oid_count,
+            }
+            for r in report.regions
+        ],
+        "oids": [
+            {"oid": o.oid, "value": o.value, "bucket": o.bucket, "ms": o.ms, "phase": o.phase}
+            for o in report.oids
+        ],
+        "elapsed_total_ms": report.elapsed_total_ms,
+    }
 
 
 @app.post("/api/check")

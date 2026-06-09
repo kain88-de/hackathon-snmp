@@ -46,3 +46,52 @@ def emulator_slow(_slow_server: EmulatorServer) -> Generator[EmulatorServer]:
 @pytest.fixture(scope="session")
 def client() -> TestClient:
     return TestClient(app)
+
+
+# --- detector emulators ---
+
+_CLEAN_CONFIG = EmulatorConfig(slow_prefixes=(), slow_delay=0.0)
+_SLOW_IF_CONFIG = EmulatorConfig(slow_prefixes=("1.3.6.1.2.1.2.2.1",), slow_delay=0.8)
+_DROP_IF_CONFIG = EmulatorConfig(slow_prefixes=("1.3.6.1.2.1.2.2.1",), slow_delay=10.0)
+
+
+@pytest.fixture(scope="session")
+def _clean_server() -> Generator[EmulatorServer]:
+    s = EmulatorServer(_CLEAN_CONFIG)
+    s.start()
+    yield s
+    s.stop()
+
+
+@pytest.fixture(scope="session")
+def _slow_if_server() -> Generator[EmulatorServer]:
+    s = EmulatorServer(_SLOW_IF_CONFIG)
+    s.start()
+    yield s
+    s.stop()
+
+
+@pytest.fixture(scope="session")
+def _drop_if_server() -> Generator[EmulatorServer]:
+    s = EmulatorServer(_DROP_IF_CONFIG)
+    s.start()
+    yield s
+    s.stop()
+
+
+@pytest.fixture
+def emulator_clean(_clean_server: EmulatorServer) -> Generator[EmulatorServer]:
+    yield _clean_server
+    _clean_server.reset()
+
+
+@pytest.fixture
+def emulator_slow_if(_slow_if_server: EmulatorServer) -> Generator[EmulatorServer]:
+    yield _slow_if_server
+    _slow_if_server.reset()
+
+
+@pytest.fixture
+def emulator_drop_if(_drop_if_server: EmulatorServer) -> Generator[EmulatorServer]:
+    yield _drop_if_server
+    _drop_if_server.reset()
