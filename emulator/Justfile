@@ -15,8 +15,20 @@ run: install
 run-dev:
     uv run python snmp_emulator.py
 
+types:
+    uv run pyrefly check
+
+lint:
+    uv run ruff check . --fix
+
+format:
+    uv run ruff format .
+
+
+ci: format lint types
+
 # Quick smoke test against the dev port
-test:
+e2e-test:
     snmpget -v2c -c public 127.0.0.1:1161 sysDescr.0
     snmpget -v2c -c public 127.0.0.1:1161 1.3.6.1.2.1.2.2.1.2.1
 

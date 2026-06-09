@@ -1,13 +1,14 @@
+import contextlib
 import socket
 import threading
 import time
 from dataclasses import dataclass
 
-from pyasn1.codec.ber import decoder, encoder
-from pyasn1.type.univ import ObjectIdentifier
+from pyasn1.codec.ber import decoder, encoder  # type: ignore[import-untyped]
+from pyasn1.type.univ import ObjectIdentifier  # type: ignore[import-untyped]
 from pysnmp.proto import api, rfc1902
 
-from ._mibs import build_oid_tree
+from ._mibs import SnmpValue, build_oid_tree
 
 _START_TIME = time.monotonic()
 _SYSUPTIME_OID = (1, 3, 6, 1, 2, 1, 1, 3, 0)
@@ -32,8 +33,8 @@ class EmulatorServer:
         self._thread: threading.Thread | None = None
         self._stop_event = threading.Event()
         self._reset_event = threading.Event()
-        self._oid_tree: dict = {}
-        self._sorted_oids: list = []
+        self._oid_tree: dict[tuple[int, ...], SnmpValue] = {}
+        self._sorted_oids: list[tuple[int, ...]] = []
 
     @property
     def port(self) -> int:
@@ -58,7 +59,7 @@ class EmulatorServer:
 
     def reset(self) -> None:
         self._reset_event.set()
-        time.sleep(0.01)  # hold set long enough to catch late-arriving slow requests
+        time.sleep(0.05)  # hold set long enough to catch late-arriving slow requests
         self._reset_event.clear()
 
     def _bind(self) -> None:
@@ -72,10 +73,8 @@ class EmulatorServer:
     def _close_sock(self) -> None:
         sock, self._sock = self._sock, None
         if sock:
-            try:
+            with contextlib.suppress(OSError):
                 sock.close()
-            except OSError:
-                pass
 
     def _loop(self) -> None:
         while not self._stop_event.is_set():
@@ -91,17 +90,17 @@ class EmulatorServer:
                 continue
             resp = self._process(data, addr)
             if resp is not None:
-                try:
+                with contextlib.suppress(OSError):
                     sock.sendto(resp, addr)
-                except OSError:
-                    pass
 
-    def _lookup(self, oid_tuple: tuple):
+    def _lookup(self, oid_tuple: tuple[int, ...]) -> SnmpValue | None:
         if oid_tuple == _SYSUPTIME_OID:
             return rfc1902.TimeTicks(int((time.monotonic() - _START_TIME) * 100))
         return self._oid_tree.get(oid_tuple)
 
-    def _lookup_next(self, oid_tuple: tuple) -> tuple[tuple | None, object]:
+    def _lookup_next(
+        self, oid_tuple: tuple[int, ...]
+    ) -> tuple[tuple[int, ...] | None, SnmpValue | None]:
         for oid in self._sorted_oids:
             if oid > oid_tuple:
                 val = self._lookup(oid)
@@ -109,30 +108,30 @@ class EmulatorServer:
                     return oid, val
         return None, None
 
-    def _is_slow(self, oid_tuple: tuple) -> bool:
+    def _is_slow(self, oid_tuple: tuple[int, ...]) -> bool:
         s = ".".join(map(str, oid_tuple))
         return any(s.startswith(p) for p in self._config.slow_prefixes)
 
-    def _process(self, data: bytes, addr) -> bytes | None:
+    def _process(self, data: bytes, addr: tuple[str, int]) -> bytes | None:
         t0 = time.monotonic()
 
         try:
             ver = api.decodeMessageVersion(data)
-            pMod = api.PROTOCOL_MODULES[ver]
-            reqMsg, _ = decoder.decode(data, asn1Spec=pMod.Message())
+            p_mod = api.PROTOCOL_MODULES[ver]
+            req_msg, _ = decoder.decode(data, asn1Spec=p_mod.Message())
         except Exception:
             return None
 
         if (
-            bytes(pMod.apiMessage.get_community(reqMsg)).decode()
+            bytes(p_mod.apiMessage.get_community(req_msg)).decode()
             != self._config.community
         ):
             return None
 
-        reqPDU = pMod.apiMessage.get_pdu(reqMsg)
-        pdu_name = reqPDU.__class__.__name__
-        req_binds = pMod.apiPDU.get_varbinds(reqPDU)
-        rsp_binds = []
+        req_pdu = p_mod.apiMessage.get_pdu(req_msg)
+        pdu_name = req_pdu.__class__.__name__
+        req_binds = p_mod.apiPDU.get_varbinds(req_pdu)
+        rsp_binds: list[tuple[object, object]] = []
         slow = False
         if pdu_name == "GetRequestPDU":
             for oid, _ in req_binds:
@@ -156,8 +155,8 @@ class EmulatorServer:
                 rsp_binds.append((ObjectIdentifier(next_oid), val))
 
         elif pdu_name == "GetBulkRequestPDU":
-            non_rep = int(pMod.apiBulkPDU.get_non_repeaters(reqPDU))
-            max_rep = int(pMod.apiBulkPDU.get_max_repetitions(reqPDU))
+            non_rep = int(p_mod.apiBulkPDU.get_non_repeaters(req_pdu))  # type: ignore[attr-defined]
+            max_rep = int(p_mod.apiBulkPDU.get_max_repetitions(req_pdu))  # type: ignore[attr-defined]
             for oid, _ in req_binds[:non_rep]:
                 t = tuple(oid)
                 next_oid, val = self._lookup_next(t)
@@ -191,13 +190,13 @@ class EmulatorServer:
                     print("  →  dropped", flush=True)
                 return None
 
-        rspMsg = pMod.apiMessage.get_response(reqMsg)
-        rspPDU = pMod.apiMessage.get_pdu(rspMsg)
-        pMod.apiPDU.set_varbinds(rspPDU, rsp_binds)
-        pMod.apiPDU.set_error_status(rspPDU, 0)
-        pMod.apiPDU.set_error_index(rspPDU, 0)
+        rsp_msg = p_mod.apiMessage.get_response(req_msg)
+        rsp_pdu = p_mod.apiMessage.get_pdu(rsp_msg)
+        p_mod.apiPDU.set_varbinds(rsp_pdu, rsp_binds)
+        p_mod.apiPDU.set_error_status(rsp_pdu, 0)
+        p_mod.apiPDU.set_error_index(rsp_pdu, 0)
 
         if req_binds:
             print(f"  →  {time.monotonic() - t0:.2f}s", flush=True)
 
-        return encoder.encode(rspMsg)
+        return encoder.encode(rsp_msg)

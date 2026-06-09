@@ -12,7 +12,7 @@ def main() -> None:
         slow_delay=float(os.environ.get("SLOW_DELAY", "3.0")),
         n_interfaces=int(os.environ.get("N_INTERFACES", "4")),
     )
-    host = os.environ.get("SNMP_HOST", "0.0.0.0")
+    host = os.environ.get("SNMP_HOST", "0.0.0.0")  # noqa: S104
     port = int(os.environ.get("SNMP_PORT", "1161"))
 
     server = EmulatorServer(config, port=port, host=host)
