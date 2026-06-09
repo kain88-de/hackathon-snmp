@@ -6,33 +6,36 @@ from fastapi.testclient import TestClient
 
 from main import app
 
-FAST = EmulatorConfig(slow_prefixes=(), slow_delay=0.0)
-SLOW = EmulatorConfig(slow_prefixes=("1.3.6.1.2.1.2.2.1",), slow_delay=0.05)
+_FAST_CONFIG = EmulatorConfig(slow_prefixes=(), slow_delay=0.0)
+_SLOW_CONFIG = EmulatorConfig(slow_prefixes=("1.3.6.1.2.1.2.2.1",), slow_delay=0.05, n_interfaces=1)
 
 
 @pytest.fixture(scope="session")
-def emulator_fast() -> Generator[EmulatorServer]:
-    s = EmulatorServer(FAST)
+def _fast_server() -> Generator[EmulatorServer]:
+    s = EmulatorServer(_FAST_CONFIG)
     s.start()
     yield s
     s.stop()
 
 
 @pytest.fixture(scope="session")
-def emulator_slow() -> Generator[EmulatorServer]:
-    s = EmulatorServer(SLOW)
+def _slow_server() -> Generator[EmulatorServer]:
+    s = EmulatorServer(_SLOW_CONFIG)
     s.start()
     yield s
     s.stop()
 
 
-@pytest.fixture(autouse=True)
-def reset_emulators(
-    emulator_fast: EmulatorServer, emulator_slow: EmulatorServer
-) -> Generator[None]:
-    yield
-    emulator_fast.reset()
-    emulator_slow.reset()
+@pytest.fixture
+def emulator_fast(_fast_server: EmulatorServer) -> Generator[EmulatorServer]:
+    yield _fast_server
+    _fast_server.reset()
+
+
+@pytest.fixture
+def emulator_slow(_slow_server: EmulatorServer) -> Generator[EmulatorServer]:
+    yield _slow_server
+    _slow_server.reset()
 
 
 @pytest.fixture(scope="session")

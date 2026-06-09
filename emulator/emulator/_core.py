@@ -58,7 +58,8 @@ class EmulatorServer:
 
     def reset(self) -> None:
         self._reset_event.set()
-        time.sleep(0.05)  # hold set long enough to catch late-arriving slow requests
+        if self._config.slow_prefixes:
+            time.sleep(0.05)  # hold set long enough to catch late-arriving slow requests
         self._reset_event.clear()
 
     def _bind(self) -> None:

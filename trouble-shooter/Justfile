@@ -3,7 +3,7 @@ run:
     uv run python main.py
 
 test:
-    uv run pytest tests --durations=10
+    uv run pytest tests --durations=10 -q
 
 types:
     uv run pyrefly check

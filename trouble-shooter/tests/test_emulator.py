@@ -16,7 +16,7 @@ from pysnmp.proto import errind
 
 
 async def _snmp_get(
-    port: int, oid: str, community: str = "public", timeout: float = 1.0
+    port: int, oid: str, community: str = "public", timeout: float = 0.3
 ) -> tuple[errind.ErrorIndication | None, tuple[ObjectType, ...]]:
     engine = SnmpEngine()
     try:
@@ -109,7 +109,7 @@ def test_reset_drops_in_flight_slow_response() -> None:
         received: list[object] = []
 
         def slow_get() -> None:
-            err, var_binds = asyncio.run(_snmp_get(server.port, "1.3.6.1.2.1.2.1.0", timeout=1.0))
+            err, var_binds = asyncio.run(_snmp_get(server.port, "1.3.6.1.2.1.2.1.0", timeout=0.3))
             if err is None:
                 received.append(var_binds)
 
