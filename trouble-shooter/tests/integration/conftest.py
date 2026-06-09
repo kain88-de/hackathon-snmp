@@ -11,8 +11,11 @@ if TYPE_CHECKING:
 
 from trouble_shooter.main import app
 
-_FAST_CONFIG = EmulatorConfig(slow_prefixes=(), slow_delay=0.0)
-_SLOW_CONFIG = EmulatorConfig(slow_prefixes=("1.3.6.1.2.1.2.2.1",), slow_delay=0.05, n_interfaces=1)
+_FAST_CONFIG = EmulatorConfig(username="monitor", auth_password="authpass1", slow_prefixes=(), slow_delay=0.0)
+_SLOW_CONFIG = EmulatorConfig(
+    username="monitor", auth_password="authpass1",
+    slow_prefixes=("1.3.6.1.2.1.2.2.1",), slow_delay=0.05, n_interfaces=1,
+)
 
 
 @pytest.fixture(scope="session")
@@ -50,9 +53,15 @@ def client() -> TestClient:
 
 # --- detector emulators ---
 
-_CLEAN_CONFIG = EmulatorConfig(slow_prefixes=(), slow_delay=0.0)
-_SLOW_IF_CONFIG = EmulatorConfig(slow_prefixes=("1.3.6.1.2.1.2.2.1",), slow_delay=0.8)
-_DROP_IF_CONFIG = EmulatorConfig(slow_prefixes=("1.3.6.1.2.1.2.2.1",), slow_delay=10.0)
+_CLEAN_CONFIG = EmulatorConfig(username="monitor", auth_password="authpass1", slow_prefixes=(), slow_delay=0.0)
+_SLOW_IF_CONFIG = EmulatorConfig(
+    username="monitor", auth_password="authpass1",
+    slow_prefixes=("1.3.6.1.2.1.2.2.1",), slow_delay=0.8, n_interfaces=1,
+)
+_DROP_IF_CONFIG = EmulatorConfig(
+    username="monitor", auth_password="authpass1",
+    slow_prefixes=("1.3.6.1.2.1.2.2.1",), slow_delay=10.0,
+)
 
 
 @pytest.fixture(scope="session")
