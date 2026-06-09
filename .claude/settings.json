@@ -1,0 +1,40 @@
+{
+  "permissions": {
+    "allow": [
+      "Bash(git add *)",
+      "Bash(git commit *)",
+      "Bash(git rm *)",
+      "Bash(git status*)",
+      "Bash(git diff*)",
+      "Bash(git log*)",
+      "Bash(git rev-parse*)",
+      "Bash(uv *)",
+      "Bash(snmpget *)",
+      "Bash(mkdir *)",
+      "Bash(rm *)",
+      "Bash(kill *)",
+      "Bash(sleep *)",
+      "Read",
+      "Edit",
+      "Write",
+      "Skill(update-config)",
+      "Bash(just types *)",
+      "Bash(just lint *)",
+      "Bash(just *)"
+    ]
+  },
+  "hooks": {
+    "PreToolUse": [
+      {
+        "matcher": "Bash",
+        "hooks": [
+          {
+            "type": "command",
+            "command": "python3 /home/max/work/hackathon/.claude/hooks/normalize-git-c.py",
+            "if": "Bash(git -C *)"
+          }
+        ]
+      }
+    ]
+  }
+}
