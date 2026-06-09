@@ -69,6 +69,9 @@ dependencies = [
 
 [package.dev-dependencies]
 dev = [
+    { name = "pytest" },
+    { name = "pytest-asyncio" },
+    { name = "pytest-random-order" },
     { name = "types-pyasn1" },
 ]
 
@@ -76,7 +79,12 @@ dev = [
 requires-dist = [{ name = "pysnmp", specifier = ">=7.1.27" }]
 
 [package.metadata.requires-dev]
-dev = [{ name = "types-pyasn1", specifier = ">=0.6.0.20260408" }]
+dev = [
+    { name = "pytest" },
+    { name = "pytest-asyncio", specifier = ">=1.4.0" },
+    { name = "pytest-random-order" },
+    { name = "types-pyasn1", specifier = ">=0.6.0.20260408" },
+]
 
 [[package]]
 name = "fastapi"

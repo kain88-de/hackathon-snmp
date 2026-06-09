@@ -15,16 +15,19 @@ run: install
 run-dev:
     uv run python snmp_emulator.py
 
+test:
+    uv run pytest --durations=10 -q
+
 types:
     uv run pyrefly check --remove-unused-ignores
+
 lint:
     uv run ruff check . --fix
 
 format:
     uv run ruff format .
 
-
-ci: format lint types
+ci: format lint types test
 
 # Quick smoke test against the dev port
 e2e-test:

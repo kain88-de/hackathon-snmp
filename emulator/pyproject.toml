@@ -14,6 +14,9 @@ target-version = "py314"
 [tool.ruff.lint.per-file-ignores]
 "tests/**" = ["S101"] # allow assert in tests
 
+[tool.ruff.lint]
+extend-ignore = ["ASYNC109"] # timeout param passed to pysnmp transport layer, not asyncio.timeout
+
 [tool.pyrefly]
 project-includes = [
     "**/*.py*",
@@ -27,7 +30,15 @@ preset="strict"
 requires = ["hatchling"]
 build-backend = "hatchling.build"
 
+[tool.pytest.ini_options]
+testpaths = ["tests"]
+asyncio_mode = "auto"
+addopts = "--random-order"
+
 [dependency-groups]
 dev = [
     "types-pyasn1>=0.6.0.20260408",
+    "pytest",
+    "pytest-asyncio>=1.4.0",
+    "pytest-random-order",
 ]

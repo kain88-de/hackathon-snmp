@@ -2,7 +2,6 @@ import asyncio
 import threading
 import time
 
-from emulator import EmulatorConfig, EmulatorServer
 from pysnmp.hlapi.v3arch.asyncio import (
     CommunityData,
     ContextData,
@@ -13,6 +12,8 @@ from pysnmp.hlapi.v3arch.asyncio import (
     get_cmd,
 )
 from pysnmp.proto import errind
+
+from emulator import EmulatorConfig, EmulatorServer
 
 
 async def _snmp_get(
