@@ -22,7 +22,33 @@
       Port
       <input type="number" id="port" value="1161" min="1" max="65535" />
     </label>
-    <button type="submit">Check</button>
+
+    <div class="form-actions">
+      <button type="submit">Check</button>
+      <button type="button" id="diagnose-btn">Diagnose slow OIDs</button>
+    </div>
+
+    <details id="diagnose-opts">
+      <summary>Diagnose options</summary>
+      <div class="opts-grid">
+        <label>
+          Root OID
+          <input type="text" id="root_oid" value="1.3.6.1.2.1" />
+        </label>
+        <label>
+          Timeout (s)
+          <input type="number" id="timeout" value="2" min="0.1" step="0.1" />
+        </label>
+        <label>
+          Total budget (s)
+          <input type="number" id="total_timeout" value="30" min="1" />
+        </label>
+        <label class="checkbox">
+          <input type="checkbox" id="pinpoint" checked />
+          Pinpoint per-OID timing <span class="hint">(slower on large slow subtrees)</span>
+        </label>
+      </div>
+    </details>
   </form>
 
   <section id="results" hidden></section>
@@ -38,6 +64,24 @@
     <div id="view-tree" class="view-pane"></div>
     <div id="view-table" class="view-pane" hidden></div>
     <div id="view-raw" class="view-pane" hidden></div>
+  </section>
+
+  <section id="diagnose-section" hidden>
+    <h2>Slow-OID Diagnosis</h2>
+    <div id="diag-status"></div>
+    <div id="diag-summary"></div>
+
+    <div class="view-toggle">
+      <button class="dview-btn active" data-dview="chart">Waterfall</button>
+      <button class="dview-btn" data-dview="regions">Regions</button>
+      <button class="dview-btn" data-dview="oids">OIDs</button>
+      <button class="dview-btn" data-dview="raw">Raw</button>
+    </div>
+
+    <div id="dview-chart" class="dview-pane"></div>
+    <div id="dview-regions" class="dview-pane" hidden></div>
+    <div id="dview-oids" class="dview-pane" hidden></div>
+    <div id="dview-raw" class="dview-pane" hidden></div>
   </section>
 
   <script src="/static/app.js"></script>

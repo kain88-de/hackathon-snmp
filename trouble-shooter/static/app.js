@@ -192,3 +192,253 @@ function errorEl(msg) {
   span.textContent = msg;
   return span;
 }
+
+// ---------------------------------------------------------------------------
+// Diagnose: /api/diagnose — find and classify slow / dropped OIDs
+// ---------------------------------------------------------------------------
+
+const diagnoseBtn = document.getElementById("diagnose-btn");
+const diagnoseSection = document.getElementById("diagnose-section");
+const diagStatus = document.getElementById("diag-status");
+const diagSummary = document.getElementById("diag-summary");
+
+// Buckets returned by the engine. "TIMEOUT" is synthesised server-side for
+// dropped requests; the rest come from the default bucket config.
+const BUCKET_COLORS = {
+  OK: "#2a7a2a",
+  SLOW: "#e67e22",
+  CRITICAL: "#c0392b",
+  TIMEOUT: "#7d3c98",
+};
+const BUCKET_ORDER = ["OK", "SLOW", "CRITICAL", "TIMEOUT"];
+
+function bucketColor(name) {
+  return BUCKET_COLORS[name] || "#6b7280";
+}
+
+// Scoped view toggle for the diagnose section (independent of the walk toggle).
+document.querySelectorAll(".dview-btn").forEach((btn) => {
+  btn.addEventListener("click", () => {
+    document.querySelectorAll(".dview-btn").forEach((b) => b.classList.remove("active"));
+    document.querySelectorAll(".dview-pane").forEach((p) => { p.hidden = true; });
+    btn.classList.add("active");
+    document.getElementById(`dview-${btn.dataset.dview}`).hidden = false;
+  });
+});
+
+diagnoseBtn.addEventListener("click", () => {
+  const body = {
+    host: document.getElementById("host").value.trim(),
+    community: document.getElementById("community").value.trim(),
+    port: parseInt(document.getElementById("port").value, 10),
+    root_oid: document.getElementById("root_oid").value.trim(),
+    timeout: parseFloat(document.getElementById("timeout").value),
+    total_timeout: parseFloat(document.getElementById("total_timeout").value),
+    retries: 1,
+    pinpoint: document.getElementById("pinpoint").checked,
+  };
+  runDiagnose(body);
+});
+
+async function runDiagnose(body) {
+  diagnoseSection.hidden = false;
+  diagStatus.replaceChildren(textEl("Diagnosing… this can take a while when pinpoint is on."));
+  diagSummary.replaceChildren();
+  ["chart", "regions", "oids", "raw"].forEach((v) => {
+    document.getElementById(`dview-${v}`).replaceChildren();
+  });
+  diagnoseBtn.disabled = true;
+
+  let resp;
+  let data;
+  try {
+    resp = await fetch("/api/diagnose", {
+      method: "POST",
+      headers: { "Content-Type": "application/json" },
+      body: JSON.stringify(body),
+    });
+    data = await resp.json();
+  } catch (err) {
+    diagStatus.replaceChildren(errorEl(`Request failed: ${err.message}`));
+    diagnoseBtn.disabled = false;
+    return;
+  } finally {
+    diagnoseBtn.disabled = false;
+  }
+
+  if (!resp.ok) {
+    diagStatus.replaceChildren(errorEl(data.detail || `HTTP ${resp.status}`));
+    return;
+  }
+
+  renderDiagStatus(data);
+  renderDiagSummary(data.summary);
+  renderDiagChart(data.oids);
+  renderDiagRegions(data.regions);
+  renderDiagOids(data.oids);
+  renderDiagRaw(data);
+}
+
+function renderDiagStatus(d) {
+  diagStatus.replaceChildren();
+  const banner = document.createElement("div");
+  banner.className = `diag-banner ${d.complete ? "ok" : "fail"}`;
+
+  const verdict = document.createElement("strong");
+  verdict.textContent = d.complete
+    ? "✓ Walk complete"
+    : `✗ Walk incomplete — ${d.reason}`;
+  banner.appendChild(verdict);
+
+  const meta = document.createElement("span");
+  meta.className = "diag-banner-meta";
+  const elapsed = `${(d.elapsed_total_ms / 1000).toFixed(1)}s`;
+  meta.textContent = d.complete
+    ? `reason: ${d.reason} · stopped at ${d.stopped_at} · ${elapsed}`
+    : `stopped at ${d.stopped_at} · ${elapsed}`;
+  banner.appendChild(meta);
+
+  diagStatus.appendChild(banner);
+}
+
+function renderDiagSummary(summary) {
+  diagSummary.replaceChildren();
+  const wrap = document.createElement("div");
+  wrap.className = "chips";
+
+  const names = Object.keys(summary).sort(
+    (a, b) => (BUCKET_ORDER.indexOf(a) + 1 || 99) - (BUCKET_ORDER.indexOf(b) + 1 || 99),
+  );
+  names.forEach((name) => {
+    const chip = document.createElement("span");
+    chip.className = "chip";
+    chip.style.borderColor = bucketColor(name);
+    const dot = document.createElement("span");
+    dot.className = "chip-dot";
+    dot.style.background = bucketColor(name);
+    chip.appendChild(dot);
+    const label = document.createElement("span");
+    label.textContent = `${name} ${summary[name]}`;
+    chip.appendChild(label);
+    wrap.appendChild(chip);
+  });
+  diagSummary.appendChild(wrap);
+}
+
+function renderDiagChart(oids) {
+  const pane = document.getElementById("dview-chart");
+  pane.replaceChildren();
+
+  if (!oids.length) {
+    pane.appendChild(textEl("No OIDs returned."));
+    return;
+  }
+
+  // Filter control: focus on the actionable (non-OK) OIDs.
+  const controls = document.createElement("label");
+  controls.className = "checkbox chart-filter";
+  const cb = document.createElement("input");
+  cb.type = "checkbox";
+  controls.appendChild(cb);
+  controls.appendChild(document.createTextNode(" Show only slow / timed-out OIDs"));
+  pane.appendChild(controls);
+
+  const chart = document.createElement("div");
+  chart.className = "waterfall";
+  pane.appendChild(chart);
+
+  const maxMs = Math.max(...oids.map((o) => o.ms), 1);
+
+  const draw = () => {
+    const rows = cb.checked ? oids.filter((o) => o.bucket !== "OK") : oids;
+    chart.innerHTML = rows
+      .map((o) => {
+        const pct = Math.max((o.ms / maxMs) * 100, 1).toFixed(1);
+        const color = bucketColor(o.bucket);
+        return `
+          <div class="wf-row" title="${esc(o.oid)}\n${esc(o.value || "(empty)")}\n${o.bucket} · ${Math.round(o.ms)} ms · ${esc(o.phase)}">
+            <span class="wf-phase ${o.phase === "pinpoint" ? "pin" : ""}">${esc(o.phase)}</span>
+            <span class="wf-oid">${esc(o.oid)}</span>
+            <span class="wf-bar-cell"><span class="wf-bar" style="width:${pct}%;background:${color}"></span></span>
+            <span class="wf-ms" style="color:${color}">${Math.round(o.ms)}</span>
+          </div>`;
+      })
+      .join("") || `<div class="stub">No slow or timed-out OIDs.</div>`;
+  };
+
+  cb.addEventListener("change", draw);
+  draw();
+}
+
+function renderDiagRegions(regions) {
+  const pane = document.getElementById("dview-regions");
+  pane.replaceChildren();
+
+  if (!regions.length) {
+    pane.appendChild(textEl("No slow regions detected."));
+    return;
+  }
+
+  const table = document.createElement("table");
+  const hr = table.createTHead().insertRow();
+  ["Prefix", "Worst bucket", "Batch ms", "OIDs"].forEach((h) => {
+    const th = document.createElement("th");
+    th.textContent = h;
+    hr.appendChild(th);
+  });
+  const tbody = table.createTBody();
+  regions.forEach((r) => {
+    const tr = tbody.insertRow();
+    tr.insertCell().textContent = r.prefix;
+    const bucketCell = tr.insertCell();
+    bucketCell.textContent = r.bucket;
+    bucketCell.style.color = bucketColor(r.bucket);
+    bucketCell.style.fontWeight = "600";
+    tr.insertCell().textContent = Math.round(r.batch_ms);
+    tr.insertCell().textContent = r.oid_count;
+  });
+  pane.appendChild(table);
+}
+
+function renderDiagOids(oids) {
+  const pane = document.getElementById("dview-oids");
+  pane.replaceChildren();
+
+  const table = document.createElement("table");
+  const hr = table.createTHead().insertRow();
+  ["OID", "Value", "Bucket", "ms", "Phase"].forEach((h) => {
+    const th = document.createElement("th");
+    th.textContent = h;
+    hr.appendChild(th);
+  });
+  const tbody = table.createTBody();
+  oids.forEach((o) => {
+    const tr = tbody.insertRow();
+    tr.insertCell().textContent = o.oid;
+    tr.insertCell().textContent = o.value;
+    const bucketCell = tr.insertCell();
+    bucketCell.textContent = o.bucket;
+    bucketCell.style.color = bucketColor(o.bucket);
+    bucketCell.style.fontWeight = "600";
+    tr.insertCell().textContent = Math.round(o.ms);
+    tr.insertCell().textContent = o.phase;
+  });
+  pane.appendChild(table);
+}
+
+function renderDiagRaw(data) {
+  const pane = document.getElementById("dview-raw");
+  pane.replaceChildren();
+  const pre = document.createElement("pre");
+  pre.className = "raw-output";
+  pre.textContent = JSON.stringify(data, null, 2);
+  pane.appendChild(pre);
+}
+
+function esc(s) {
+  return String(s)
+    .replace(/&/g, "&amp;")
+    .replace(/</g, "&lt;")
+    .replace(/>/g, "&gt;")
+    .replace(/"/g, "&quot;");
+}
