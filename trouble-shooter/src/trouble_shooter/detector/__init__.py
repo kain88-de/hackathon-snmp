@@ -1,4 +1,4 @@
-from .engine import diagnose
+from .engine import diagnose, diagnose_stream
 from .models import (
     Batch,
     Bucket,
@@ -22,4 +22,5 @@ __all__ = [
     "SnmpProber",
     "WalkReason",
     "diagnose",
+    "diagnose_stream",
 ]

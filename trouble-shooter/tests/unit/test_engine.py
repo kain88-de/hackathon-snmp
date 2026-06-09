@@ -7,7 +7,7 @@ import pytest
 if TYPE_CHECKING:
     from collections.abc import AsyncIterator
 
-from trouble_shooter.detector.engine import diagnose
+from trouble_shooter.detector.engine import diagnose, diagnose_stream
 from trouble_shooter.detector.models import Batch, Bucket, DetectorConfig, Sample, WalkReason
 
 BUCKETS = [Bucket("OK", 500), Bucket("SLOW", 3000), Bucket("CRITICAL", None)]
@@ -169,3 +169,45 @@ async def test_diagnose_elapsed_total_ms_is_non_negative() -> None:
     )
     report = await diagnose(prober, buckets=BUCKETS, config=DetectorConfig(pinpoint=False))
     assert report.elapsed_total_ms >= 0
+
+
+async def test_diagnose_stream_yields_oids_then_done() -> None:
+    prober = FakeProber(
+        [
+            Batch(oids=[("1.3.6.1.2.1.1.1.0", "desc")], elapsed_ms=100, timed_out=False),
+            Batch(oids=[("1.3.6.1.2.1.1.2.0", "oid")], elapsed_ms=150, timed_out=False),
+        ]
+    )
+    events = [e async for e in diagnose_stream(prober, buckets=BUCKETS, config=DetectorConfig(pinpoint=False))]
+
+    oids_events = [e for e in events if e["type"] == "oids"]
+    done_events = [e for e in events if e["type"] == "done"]
+
+    assert len(oids_events) == 2  # one per batch
+    assert len(done_events) == 1
+
+    all_oids = [o["oid"] for e in oids_events for o in e["oids"]]
+    assert all_oids == ["1.3.6.1.2.1.1.1.0", "1.3.6.1.2.1.1.2.0"]
+    assert all(o["phase"] == "bulk" for e in oids_events for o in e["oids"])
+
+    done = done_events[0]
+    assert done["complete"] is True
+    assert done["reason"] == "END_OF_MIB"
+    assert done["summary"]["OK"] == 2
+    assert len(done["regions"]) == 0
+
+
+async def test_diagnose_stream_timeout_stops_and_reports_done() -> None:
+    prober = FakeProber(
+        [
+            Batch(oids=[("1.3.6.1.2.1.1.1.0", "v")], elapsed_ms=100, timed_out=False),
+            Batch(oids=[("1.3.6.1.2.1.2.2.1.1.1", "")], elapsed_ms=5000, timed_out=True),
+        ]
+    )
+    events = [e async for e in diagnose_stream(prober, buckets=BUCKETS, config=DetectorConfig(pinpoint=False))]
+
+    done_events = [e for e in events if e["type"] == "done"]
+    assert len(done_events) == 1
+    assert done_events[0]["complete"] is False
+    assert done_events[0]["reason"] == "TIMEOUT"
+    assert done_events[0]["summary"].get("TIMEOUT", 0) == 1
