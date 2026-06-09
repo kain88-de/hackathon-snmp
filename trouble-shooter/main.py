@@ -34,6 +34,8 @@ class CheckRequest(BaseModel):
     host: str
     community: str = "public"
     port: int = 1161
+    timeout: float = 2.0
+    retries: int = 1
 
 
 class WalkRequest(BaseModel):
@@ -49,7 +51,9 @@ class WalkRequest(BaseModel):
 async def walk_device(req: WalkRequest):
     if not _valid_host(req.host):
         raise HTTPException(status_code=400, detail="Invalid host")
-    oids = await _snmp_walk(req.host, req.community, req.port, req.root_oid, req.timeout, req.total_timeout)
+    oids = await _snmp_walk(
+        req.host, req.community, req.port, req.root_oid, req.timeout, req.total_timeout
+    )
     return {"oids": oids}
 
 
@@ -58,7 +62,7 @@ async def check_device(req: CheckRequest):
     if not _valid_host(req.host):
         raise HTTPException(status_code=400, detail="Invalid host")
     ping_ok = _ping(req.host)
-    snmp = await _snmp_get(req.host, req.community, req.port)
+    snmp = await _snmp_get(req.host, req.community, req.port, req.timeout, req.retries)
     return {"host": req.host, "ping": ping_ok, "snmp": snmp}
 
 
@@ -80,13 +84,17 @@ def _ping(host: str) -> bool:
     return result.returncode == 0
 
 
-async def _snmp_get(host: str, community: str, port: int) -> dict:
+async def _snmp_get(
+    host: str, community: str, port: int, timeout: float = 2.0, retries: int = 1
+) -> dict:
     engine = SnmpEngine()
     try:
         error_indication, error_status, error_index, var_binds = await get_cmd(
             engine,
             CommunityData(community),
-            await UdpTransportTarget.create((host, port), timeout=2, retries=1),
+            await UdpTransportTarget.create(
+                (host, port), timeout=timeout, retries=retries
+            ),
             ContextData(),
             ObjectType(ObjectIdentity("SNMPv2-MIB", "sysDescr", 0)),
         )
@@ -96,13 +104,23 @@ async def _snmp_get(host: str, community: str, port: int) -> dict:
     if error_indication:
         return {"reachable": False, "error": str(error_indication)}
     if error_status:
-        return {"reachable": False, "error": f"{error_status.prettyPrint()} at index {error_index}"}
+        return {
+            "reachable": False,
+            "error": f"{error_status} at index {error_index}",
+        }
 
     sys_descr = str(var_binds[0][1])
     return {"reachable": True, "sysDescr": sys_descr}
 
 
-async def _snmp_walk(host: str, community: str, port: int, root_oid: str, timeout: int = 5, total_timeout: int = 30) -> list:
+async def _snmp_walk(
+    host: str,
+    community: str,
+    port: int,
+    root_oid: str,
+    timeout: int = 5,
+    total_timeout: int = 30,
+) -> list:
     engine = SnmpEngine()
     results = []
     try:
@@ -111,7 +129,9 @@ async def _snmp_walk(host: str, community: str, port: int, root_oid: str, timeou
             async for error_indication, error_status, _, var_binds in walk_cmd(
                 engine,
                 CommunityData(community),
-                await UdpTransportTarget.create((host, port), timeout=timeout, retries=1),
+                await UdpTransportTarget.create(
+                    (host, port), timeout=timeout, retries=1
+                ),
                 ContextData(),
                 ObjectType(ObjectIdentity(root_oid)),
             ):
@@ -122,11 +142,13 @@ async def _snmp_walk(host: str, community: str, port: int, root_oid: str, timeou
                 if error_status and int(error_status):
                     break
                 for var_bind in var_binds:
-                    results.append({
-                        "oid": str(var_bind[0]),
-                        "value": str(var_bind[1]),
-                        "ms": elapsed_ms,
-                    })
+                    results.append(
+                        {
+                            "oid": str(var_bind[0]),
+                            "value": str(var_bind[1]),
+                            "ms": elapsed_ms,
+                        }
+                    )
     except TimeoutError:
         pass
     finally:
@@ -136,4 +158,5 @@ async def _snmp_walk(host: str, community: str, port: int, root_oid: str, timeou
 
 if __name__ == "__main__":
     import uvicorn
+
     uvicorn.run("main:app", host="0.0.0.0", port=8080, reload=True)
