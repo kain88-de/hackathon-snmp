@@ -259,6 +259,9 @@ async function runDiagnose() {
   }
 
   const allOids = [];
+  let phase = 'bulk';
+  let bulkCount = 0;
+  let pinpointCount = 0;
   const reader = resp.body.getReader();
   const decoder = new TextDecoder();
   let buf = '';
@@ -275,8 +278,19 @@ async function runDiagnose() {
         let event;
         try { event = JSON.parse(line.slice(6)); } catch { continue; }
         if (event.type === 'oids') {
-          allOids.push(...event.oids);
-          setStatus(`Walking… ${allOids.length} OIDs`);
+          const incoming = event.oids;
+          if (phase === 'bulk' && incoming.some(o => o.phase === 'pinpoint')) {
+            phase = 'pinpoint';
+            bulkCount = allOids.length;
+            renderWaterfall(allOids);  // show bulk results while pinpointing
+          }
+          allOids.push(...incoming);
+          if (phase === 'bulk') {
+            setStatus(`Bulk walk — ${allOids.length} OIDs`);
+          } else {
+            pinpointCount += incoming.length;
+            setStatus(`Bulk: ${bulkCount} OIDs  ↓  Pinpointing slow regions… ${pinpointCount} probed`);
+          }
         } else if (event.type === 'done') {
           setStatus('');
           renderSummary({ ...event, oids: allOids });
