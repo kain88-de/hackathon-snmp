@@ -178,7 +178,12 @@ async def test_diagnose_stream_yields_oids_then_done() -> None:
             Batch(oids=[("1.3.6.1.2.1.1.2.0", "oid")], elapsed_ms=150, timed_out=False),
         ]
     )
-    events = [e async for e in diagnose_stream(prober, buckets=BUCKETS, config=DetectorConfig(pinpoint=False))]
+    events = [
+        e
+        async for e in diagnose_stream(
+            prober, buckets=BUCKETS, config=DetectorConfig(pinpoint=False)
+        )
+    ]
 
     oids_events = [e for e in events if e["type"] == "oids"]
     done_events = [e for e in events if e["type"] == "done"]
@@ -209,7 +214,8 @@ async def test_diagnose_stream_pinpoint_yields_pinpoint_oids() -> None:
         },
     )
     events = [
-        e async for e in diagnose_stream(
+        e
+        async for e in diagnose_stream(
             prober,
             buckets=BUCKETS,
             config=DetectorConfig(root_oid="1.3.6.1.2.1", pinpoint=True),
@@ -217,7 +223,8 @@ async def test_diagnose_stream_pinpoint_yields_pinpoint_oids() -> None:
     ]
 
     pinpoint_events = [
-        e for e in events
+        e
+        for e in events
         if e["type"] == "oids" and any(o["phase"] == "pinpoint" for o in e["oids"])
     ]
     assert len(pinpoint_events) == 1
@@ -238,7 +245,12 @@ async def test_diagnose_stream_timeout_stops_and_reports_done() -> None:
             Batch(oids=[("1.3.6.1.2.1.2.2.1.1.1", "")], elapsed_ms=5000, timed_out=True),
         ]
     )
-    events = [e async for e in diagnose_stream(prober, buckets=BUCKETS, config=DetectorConfig(pinpoint=False))]
+    events = [
+        e
+        async for e in diagnose_stream(
+            prober, buckets=BUCKETS, config=DetectorConfig(pinpoint=False)
+        )
+    ]
 
     done_events = [e for e in events if e["type"] == "done"]
     assert len(done_events) == 1
