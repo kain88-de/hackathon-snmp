@@ -22,7 +22,9 @@ class EmulatorConfig:
 
 
 class EmulatorServer:
-    def __init__(self, config: EmulatorConfig, port: int = 0, host: str = "127.0.0.1") -> None:
+    def __init__(
+        self, config: EmulatorConfig, port: int = 0, host: str = "127.0.0.1"
+    ) -> None:
         self._config = config
         self._host = host
         self._port = port
@@ -62,6 +64,7 @@ class EmulatorServer:
     def _bind(self) -> None:
         sock = socket.socket(socket.AF_INET, socket.SOCK_DGRAM)
         sock.setsockopt(socket.SOL_SOCKET, socket.SO_REUSEADDR, 1)
+        sock.settimeout(0.05)
         sock.bind((self._host, self._port))
         self._port = sock.getsockname()[1]
         self._sock = sock
@@ -120,7 +123,10 @@ class EmulatorServer:
         except Exception:
             return None
 
-        if bytes(pMod.apiMessage.get_community(reqMsg)).decode() != self._config.community:
+        if (
+            bytes(pMod.apiMessage.get_community(reqMsg)).decode()
+            != self._config.community
+        ):
             return None
 
         reqPDU = pMod.apiMessage.get_pdu(reqMsg)
@@ -133,7 +139,9 @@ class EmulatorServer:
                 t = tuple(oid)
                 slow = slow or self._is_slow(t)
                 val = self._lookup(t)
-                rsp_binds.append((oid, val if val is not None else rfc1902.OctetString("")))
+                rsp_binds.append(
+                    (oid, val if val is not None else rfc1902.OctetString(""))
+                )
 
         elif pdu_name == "GetNextRequestPDU":
             for oid, _ in req_binds:
@@ -141,6 +149,7 @@ class EmulatorServer:
                 next_oid, val = self._lookup_next(t)
                 if next_oid is None:
                     from pysnmp.proto.rfc1905 import endOfMibView
+
                     rsp_binds.append((oid, endOfMibView))
                     continue
                 slow = slow or self._is_slow(next_oid)
