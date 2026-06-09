@@ -2,7 +2,7 @@ from __future__ import annotations
 
 import logging
 from time import monotonic
-from typing import TYPE_CHECKING, Protocol, runtime_checkable
+from typing import TYPE_CHECKING, Any, Protocol, runtime_checkable
 
 if TYPE_CHECKING:
     from collections.abc import AsyncGenerator, AsyncIterator
@@ -109,7 +109,7 @@ async def diagnose_stream(
     *,
     buckets: list[Bucket],
     config: DetectorConfig,
-) -> AsyncGenerator[dict[str, object], None]:
+) -> AsyncGenerator[dict[str, Any]]:
     validate_buckets(buckets)
     t_start = monotonic()
     batches: list[Batch] = []
@@ -132,7 +132,11 @@ async def diagnose_stream(
             stopped_at = batch.oids[-1][0]
         log.info(
             "batch #%d: %d OIDs, %.0fms [%s]  last=%s",
-            batch_count, len(batch.oids), batch.elapsed_ms, b_name, stopped_at,
+            batch_count,
+            len(batch.oids),
+            batch.elapsed_ms,
+            b_name,
+            stopped_at,
         )
         yield {
             "type": "oids",
@@ -147,7 +151,12 @@ async def diagnose_stream(
             log.warning("total_timeout exceeded after %d batches — stopping walk", batch_count)
             break
 
-    log.info("bulk walk done: %d batches, %d OIDs, reason=%s", batch_count, len(all_oid_results), reason.value)
+    log.info(
+        "bulk walk done: %d batches, %d OIDs, reason=%s",
+        batch_count,
+        len(all_oid_results),
+        reason.value,
+    )
     regions = find_slow_regions(batches, buckets)
 
     if config.pinpoint:
@@ -159,8 +168,11 @@ async def diagnose_stream(
                 b_name = bucket_for(sample.elapsed_ms, buckets) if sample.responded else "TIMEOUT"
                 log.info("    %s → %.0fms [%s]", oid, sample.elapsed_ms, b_name)
                 result = OidResult(
-                    oid=sample.oid, value=sample.value, bucket=b_name,
-                    ms=sample.elapsed_ms, phase="pinpoint",
+                    oid=sample.oid,
+                    value=sample.value,
+                    bucket=b_name,
+                    ms=sample.elapsed_ms,
+                    phase="pinpoint",
                 )
                 all_oid_results.append(result)
                 yield {
@@ -180,7 +192,12 @@ async def diagnose_stream(
         "reason": reason.value,
         "summary": summary,
         "regions": [
-            {"prefix": r.prefix, "bucket": r.bucket, "batch_ms": r.batch_ms, "oid_count": r.oid_count}
+            {
+                "prefix": r.prefix,
+                "bucket": r.bucket,
+                "batch_ms": r.batch_ms,
+                "oid_count": r.oid_count,
+            }
             for r in regions
         ],
         "elapsed_total_ms": (monotonic() - t_start) * 1000,

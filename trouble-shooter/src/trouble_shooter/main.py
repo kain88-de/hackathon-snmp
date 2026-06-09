@@ -5,9 +5,12 @@ import logging
 import re
 import subprocess
 import time
-from collections.abc import AsyncGenerator
+from typing import TYPE_CHECKING
 
 from fastapi import FastAPI, HTTPException
+
+if TYPE_CHECKING:
+    from collections.abc import AsyncGenerator
 from fastapi.responses import FileResponse, StreamingResponse
 from fastapi.staticfiles import StaticFiles
 from pydantic import BaseModel, Field
@@ -146,7 +149,9 @@ async def diagnose_device(req: DiagnoseRequest) -> dict[str, object]:
 async def diagnose_device_stream(req: DiagnoseRequest) -> StreamingResponse:
     if not _valid_host(req.host):
         raise HTTPException(status_code=400, detail="Invalid host")
-    prober = SnmpProber(req.host, req.username, req.port, req.auth_password, req.timeout, req.retries)
+    prober = SnmpProber(
+        req.host, req.username, req.port, req.auth_password, req.timeout, req.retries
+    )
     buckets = [Bucket(name=b.name, max_ms=b.max_ms) for b in req.buckets]
     config = DetectorConfig(
         root_oid=req.root_oid,
@@ -157,7 +162,7 @@ async def diagnose_device_stream(req: DiagnoseRequest) -> StreamingResponse:
         pinpoint=req.pinpoint,
     )
 
-    async def generate() -> AsyncGenerator[str, None]:
+    async def generate() -> AsyncGenerator[str]:
         try:
             async for event in diagnose_stream(prober, buckets=buckets, config=config):
                 yield f"data: {json.dumps(event)}\n\n"
