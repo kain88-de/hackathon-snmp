@@ -8,7 +8,7 @@ from emulator import EmulatorConfig, EmulatorServer
 def main() -> None:
     config = EmulatorConfig(
         community=os.environ.get("SNMP_COMMUNITY", "public"),
-        slow_prefixes=(os.environ.get("SLOW_PREFIXES", "1.3.6.1.2.1.2.2.1"),),
+        slow_prefixes=tuple(os.environ.get("SLOW_PREFIXES", "1.3.6.1.2.1.2.2.1").split(",")),
         slow_delay=float(os.environ.get("SLOW_DELAY", "0.1")),
         n_interfaces=int(os.environ.get("N_INTERFACES", "4")),
     )

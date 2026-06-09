@@ -36,7 +36,7 @@ e2e-test:
 
 # Build the container image
 build:
-    podman build -t {{image}} -f emulator/Containerfile ..
+    podman build --no-cache -t {{image}} -f emulator/Containerfile ..
 
 # Add loopback aliases for the two device IPs (survives until reboot)
 setup-net:

@@ -1,10 +1,13 @@
 import asyncio
 import ipaddress
+import logging
 import re
 import subprocess
 import time
 
 from fastapi import FastAPI, HTTPException
+
+logging.basicConfig(level=logging.INFO, format="%(levelname)s %(name)s %(message)s")
 from fastapi.responses import FileResponse
 from fastapi.staticfiles import StaticFiles
 from pydantic import BaseModel, Field
@@ -30,6 +33,11 @@ app.mount("/static", StaticFiles(directory="static"), name="static")
 @app.get("/")
 def index() -> FileResponse:
     return FileResponse("static/index.html")
+
+
+@app.get("/diagnose")
+def diagnose_page() -> FileResponse:
+    return FileResponse("static/diagnose.html")
 
 
 class CheckRequest(BaseModel):

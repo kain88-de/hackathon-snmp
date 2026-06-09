@@ -1,0 +1,299 @@
+<!DOCTYPE html>
+<html lang="en">
+<head>
+  <meta charset="UTF-8">
+  <meta name="viewport" content="width=device-width, initial-scale=1.0">
+  <title>SNMP Diagnose</title>
+  <style>
+    * { box-sizing: border-box; margin: 0; padding: 0; }
+    body { font-family: 'Courier New', monospace; background: #0f172a; color: #cbd5e1; font-size: 12px; }
+
+    /* Nav */
+    .nav { padding: 8px 24px; background: #0c1322; border-bottom: 1px solid #1e293b; display: flex; gap: 16px; }
+    .nav a { color: #64748b; text-decoration: none; font-size: 11px; }
+    .nav a:hover { color: #cbd5e1; }
+    .nav a.active { color: #f1f5f9; }
+
+    /* Form */
+    .form-panel { padding: 20px 24px; border-bottom: 1px solid #1e293b; background: #0c1322; }
+    .form-panel h1 { font-size: 17px; font-weight: 700; color: #f1f5f9; margin-bottom: 14px; }
+    .form-row { display: flex; gap: 12px; flex-wrap: wrap; align-items: flex-end; }
+    .field { display: flex; flex-direction: column; gap: 4px; }
+    .field label { font-size: 10px; color: #64748b; text-transform: uppercase; letter-spacing: 0.5px; }
+    .field input { background: #1e293b; border: 1px solid #334155; color: #f1f5f9; padding: 6px 10px; font-size: 12px; font-family: inherit; border-radius: 4px; width: 160px; }
+    .field input:focus { outline: none; border-color: #3b82f6; }
+    .field input.narrow { width: 80px; }
+    button#run { background: #3b82f6; color: #fff; border: none; padding: 6px 18px; font-size: 12px; font-family: inherit; border-radius: 4px; cursor: pointer; height: 32px; }
+    button#run:hover { background: #2563eb; }
+    button#run:disabled { background: #334155; color: #64748b; cursor: default; }
+
+    /* Status */
+    #status { padding: 8px 24px; font-size: 11px; color: #64748b; min-height: 28px; }
+    #status.error { color: #ef4444; }
+
+    /* Summary bar */
+    #summary { display: none; padding: 12px 24px; border-bottom: 1px solid #1e293b; background: #0c1322; }
+    .sum-row { display: flex; gap: 28px; align-items: center; flex-wrap: wrap; }
+    .stat { display: flex; flex-direction: column; }
+    .stat-value { font-size: 20px; font-weight: 700; color: #f8fafc; line-height: 1; }
+    .stat-label { font-size: 10px; color: #64748b; text-transform: uppercase; letter-spacing: 0.4px; margin-top: 3px; }
+    .buckets { display: flex; gap: 8px; margin-left: auto; }
+    .bucket-pill { padding: 4px 12px; border-radius: 12px; font-size: 11px; font-weight: 700; letter-spacing: 0.4px; }
+    .pill-OK       { background: #14532d; color: #22c55e; }
+    .pill-SLOW     { background: #431407; color: #f97316; }
+    .pill-CRITICAL { background: #450a0a; color: #ef4444; }
+    .pill-TIMEOUT  { background: #1c1917; color: #a8a29e; }
+
+    /* Regions */
+    #regions { display: none; padding: 12px 24px 0; }
+    #regions h2 { font-size: 11px; text-transform: uppercase; letter-spacing: 0.6px; color: #64748b; margin-bottom: 8px; }
+    .regions-table { width: 100%; border-collapse: collapse; margin-bottom: 12px; }
+    .regions-table th { font-size: 10px; color: #475569; text-transform: uppercase; letter-spacing: 0.4px; padding: 4px 8px; border-bottom: 1px solid #1e293b; text-align: left; }
+    .regions-table td { padding: 5px 8px; border-bottom: 1px solid #0f172a; font-size: 11px; color: #94a3b8; }
+    .regions-table td:first-child { color: #e2e8f0; font-family: 'Courier New', monospace; }
+
+    /* Waterfall */
+    .phase-header { display: flex; align-items: center; padding: 5px 24px; background: #111827; border-top: 1px solid #1e293b; border-bottom: 1px solid #1e293b; }
+    .phase-name { font-weight: 700; font-size: 11px; text-transform: uppercase; letter-spacing: 0.6px; color: #94a3b8; }
+    .phase-meta { margin-left: auto; font-size: 10px; color: #475569; }
+
+    .col-hdr { display: flex; padding: 4px 24px; border-bottom: 1px solid #1e293b; background: #0c1322; position: sticky; top: 0; z-index: 10; }
+    .col-bucket { width: 80px; flex-shrink: 0; font-size: 10px; color: #475569; }
+    .col-oid    { width: 280px; flex-shrink: 0; font-size: 10px; color: #475569; }
+    .col-bar    { flex: 1; min-width: 200px; font-size: 10px; color: #475569; display: flex; justify-content: space-between; }
+    .col-ms-h   { width: 60px; flex-shrink: 0; }
+
+    .wf-row { display: flex; align-items: center; padding: 0 24px; height: 21px; border-bottom: 1px solid #0a1020; cursor: default; }
+    .wf-row:hover { background: #1a2744; }
+    .wf-badge { width: 80px; flex-shrink: 0; font-size: 10px; font-weight: 700; text-transform: uppercase; letter-spacing: 0.3px; }
+    .wf-oid   { width: 280px; flex-shrink: 0; color: #64748b; overflow: hidden; text-overflow: ellipsis; white-space: nowrap; }
+    .wf-bar   { flex: 1; min-width: 200px; height: 100%; display: flex; align-items: center; }
+    .bar-fill { height: 9px; border-radius: 2px; min-width: 2px; }
+    .wf-ms    { width: 60px; flex-shrink: 0; text-align: right; font-weight: 700; }
+
+    .color-OK       { color: #22c55e; }
+    .color-SLOW     { color: #f97316; }
+    .color-CRITICAL { color: #ef4444; }
+    .color-TIMEOUT  { color: #a8a29e; }
+
+    /* Tooltip */
+    .tooltip {
+      position: fixed; background: #1e293b; border: 1px solid #334155;
+      padding: 9px 12px; border-radius: 6px; font-size: 11px; pointer-events: none;
+      max-width: 420px; z-index: 100; display: none; line-height: 1.7;
+    }
+    .tt-oid   { color: #e2e8f0; font-weight: 600; margin-bottom: 2px; word-break: break-all; }
+    .tt-val   { color: #94a3b8; }
+    .tt-ms    { color: #f8fafc; font-weight: 700; }
+    .tt-phase { color: #64748b; font-size: 10px; }
+  </style>
+</head>
+<body>
+
+<div class="nav">
+  <a href="/">Check</a>
+  <a href="/diagnose" class="active">Diagnose</a>
+</div>
+
+<div class="tooltip" id="tooltip">
+  <div class="tt-oid"   id="tt-oid"></div>
+  <div class="tt-val"   id="tt-val"></div>
+  <div class="tt-ms"    id="tt-ms"></div>
+  <div class="tt-phase" id="tt-phase"></div>
+</div>
+
+<div class="form-panel">
+  <h1>SNMP Diagnose</h1>
+  <div class="form-row">
+    <div class="field"><label>Host / IP</label><input id="host" value="127.0.0.2"></div>
+    <div class="field"><label>Community</label><input id="community" value="public"></div>
+    <div class="field"><label>Port</label><input id="port" class="narrow" value="1161" type="number"></div>
+    <div class="field"><label>Bulk size</label><input id="bulk_size" class="narrow" value="10" type="number"></div>
+    <div class="field"><label>Root OID</label><input id="root_oid" value="1.3.6.1.2.1"></div>
+    <button id="run">Run</button>
+  </div>
+</div>
+
+<div id="status"></div>
+<div id="summary"></div>
+<div id="regions"></div>
+<div id="waterfall"></div>
+
+<script>
+const BUCKET_COLORS = { OK: '#22c55e', SLOW: '#f97316', CRITICAL: '#ef4444', TIMEOUT: '#6b7280' };
+
+function bucketColor(b) { return BUCKET_COLORS[b] || '#6b7280'; }
+
+document.getElementById('run').addEventListener('click', runDiagnose);
+
+async function runDiagnose() {
+  const btn = document.getElementById('run');
+  btn.disabled = true;
+  setStatus('Running diagnosis…');
+  clearResults();
+
+  const req = {
+    host:       document.getElementById('host').value.trim(),
+    community:  document.getElementById('community').value.trim(),
+    port:       parseInt(document.getElementById('port').value, 10),
+    bulk_size:  parseInt(document.getElementById('bulk_size').value, 10),
+    root_oid:   document.getElementById('root_oid').value.trim(),
+  };
+
+  let data;
+  try {
+    const resp = await fetch('/api/diagnose', {
+      method: 'POST',
+      headers: { 'Content-Type': 'application/json' },
+      body: JSON.stringify(req),
+    });
+    if (!resp.ok) {
+      const err = await resp.json().catch(() => ({}));
+      throw new Error(err.detail || `HTTP ${resp.status}`);
+    }
+    data = await resp.json();
+  } catch (e) {
+    setStatus('Error: ' + e.message, true);
+    btn.disabled = false;
+    return;
+  }
+
+  setStatus('');
+  renderSummary(data);
+  renderRegions(data.regions);
+  renderWaterfall(data.oids);
+  btn.disabled = false;
+}
+
+function setStatus(msg, isErr) {
+  const el = document.getElementById('status');
+  el.textContent = msg;
+  el.className = isErr ? 'error' : '';
+}
+
+function clearResults() {
+  ['summary', 'regions', 'waterfall'].forEach(id => {
+    const el = document.getElementById(id);
+    el.style.display = 'none';
+    el.innerHTML = '';
+  });
+}
+
+function renderSummary(data) {
+  const el = document.getElementById('summary');
+  const elapsed = Math.round(data.elapsed_total_ms);
+  const totalOids = data.oids.length;
+  const reasonColor = data.complete ? '#22c55e' : '#f97316';
+
+  const bucketHtml = Object.entries(data.summary)
+    .filter(([, n]) => n > 0)
+    .map(([b, n]) => `<div class="bucket-pill pill-${b}">${b} ${n}</div>`)
+    .join('');
+
+  el.innerHTML = `
+    <div class="sum-row">
+      <div class="stat"><span class="stat-value">${totalOids}</span><span class="stat-label">OIDs</span></div>
+      <div class="stat"><span class="stat-value">${elapsed} ms</span><span class="stat-label">Elapsed</span></div>
+      <div class="stat"><span class="stat-value" style="color:${reasonColor}">${data.reason}</span><span class="stat-label">Reason</span></div>
+      <div class="buckets">${bucketHtml}</div>
+    </div>`;
+  el.style.display = 'block';
+}
+
+function renderRegions(regions) {
+  const slow = regions.filter(r => r.bucket !== 'OK');
+  const el = document.getElementById('regions');
+  if (!slow.length) return;
+
+  const rows = slow.map(r => `
+    <tr>
+      <td>${r.prefix}</td>
+      <td style="color:${bucketColor(r.bucket)}">${r.bucket}</td>
+      <td>${r.oid_count}</td>
+      <td style="color:${bucketColor(r.bucket)}">${Math.round(r.batch_ms)} ms</td>
+    </tr>`).join('');
+
+  el.innerHTML = `
+    <h2>Slow regions (${slow.length})</h2>
+    <table class="regions-table">
+      <thead><tr><th>Prefix</th><th>Bucket</th><th>OIDs</th><th>Batch time</th></tr></thead>
+      <tbody>${rows}</tbody>
+    </table>`;
+  el.style.display = 'block';
+}
+
+function renderWaterfall(oids) {
+  const el = document.getElementById('waterfall');
+  if (!oids.length) return;
+
+  const maxMs = Math.max(...oids.map(o => o.ms));
+
+  // Group by phase, preserving order
+  const phases = [];
+  const phaseMap = new Map();
+  oids.forEach(o => {
+    if (!phaseMap.has(o.phase)) {
+      phaseMap.set(o.phase, []);
+      phases.push(o.phase);
+    }
+    phaseMap.get(o.phase).push(o);
+  });
+
+  const scaleHtml = `
+    <div class="col-hdr">
+      <div class="col-bucket">Bucket</div>
+      <div class="col-oid">OID</div>
+      <div class="col-bar">
+        <span>0</span><span>${Math.round(maxMs * 0.5)} ms</span><span>${Math.round(maxMs)} ms</span>
+      </div>
+      <div class="col-ms-h"></div>
+    </div>`;
+
+  let html = scaleHtml;
+
+  phases.forEach(phase => {
+    const items = phaseMap.get(phase);
+    const total = items.reduce((a, b) => a + b.ms, 0);
+    html += `
+      <div class="phase-header">
+        <span class="phase-name">${phase}</span>
+        <span class="phase-meta">${items.length} OIDs &nbsp;·&nbsp; ${Math.round(total)} ms total</span>
+      </div>`;
+
+    items.forEach(o => {
+      const pct = maxMs > 0 ? (o.ms / maxMs * 100).toFixed(1) : 0;
+      const short = o.oid.length > 40 ? o.oid.slice(0, 37) + '…' : o.oid;
+      const col = bucketColor(o.bucket);
+      const valEsc = esc(o.value || '(empty)');
+      const oidEsc = esc(o.oid);
+      html += `
+        <div class="wf-row"
+          onmouseenter="tt(event,'${oidEsc}','${valEsc}',${o.ms},'${o.phase}')"
+          onmouseleave="ht()">
+          <div class="wf-badge color-${o.bucket}">${o.bucket}</div>
+          <div class="wf-oid">${esc(short)}</div>
+          <div class="wf-bar"><div class="bar-fill" style="width:${pct}%;background:${col};opacity:0.85"></div></div>
+          <div class="wf-ms" style="color:${col}">${Math.round(o.ms)} ms</div>
+        </div>`;
+    });
+  });
+
+  el.innerHTML = html;
+  el.style.display = 'block';
+}
+
+function tt(e, oid, val, ms, phase) {
+  const el = document.getElementById('tooltip');
+  document.getElementById('tt-oid').textContent   = oid;
+  document.getElementById('tt-val').textContent   = 'Value: ' + val;
+  document.getElementById('tt-ms').textContent    = 'Response: ' + ms + ' ms';
+  document.getElementById('tt-phase').textContent = 'Phase: ' + phase;
+  el.style.display = 'block';
+  el.style.left = (e.clientX + 14) + 'px';
+  el.style.top  = (e.clientY - 8) + 'px';
+}
+function ht() { document.getElementById('tooltip').style.display = 'none'; }
+function esc(s) { return String(s).replace(/&/g,'&amp;').replace(/</g,'&lt;').replace(/>/g,'&gt;').replace(/"/g,'&quot;'); }
+</script>
+</body>
+</html>

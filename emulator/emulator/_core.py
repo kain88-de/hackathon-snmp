@@ -18,8 +18,8 @@ _SYSUPTIME_OID = (1, 3, 6, 1, 2, 1, 1, 3, 0)
 @dataclass
 class EmulatorConfig:
     community: str = "public"
-    slow_prefixes: tuple[str, ...] = ("1.3.6.1.2.1.2.2.1",)
-    slow_delay: float = 0.1
+    slow_prefixes: tuple[str, ...] = ("1.3.6.1.2.1.2.2.1.10", "1.3.6.1.2.1.2.2.1.16")
+    slow_delay: float = 1.0
     n_interfaces: int = 4
 
 
