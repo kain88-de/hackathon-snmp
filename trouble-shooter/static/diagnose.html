@@ -27,6 +27,20 @@
     button#run:hover { background: #2563eb; }
     button#run:disabled { background: #334155; color: #64748b; cursor: default; }
 
+    /* Buckets editor */
+    .buckets-section { margin-top: 14px; }
+    .buckets-label { font-size: 10px; color: #64748b; text-transform: uppercase; letter-spacing: 0.5px; margin-bottom: 6px; }
+    .bucket-rows { display: flex; flex-direction: column; gap: 4px; }
+    .bucket-row { display: flex; gap: 8px; align-items: center; }
+    .bucket-row input { background: #1e293b; border: 1px solid #334155; color: #f1f5f9; padding: 4px 8px; font-size: 12px; font-family: inherit; border-radius: 4px; }
+    .bucket-row input.b-name  { width: 110px; }
+    .bucket-row input.b-maxms { width: 80px; }
+    .bucket-row .b-inf { font-size: 10px; color: #475569; width: 80px; padding-left: 4px; }
+    .bucket-row button { background: none; border: 1px solid #334155; color: #64748b; padding: 2px 8px; font-size: 11px; font-family: inherit; border-radius: 4px; cursor: pointer; }
+    .bucket-row button:hover { border-color: #ef4444; color: #ef4444; }
+    button#add-bucket { background: none; border: 1px solid #334155; color: #64748b; padding: 3px 10px; font-size: 11px; font-family: inherit; border-radius: 4px; cursor: pointer; margin-top: 4px; }
+    button#add-bucket:hover { border-color: #3b82f6; color: #3b82f6; }
+
     /* Status */
     #status { padding: 8px 24px; font-size: 11px; color: #64748b; min-height: 28px; }
     #status.error { color: #ef4444; }
@@ -39,31 +53,17 @@
     .stat-label { font-size: 10px; color: #64748b; text-transform: uppercase; letter-spacing: 0.4px; margin-top: 3px; }
     .buckets { display: flex; gap: 8px; margin-left: auto; }
     .bucket-pill { padding: 4px 12px; border-radius: 12px; font-size: 11px; font-weight: 700; letter-spacing: 0.4px; }
-    .pill-OK       { background: #14532d; color: #22c55e; }
-    .pill-SLOW     { background: #431407; color: #f97316; }
-    .pill-CRITICAL { background: #450a0a; color: #ef4444; }
-    .pill-TIMEOUT  { background: #1c1917; color: #a8a29e; }
 
-    /* Regions */
-    #regions { display: none; padding: 12px 24px 0; }
-    #regions h2 { font-size: 11px; text-transform: uppercase; letter-spacing: 0.6px; color: #64748b; margin-bottom: 8px; }
-    .regions-table { width: 100%; border-collapse: collapse; margin-bottom: 12px; }
-    .regions-table th { font-size: 10px; color: #475569; text-transform: uppercase; letter-spacing: 0.4px; padding: 4px 8px; border-bottom: 1px solid #1e293b; text-align: left; }
-    .regions-table td { padding: 5px 8px; border-bottom: 1px solid #0f172a; font-size: 11px; color: #94a3b8; }
-    .regions-table td:first-child { color: #e2e8f0; font-family: 'Courier New', monospace; }
 
-    /* Waterfall */
-    .phase-header { display: flex; align-items: center; padding: 5px 24px; background: #111827; border-top: 1px solid #1e293b; border-bottom: 1px solid #1e293b; }
-    .phase-name { font-weight: 700; font-size: 11px; text-transform: uppercase; letter-spacing: 0.6px; color: #94a3b8; }
-    .phase-meta { margin-left: auto; font-size: 10px; color: #475569; }
-
+    /* Column header */
     .col-hdr { display: flex; padding: 4px 24px; border-bottom: 1px solid #1e293b; background: #0c1322; position: sticky; top: 0; z-index: 10; }
-    .col-bucket { width: 80px; flex-shrink: 0; font-size: 10px; color: #475569; }
-    .col-oid    { width: 280px; flex-shrink: 0; font-size: 10px; color: #475569; }
-    .col-bar    { flex: 1; min-width: 200px; font-size: 10px; color: #475569; display: flex; justify-content: space-between; }
-    .col-ms-h   { width: 60px; flex-shrink: 0; }
+    .col-oid  { width: 280px; flex-shrink: 0; font-size: 10px; color: #475569; }
+    .col-bar  { flex: 1; min-width: 200px; font-size: 10px; color: #475569; display: flex; justify-content: space-between; }
+    .col-ms-h { width: 60px; flex-shrink: 0; }
+    .col-bkt  { width: 80px; flex-shrink: 0; }
 
-    .wf-row { display: flex; align-items: center; padding: 0 24px; height: 21px; border-bottom: 1px solid #0a1020; cursor: default; }
+    /* Waterfall rows */
+    .wf-row   { display: flex; align-items: center; padding: 0 24px; height: 21px; border-bottom: 1px solid #0a1020; cursor: default; }
     .wf-row:hover { background: #1a2744; }
     .wf-badge { width: 80px; flex-shrink: 0; font-size: 10px; font-weight: 700; text-transform: uppercase; letter-spacing: 0.3px; }
     .wf-oid   { width: 280px; flex-shrink: 0; color: #64748b; overflow: hidden; text-overflow: ellipsis; white-space: nowrap; }
@@ -71,10 +71,28 @@
     .bar-fill { height: 9px; border-radius: 2px; min-width: 2px; }
     .wf-ms    { width: 60px; flex-shrink: 0; text-align: right; font-weight: 700; }
 
-    .color-OK       { color: #22c55e; }
-    .color-SLOW     { color: #f97316; }
-    .color-CRITICAL { color: #ef4444; }
-    .color-TIMEOUT  { color: #a8a29e; }
+    /* Bucket groups */
+    .bg { border-bottom: 1px solid #1e293b; }
+    .bg-hdr { display: flex; align-items: center; gap: 10px; padding: 7px 24px; background: #111827; cursor: pointer; user-select: none; border-top: 1px solid #1e293b; }
+    .bg-hdr:hover { background: #1a2234; }
+    .bg-arrow { font-size: 10px; color: #475569; width: 12px; flex-shrink: 0; display: inline-block; transition: transform 0.1s; }
+    .bg.collapsed .bg-arrow { transform: rotate(-90deg); }
+    .bg-name  { font-size: 12px; font-weight: 700; text-transform: uppercase; letter-spacing: 0.5px; }
+    .bg-range { font-size: 10px; color: #475569; margin-right: auto; }
+    .bg-count { font-size: 10px; color: #475569; }
+    .bg.collapsed .bg-body { display: none; }
+
+    /* Pinpoint sub-section */
+    .pp-group { border-top: 1px solid #0f172a; }
+    .pp-hdr { display: flex; align-items: center; gap: 8px; padding: 5px 24px 5px 40px; background: #0c1322; cursor: pointer; user-select: none; border-top: 1px solid #1e293b; }
+    .pp-hdr:hover { background: #111827; }
+    .pp-arrow { font-size: 10px; color: #475569; width: 12px; flex-shrink: 0; display: inline-block; transition: transform 0.1s; }
+    .pp-group.collapsed .pp-arrow { transform: rotate(-90deg); }
+    .pp-label { font-size: 10px; text-transform: uppercase; letter-spacing: 0.5px; color: #64748b; margin-right: auto; }
+    .pp-count { font-size: 10px; color: #475569; }
+    .pp-group.collapsed .pp-body { display: none; }
+    .pp-body .wf-row { padding-left: 40px; background: #0a1020; }
+    .pp-body .wf-row:hover { background: #141c2e; }
 
     /* Tooltip */
     .tooltip {
@@ -106,17 +124,23 @@
   <h1>SNMP Diagnose</h1>
   <div class="form-row">
     <div class="field"><label>Host / IP</label><input id="host" value="127.0.0.2"></div>
-    <div class="field"><label>Community</label><input id="community" value="public"></div>
+    <div class="field"><label>Username</label><input id="username" value=""></div>
+    <div class="field"><label>Auth password</label><input id="auth_password" type="password" value=""></div>
     <div class="field"><label>Port</label><input id="port" class="narrow" value="1161" type="number"></div>
     <div class="field"><label>Bulk size</label><input id="bulk_size" class="narrow" value="10" type="number"></div>
     <div class="field"><label>Root OID</label><input id="root_oid" value="1.3.6.1.2.1"></div>
     <button id="run">Run</button>
   </div>
+
+  <div class="buckets-section">
+    <div class="buckets-label">Buckets</div>
+    <div class="bucket-rows" id="bucket-rows"></div>
+    <button id="add-bucket">+ add bucket</button>
+  </div>
 </div>
 
 <div id="status"></div>
 <div id="summary"></div>
-<div id="regions"></div>
 <div id="waterfall"></div>
 
 <script>
@@ -124,6 +148,80 @@ const BUCKET_COLORS = { OK: '#22c55e', SLOW: '#f97316', CRITICAL: '#ef4444', TIM
 
 function bucketColor(b) { return BUCKET_COLORS[b] || '#6b7280'; }
 
+// ── Bucket editor ──────────────────────────────────────────────
+const DEFAULT_BUCKETS = [
+  { name: 'OK',       max_ms: 500  },
+  { name: 'SLOW',     max_ms: 3000 },
+  { name: 'CRITICAL', max_ms: null },
+];
+
+function renderBucketRows() {
+  const container = document.getElementById('bucket-rows');
+  container.innerHTML = '';
+  getBucketDefs().forEach((b, i) => addBucketRow(b.name, b.max_ms, i));
+}
+
+let _buckets = DEFAULT_BUCKETS.map(b => ({ ...b }));
+
+function addBucketRow(name, max_ms, idx) {
+  const container = document.getElementById('bucket-rows');
+  const isLast = idx === _buckets.length - 1;
+  const row = document.createElement('div');
+  row.className = 'bucket-row';
+  row.dataset.idx = idx;
+
+  const nameInput = document.createElement('input');
+  nameInput.className = 'b-name';
+  nameInput.value = name;
+  nameInput.placeholder = 'name';
+  nameInput.addEventListener('input', () => { _buckets[idx].name = nameInput.value; });
+
+  const maxmsInput = document.createElement('input');
+  maxmsInput.className = 'b-maxms';
+  maxmsInput.type = 'number';
+  maxmsInput.min = '1';
+  maxmsInput.placeholder = 'max ms';
+  maxmsInput.disabled = isLast;
+  if (!isLast && max_ms !== null) maxmsInput.value = max_ms;
+  maxmsInput.addEventListener('input', () => {
+    const v = parseInt(maxmsInput.value, 10);
+    _buckets[idx].max_ms = isNaN(v) ? null : v;
+  });
+
+  const inf = document.createElement('span');
+  inf.className = 'b-inf';
+  inf.textContent = isLast ? '∞  (catch-all)' : 'ms';
+
+  const del = document.createElement('button');
+  del.textContent = '✕';
+  del.title = 'Remove';
+  del.addEventListener('click', () => {
+    if (_buckets.length <= 1) return;
+    _buckets.splice(idx, 1);
+    // last bucket always has max_ms null
+    _buckets[_buckets.length - 1].max_ms = null;
+    renderBucketRows();
+  });
+
+  row.appendChild(nameInput);
+  row.appendChild(maxmsInput);
+  row.appendChild(inf);
+  row.appendChild(del);
+  container.appendChild(row);
+}
+
+function getBucketDefs() { return _buckets; }
+
+document.getElementById('add-bucket').addEventListener('click', () => {
+  // promote current last to a real threshold, add new catch-all
+  if (_buckets.length > 0) _buckets[_buckets.length - 1].max_ms = 1000;
+  _buckets.push({ name: 'NEW', max_ms: null });
+  renderBucketRows();
+});
+
+renderBucketRows();
+
+// ── Run ───────────────────────────────────────────────────────
 document.getElementById('run').addEventListener('click', runDiagnose);
 
 async function runDiagnose() {
@@ -134,10 +232,12 @@ async function runDiagnose() {
 
   const req = {
     host:       document.getElementById('host').value.trim(),
-    community:  document.getElementById('community').value.trim(),
+    username:      document.getElementById('username').value.trim(),
+    auth_password: document.getElementById('auth_password').value,
     port:       parseInt(document.getElementById('port').value, 10),
     bulk_size:  parseInt(document.getElementById('bulk_size').value, 10),
     root_oid:   document.getElementById('root_oid').value.trim(),
+    buckets:    getBucketDefs(),
   };
 
   let data;
@@ -160,7 +260,6 @@ async function runDiagnose() {
 
   setStatus('');
   renderSummary(data);
-  renderRegions(data.regions);
   renderWaterfall(data.oids);
   btn.disabled = false;
 }
@@ -172,7 +271,7 @@ function setStatus(msg, isErr) {
 }
 
 function clearResults() {
-  ['summary', 'regions', 'waterfall'].forEach(id => {
+  ['summary', 'waterfall'].forEach(id => {
     const el = document.getElementById(id);
     el.style.display = 'none';
     el.innerHTML = '';
@@ -187,7 +286,10 @@ function renderSummary(data) {
 
   const bucketHtml = Object.entries(data.summary)
     .filter(([, n]) => n > 0)
-    .map(([b, n]) => `<div class="bucket-pill pill-${b}">${b} ${n}</div>`)
+    .map(([b, n]) => {
+      const col = bucketColor(b);
+      return `<div class="bucket-pill" style="color:${col};background:${col}22">${b} ${n}</div>`;
+    })
     .join('');
 
   el.innerHTML = `
@@ -200,82 +302,93 @@ function renderSummary(data) {
   el.style.display = 'block';
 }
 
-function renderRegions(regions) {
-  const slow = regions.filter(r => r.bucket !== 'OK');
-  const el = document.getElementById('regions');
-  if (!slow.length) return;
-
-  const rows = slow.map(r => `
-    <tr>
-      <td>${r.prefix}</td>
-      <td style="color:${bucketColor(r.bucket)}">${r.bucket}</td>
-      <td>${r.oid_count}</td>
-      <td style="color:${bucketColor(r.bucket)}">${Math.round(r.batch_ms)} ms</td>
-    </tr>`).join('');
-
-  el.innerHTML = `
-    <h2>Slow regions (${slow.length})</h2>
-    <table class="regions-table">
-      <thead><tr><th>Prefix</th><th>Bucket</th><th>OIDs</th><th>Batch time</th></tr></thead>
-      <tbody>${rows}</tbody>
-    </table>`;
-  el.style.display = 'block';
+function bucketRange(i) {
+  const prev = i > 0 ? _buckets[i - 1].max_ms : 0;
+  const curr = _buckets[i].max_ms;
+  if (i === 0) return `0 – ${curr} ms`;
+  if (curr === null) return `> ${prev} ms`;
+  return `${prev} – ${curr} ms`;
 }
+
+function wfRow(o, maxMs) {
+  const pct = maxMs > 0 ? (o.ms / maxMs * 100).toFixed(1) : 0;
+  const short = o.oid.length > 40 ? o.oid.slice(0, 37) + '…' : o.oid;
+  const col = bucketColor(o.bucket);
+  return `<div class="wf-row"
+      onmouseenter="tt(event,'${esc(o.oid)}','${esc(o.value || '')}',${o.ms},'${o.phase}')"
+      onmouseleave="ht()">
+    <div class="wf-badge" style="color:${col}">${esc(o.bucket)}</div>
+    <div class="wf-oid">${esc(short)}</div>
+    <div class="wf-bar"><div class="bar-fill" style="width:${pct}%;background:${col};opacity:0.85"></div></div>
+    <div class="wf-ms" style="color:${col}">${Math.round(o.ms)} ms</div>
+  </div>`;
+}
+
+function toggleBg(hdr) { hdr.closest('.bg').classList.toggle('collapsed'); }
+function togglePp(hdr) { hdr.closest('.pp-group').classList.toggle('collapsed'); }
 
 function renderWaterfall(oids) {
   const el = document.getElementById('waterfall');
-  if (!oids.length) return;
+  if (!oids.length) { el.style.display = 'none'; return; }
 
   const maxMs = Math.max(...oids.map(o => o.ms));
 
-  // Group by phase, preserving order
-  const phases = [];
-  const phaseMap = new Map();
-  oids.forEach(o => {
-    if (!phaseMap.has(o.phase)) {
-      phaseMap.set(o.phase, []);
-      phases.push(o.phase);
-    }
-    phaseMap.get(o.phase).push(o);
+  const bulk      = oids.filter(o => o.phase === 'bulk');
+  const pinpoints = oids.filter(o => o.phase === 'pinpoint');
+
+  // Index bulk OID → its bucket (so pinpoint rows go under the same group)
+  const bulkBucketOf = {};
+  bulk.forEach(o => { bulkBucketOf[o.oid] = o.bucket; });
+
+  // Group by bucket name
+  const byBucket = {};
+  _buckets.forEach(b => { byBucket[b.name] = { bulk: [], pinpoint: [] }; });
+  bulk.forEach(o => { (byBucket[o.bucket] || (byBucket[o.bucket] = { bulk: [], pinpoint: [] })).bulk.push(o); });
+  pinpoints.forEach(o => {
+    const bkt = bulkBucketOf[o.oid] || o.bucket;
+    (byBucket[bkt] || (byBucket[bkt] = { bulk: [], pinpoint: [] })).pinpoint.push(o);
   });
 
-  const scaleHtml = `
-    <div class="col-hdr">
-      <div class="col-bucket">Bucket</div>
-      <div class="col-oid">OID</div>
-      <div class="col-bar">
-        <span>0</span><span>${Math.round(maxMs * 0.5)} ms</span><span>${Math.round(maxMs)} ms</span>
-      </div>
-      <div class="col-ms-h"></div>
-    </div>`;
+  const scaleHtml = `<div class="col-hdr">
+    <div class="col-bkt"></div>
+    <div class="col-oid">OID</div>
+    <div class="col-bar"><span>0</span><span>${Math.round(maxMs * 0.5)} ms</span><span>${Math.round(maxMs)} ms</span></div>
+    <div class="col-ms-h"></div>
+  </div>`;
 
   let html = scaleHtml;
 
-  phases.forEach(phase => {
-    const items = phaseMap.get(phase);
-    const total = items.reduce((a, b) => a + b.ms, 0);
-    html += `
-      <div class="phase-header">
-        <span class="phase-name">${phase}</span>
-        <span class="phase-meta">${items.length} OIDs &nbsp;·&nbsp; ${Math.round(total)} ms total</span>
-      </div>`;
+  _buckets.forEach((bDef, i) => {
+    const group = byBucket[bDef.name] || { bulk: [], pinpoint: [] };
+    const col   = bucketColor(bDef.name);
+    const range = bucketRange(i);
+    const n     = group.bulk.length;
 
-    items.forEach(o => {
-      const pct = maxMs > 0 ? (o.ms / maxMs * 100).toFixed(1) : 0;
-      const short = o.oid.length > 40 ? o.oid.slice(0, 37) + '…' : o.oid;
-      const col = bucketColor(o.bucket);
-      const valEsc = esc(o.value || '(empty)');
-      const oidEsc = esc(o.oid);
-      html += `
-        <div class="wf-row"
-          onmouseenter="tt(event,'${oidEsc}','${valEsc}',${o.ms},'${o.phase}')"
-          onmouseleave="ht()">
-          <div class="wf-badge color-${o.bucket}">${o.bucket}</div>
-          <div class="wf-oid">${esc(short)}</div>
-          <div class="wf-bar"><div class="bar-fill" style="width:${pct}%;background:${col};opacity:0.85"></div></div>
-          <div class="wf-ms" style="color:${col}">${Math.round(o.ms)} ms</div>
-        </div>`;
-    });
+    html += `<div class="bg${n === 0 ? ' collapsed' : ''}">
+      <div class="bg-hdr" onclick="toggleBg(this)">
+        <span class="bg-arrow">▾</span>
+        <span class="bg-name" style="color:${col}">${esc(bDef.name)}</span>
+        <span class="bg-range">${range}</span>
+        <span class="bg-count">${n} OID${n !== 1 ? 's' : ''}</span>
+      </div>
+      <div class="bg-body">`;
+
+    group.bulk.forEach(o => { html += wfRow(o, maxMs); });
+
+    if (group.pinpoint.length) {
+      const np = group.pinpoint.length;
+      html += `<div class="pp-group">
+        <div class="pp-hdr" onclick="togglePp(this)">
+          <span class="pp-arrow">▾</span>
+          <span class="pp-label">Pinpoint analysis</span>
+          <span class="pp-count">${np} probe${np !== 1 ? 's' : ''}</span>
+        </div>
+        <div class="pp-body">`;
+      group.pinpoint.forEach(o => { html += wfRow(o, maxMs); });
+      html += `</div></div>`;
+    }
+
+    html += `</div></div>`;
   });
 
   el.innerHTML = html;

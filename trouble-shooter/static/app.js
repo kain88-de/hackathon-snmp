@@ -16,7 +16,8 @@ form.addEventListener("submit", async (e) => {
   e.preventDefault();
 
   const host = document.getElementById("host").value.trim();
-  const community = document.getElementById("community").value.trim();
+  const username = document.getElementById("username").value.trim();
+  const auth_password = document.getElementById("auth_password").value;
   const port = parseInt(document.getElementById("port").value, 10);
 
   results.hidden = false;
@@ -27,7 +28,7 @@ form.addEventListener("submit", async (e) => {
     const resp = await fetch("/api/check", {
       method: "POST",
       headers: { "Content-Type": "application/json" },
-      body: JSON.stringify({ host, community, port }),
+      body: JSON.stringify({ host, username, auth_password, port }),
     });
     data = await resp.json();
   } catch (err) {
@@ -48,16 +49,16 @@ form.addEventListener("submit", async (e) => {
 
   if (data.snmp.reachable) {
     walkSection.hidden = false;
-    doWalk(host, community, port);
+    doWalk(host, username, auth_password, port);
   }
 });
 
-async function doWalk(host, community, port) {
+async function doWalk(host, username, auth_password, port) {
   try {
     const resp = await fetch("/api/walk", {
       method: "POST",
       headers: { "Content-Type": "application/json" },
-      body: JSON.stringify({ host, community, port }),
+      body: JSON.stringify({ host, username, auth_password, port }),
     });
     const data = await resp.json();
     renderWalk(data.oids);
@@ -229,7 +230,8 @@ document.querySelectorAll(".dview-btn").forEach((btn) => {
 diagnoseBtn.addEventListener("click", () => {
   const body = {
     host: document.getElementById("host").value.trim(),
-    community: document.getElementById("community").value.trim(),
+    username: document.getElementById("username").value.trim(),
+    auth_password: document.getElementById("auth_password").value,
     port: parseInt(document.getElementById("port").value, 10),
     root_oid: document.getElementById("root_oid").value.trim(),
     timeout: parseFloat(document.getElementById("timeout").value),
