@@ -34,7 +34,9 @@ def _sentinel_vb(oid: str = _SENTINEL_OID) -> tuple[object, ...]:
 
 
 def _make_prober() -> SnmpProber:
-    return SnmpProber("127.0.0.1", "monitor", 161, auth_password="authpass1", timeout=1.0, retries=0)
+    return SnmpProber(
+        "127.0.0.1", "monitor", 161, auth_password="authpass1", timeout=1.0, retries=0
+    )
 
 
 # ---------------------------------------------------------------------------

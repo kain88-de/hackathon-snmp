@@ -17,8 +17,8 @@ from pysnmp.hlapi.v3arch.asyncio import (
     UdpTransportTarget,
     UsmUserData,
     get_cmd,
-    walk_cmd,
     usmHMACMD5AuthProtocol,
+    walk_cmd,
 )
 
 from trouble_shooter.detector import SnmpProber, diagnose
@@ -90,7 +90,13 @@ async def walk_device(req: WalkRequest) -> dict[str, list[dict[str, str | int]]]
     if not _valid_host(req.host):
         raise HTTPException(status_code=400, detail="Invalid host")
     oids = await _snmp_walk(
-        req.host, req.username, req.auth_password, req.port, req.root_oid, req.timeout, req.total_timeout
+        req.host,
+        req.username,
+        req.auth_password,
+        req.port,
+        req.root_oid,
+        req.timeout,
+        req.total_timeout,
     )
     return {"oids": oids}
 
@@ -99,7 +105,9 @@ async def walk_device(req: WalkRequest) -> dict[str, list[dict[str, str | int]]]
 async def diagnose_device(req: DiagnoseRequest) -> dict[str, object]:
     if not _valid_host(req.host):
         raise HTTPException(status_code=400, detail="Invalid host")
-    prober = SnmpProber(req.host, req.username, req.port, req.auth_password, req.timeout, req.retries)
+    prober = SnmpProber(
+        req.host, req.username, req.port, req.auth_password, req.timeout, req.retries
+    )
     buckets = [Bucket(name=b.name, max_ms=b.max_ms) for b in req.buckets]
     config = DetectorConfig(
         root_oid=req.root_oid,
@@ -137,7 +145,9 @@ async def check_device(req: CheckRequest) -> dict[str, object]:
     if not _valid_host(req.host):
         raise HTTPException(status_code=400, detail="Invalid host")
     ping_ok = _ping(req.host)
-    snmp = await _snmp_get(req.host, req.username, req.auth_password, req.port, req.timeout, req.retries)
+    snmp = await _snmp_get(
+        req.host, req.username, req.auth_password, req.port, req.timeout, req.retries
+    )
     return {"host": req.host, "ping": ping_ok, "snmp": snmp}
 
 
