@@ -100,6 +100,10 @@ async def diagnose(
     )
 
 
+def _oid_dict(o: OidResult) -> dict[str, object]:
+    return {"oid": o.oid, "value": o.value, "bucket": o.bucket, "ms": o.ms, "phase": o.phase}
+
+
 async def diagnose_stream(
     prober: Prober,
     *,
@@ -132,10 +136,7 @@ async def diagnose_stream(
         )
         yield {
             "type": "oids",
-            "oids": [
-                {"oid": o.oid, "value": o.value, "bucket": o.bucket, "ms": o.ms, "phase": o.phase}
-                for o in batch_results
-            ],
+            "oids": [_oid_dict(o) for o in batch_results],
         }
         if batch.timed_out:
             reason = WalkReason.TIMEOUT
@@ -164,7 +165,7 @@ async def diagnose_stream(
                 all_oid_results.append(result)
                 yield {
                     "type": "oids",
-                    "oids": [{"oid": result.oid, "value": result.value, "bucket": result.bucket, "ms": result.ms, "phase": result.phase}],
+                    "oids": [_oid_dict(result)],
                 }
 
     summary: dict[str, int] = {b.name: 0 for b in buckets}

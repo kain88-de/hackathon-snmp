@@ -197,6 +197,40 @@ async def test_diagnose_stream_yields_oids_then_done() -> None:
     assert len(done["regions"]) == 0
 
 
+async def test_diagnose_stream_pinpoint_yields_pinpoint_oids() -> None:
+    prober = FakeProber(
+        batches=[
+            Batch(oids=[("1.3.6.1.2.1.2.2.1.10.1", "v")], elapsed_ms=2000, timed_out=False),
+        ],
+        samples={
+            "1.3.6.1.2.1.2.2.1.10.1": Sample(
+                oid="1.3.6.1.2.1.2.2.1.10.1", value="probed", elapsed_ms=1800, responded=True
+            )
+        },
+    )
+    events = [
+        e async for e in diagnose_stream(
+            prober,
+            buckets=BUCKETS,
+            config=DetectorConfig(root_oid="1.3.6.1.2.1", pinpoint=True),
+        )
+    ]
+
+    pinpoint_events = [
+        e for e in events
+        if e["type"] == "oids" and any(o["phase"] == "pinpoint" for o in e["oids"])
+    ]
+    assert len(pinpoint_events) == 1
+    pp_oid = pinpoint_events[0]["oids"][0]
+    assert pp_oid["oid"] == "1.3.6.1.2.1.2.2.1.10.1"
+    assert pp_oid["phase"] == "pinpoint"
+    assert pp_oid["value"] == "probed"
+
+    done = next(e for e in events if e["type"] == "done")
+    # bulk OID (2000ms) → SLOW; pinpoint probe (1800ms) → SLOW; both counted
+    assert done["summary"].get("SLOW", 0) == 2
+
+
 async def test_diagnose_stream_timeout_stops_and_reports_done() -> None:
     prober = FakeProber(
         [
