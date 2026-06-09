@@ -5,7 +5,7 @@ from emulator import EmulatorConfig, EmulatorServer
 from fastapi.testclient import TestClient
 from pysnmp.hlapi.v3arch.asyncio import SnmpEngine
 
-from main import app
+from trouble_shooter.main import app
 
 _FAST_CONFIG = EmulatorConfig(slow_prefixes=(), slow_delay=0.0)
 _SLOW_CONFIG = EmulatorConfig(slow_prefixes=("1.3.6.1.2.1.2.2.1",), slow_delay=0.05, n_interfaces=1)

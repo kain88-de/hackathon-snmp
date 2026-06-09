@@ -1,6 +1,6 @@
 run:
     -fuser -k 8080/tcp
-    uv run python main.py
+    uv run python -m trouble_shooter.main
 
 test:
     uv run pytest tests --durations=10 -q

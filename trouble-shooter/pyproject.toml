@@ -25,21 +25,19 @@ dev = [
 emulator = { workspace = true }
 
 [tool.pytest.ini_options]
-pythonpath = ["."]
+pythonpath = ["src"]
 testpaths = ["tests"]
 asyncio_mode = "auto"
 addopts = "--random-order"
 
 
 [tool.hatch.build.targets.wheel]
-sources = ["."]
-include = ["main.py"]
+packages = ["src/trouble_shooter"]
 
 [tool.pyrefly]
 project-includes = [
     "**/*.py*",
     "**/*.ipynb",
-    "main.py"
 ]
 min-severity="warn"
 preset="strict"
