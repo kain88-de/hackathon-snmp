@@ -6,24 +6,25 @@ import subprocess
 import time
 
 from fastapi import FastAPI, HTTPException
-
-logging.basicConfig(level=logging.INFO, format="%(levelname)s %(name)s %(message)s")
 from fastapi.responses import FileResponse
 from fastapi.staticfiles import StaticFiles
 from pydantic import BaseModel, Field
 from pysnmp.hlapi.v3arch.asyncio import (
-    CommunityData,
     ContextData,
     ObjectIdentity,
     ObjectType,
     SnmpEngine,
     UdpTransportTarget,
+    UsmUserData,
     get_cmd,
     walk_cmd,
+    usmHMACMD5AuthProtocol,
 )
 
 from trouble_shooter.detector import SnmpProber, diagnose
 from trouble_shooter.detector.models import Bucket, DetectorConfig
+
+logging.basicConfig(level=logging.INFO, format="%(levelname)s %(name)s %(message)s")
 
 app = FastAPI()
 
@@ -42,7 +43,8 @@ def diagnose_page() -> FileResponse:
 
 class CheckRequest(BaseModel):
     host: str
-    community: str = "public"
+    username: str
+    auth_password: str
     port: int = 1161
     timeout: float = 2.0
     retries: int = 1
@@ -50,7 +52,8 @@ class CheckRequest(BaseModel):
 
 class WalkRequest(BaseModel):
     host: str
-    community: str = "public"
+    username: str
+    auth_password: str
     port: int = 1161
     root_oid: str = "1.3.6.1.2.1"
     timeout: int = 5
@@ -64,7 +67,8 @@ class BucketSpec(BaseModel):
 
 class DiagnoseRequest(BaseModel):
     host: str
-    community: str = "public"
+    username: str
+    auth_password: str
     port: int = 1161
     root_oid: str = "1.3.6.1.2.1"
     bulk_size: int = 10
@@ -86,7 +90,7 @@ async def walk_device(req: WalkRequest) -> dict[str, list[dict[str, str | int]]]
     if not _valid_host(req.host):
         raise HTTPException(status_code=400, detail="Invalid host")
     oids = await _snmp_walk(
-        req.host, req.community, req.port, req.root_oid, req.timeout, req.total_timeout
+        req.host, req.username, req.auth_password, req.port, req.root_oid, req.timeout, req.total_timeout
     )
     return {"oids": oids}
 
@@ -95,7 +99,7 @@ async def walk_device(req: WalkRequest) -> dict[str, list[dict[str, str | int]]]
 async def diagnose_device(req: DiagnoseRequest) -> dict[str, object]:
     if not _valid_host(req.host):
         raise HTTPException(status_code=400, detail="Invalid host")
-    prober = SnmpProber(req.host, req.community, req.port, req.timeout, req.retries)
+    prober = SnmpProber(req.host, req.username, req.port, req.auth_password, req.timeout, req.retries)
     buckets = [Bucket(name=b.name, max_ms=b.max_ms) for b in req.buckets]
     config = DetectorConfig(
         root_oid=req.root_oid,
@@ -133,7 +137,7 @@ async def check_device(req: CheckRequest) -> dict[str, object]:
     if not _valid_host(req.host):
         raise HTTPException(status_code=400, detail="Invalid host")
     ping_ok = _ping(req.host)
-    snmp = await _snmp_get(req.host, req.community, req.port, req.timeout, req.retries)
+    snmp = await _snmp_get(req.host, req.username, req.auth_password, req.port, req.timeout, req.retries)
     return {"host": req.host, "ping": ping_ok, "snmp": snmp}
 
 
@@ -156,14 +160,18 @@ def _ping(host: str) -> bool:
     return result.returncode == 0
 
 
+def _auth(username: str, auth_password: str) -> UsmUserData:
+    return UsmUserData(username, authKey=auth_password, authProtocol=usmHMACMD5AuthProtocol)
+
+
 async def _snmp_get(
-    host: str, community: str, port: int, timeout: float = 2.0, retries: int = 1
+    host: str, username: str, auth_password: str, port: int, timeout: float = 2.0, retries: int = 1
 ) -> dict[str, object]:
     engine = SnmpEngine()
     try:
         error_indication, error_status, error_index, var_binds = await get_cmd(
             engine,
-            CommunityData(community),
+            _auth(username, auth_password),
             await UdpTransportTarget.create((host, port), timeout=timeout, retries=retries),
             ContextData(),
             ObjectType(ObjectIdentity("SNMPv2-MIB", "sysDescr", 0)),
@@ -185,7 +193,8 @@ async def _snmp_get(
 
 async def _snmp_walk(
     host: str,
-    community: str,
+    username: str,
+    auth_password: str,
     port: int,
     root_oid: str,
     timeout: int = 5,
@@ -198,7 +207,7 @@ async def _snmp_walk(
             t = time.monotonic()
             async for error_indication, error_status, _, var_binds in walk_cmd(
                 engine,
-                CommunityData(community),
+                _auth(username, auth_password),
                 await UdpTransportTarget.create((host, port), timeout=timeout, retries=1),
                 ContextData(),
                 ObjectType(ObjectIdentity(root_oid)),

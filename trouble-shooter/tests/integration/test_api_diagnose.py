@@ -6,6 +6,13 @@ if TYPE_CHECKING:
     from emulator import EmulatorServer
     from starlette.testclient import TestClient
 
+_CREDS = {"username": "monitor", "auth_password": "authpass1"}
+_BUCKETS = [
+    {"name": "OK", "max_ms": 500},
+    {"name": "SLOW", "max_ms": 3000},
+    {"name": "CRITICAL", "max_ms": None},
+]
+
 
 def test_diagnose_endpoint_returns_valid_report(
     client: TestClient, emulator_clean: EmulatorServer
@@ -15,18 +22,14 @@ def test_diagnose_endpoint_returns_valid_report(
         json={
             "host": "127.0.0.1",
             "port": emulator_clean.port,
-            "community": "public",
             "root_oid": "1.3.6.1.2.1.1",
             "bulk_size": 10,
             "timeout": 2.0,
             "retries": 1,
             "total_timeout": 30.0,
             "pinpoint": False,
-            "buckets": [
-                {"name": "OK", "max_ms": 500},
-                {"name": "SLOW", "max_ms": 3000},
-                {"name": "CRITICAL", "max_ms": None},
-            ],
+            "buckets": _BUCKETS,
+            **_CREDS,
         },
     )
     assert resp.status_code == 200
@@ -45,9 +48,9 @@ def test_diagnose_endpoint_invalid_host(client: TestClient) -> None:
         "/api/diagnose",
         json={
             "host": "not_valid!!",
-            "community": "public",
             "port": 1161,
             "buckets": [{"name": "OK", "max_ms": 500}, {"name": "CRIT", "max_ms": None}],
+            **_CREDS,
         },
     )
     assert resp.status_code == 400
@@ -61,18 +64,14 @@ def test_diagnose_endpoint_region_excludes_oids_field(
         json={
             "host": "127.0.0.1",
             "port": emulator_clean.port,
-            "community": "public",
             "root_oid": "1.3.6.1.2.1.1",
             "bulk_size": 10,
             "timeout": 2.0,
             "retries": 1,
             "total_timeout": 30.0,
             "pinpoint": False,
-            "buckets": [
-                {"name": "OK", "max_ms": 500},
-                {"name": "SLOW", "max_ms": 3000},
-                {"name": "CRITICAL", "max_ms": None},
-            ],
+            "buckets": _BUCKETS,
+            **_CREDS,
         },
     )
     assert resp.status_code == 200
@@ -81,4 +80,4 @@ def test_diagnose_endpoint_region_excludes_oids_field(
         assert "bucket" in region
         assert "batch_ms" in region
         assert "oid_count" in region
-        assert "oids" not in region  # internal field must be excluded from API response
+        assert "oids" not in region

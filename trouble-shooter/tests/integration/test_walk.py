@@ -6,6 +6,8 @@ if TYPE_CHECKING:
     from emulator import EmulatorServer
     from starlette.testclient import TestClient
 
+_CREDS = {"username": "monitor", "auth_password": "authpass1"}
+
 
 def test_walk_returns_oids(client: TestClient, emulator_fast: EmulatorServer) -> None:
     resp = client.post(
@@ -13,10 +15,10 @@ def test_walk_returns_oids(client: TestClient, emulator_fast: EmulatorServer) ->
         json={
             "host": "127.0.0.1",
             "port": emulator_fast.port,
-            "community": "public",
             "root_oid": "1.3.6.1.2.1.1",
             "timeout": 2,
             "total_timeout": 10,
+            **_CREDS,
         },
     )
     assert resp.status_code == 200
@@ -33,10 +35,10 @@ def test_walk_covers_system_and_interface_groups(
         json={
             "host": "127.0.0.1",
             "port": emulator_fast.port,
-            "community": "public",
             "root_oid": "1.3.6.1.2.1",
             "timeout": 2,
             "total_timeout": 10,
+            **_CREDS,
         },
     )
     assert resp.status_code == 200
@@ -51,10 +53,10 @@ def test_walk_slow_subtree_takes_longer(client: TestClient, emulator_slow: Emula
         json={
             "host": "127.0.0.1",
             "port": emulator_slow.port,
-            "community": "public",
             "root_oid": "1.3.6.1.2.1",
             "timeout": 5,
             "total_timeout": 30,
+            **_CREDS,
         },
     )
     assert resp.status_code == 200
@@ -72,10 +74,10 @@ def test_walk_total_timeout_returns_empty(
         json={
             "host": "127.0.0.1",
             "port": emulator_fast.port,
-            "community": "public",
             "root_oid": "1.3.6.1.2.1",
             "timeout": 1,
             "total_timeout": 0,
+            **_CREDS,
         },
     )
     assert resp.status_code == 200
@@ -85,11 +87,6 @@ def test_walk_total_timeout_returns_empty(
 def test_walk_invalid_host(client: TestClient) -> None:
     resp = client.post(
         "/api/walk",
-        json={
-            "host": "not_valid!!",
-            "community": "public",
-            "port": 1161,
-            "root_oid": "1.3.6.1.2.1",
-        },
+        json={"host": "not_valid!!", "port": 1161, "root_oid": "1.3.6.1.2.1", **_CREDS},
     )
     assert resp.status_code == 400
