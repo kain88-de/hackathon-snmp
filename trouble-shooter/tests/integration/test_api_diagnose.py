@@ -7,7 +7,7 @@ if TYPE_CHECKING:
     from starlette.testclient import TestClient
 
 _CREDS = {"username": "monitor", "auth_password": "authpass1"}
-_BUCKETS = [
+_BUCKETS: list[dict[str, str | int | None]] = [
     {"name": "OK", "max_ms": 500},
     {"name": "SLOW", "max_ms": 3000},
     {"name": "CRITICAL", "max_ms": None},
