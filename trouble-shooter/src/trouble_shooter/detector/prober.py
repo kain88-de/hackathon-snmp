@@ -4,14 +4,15 @@ from time import monotonic
 from typing import TYPE_CHECKING
 
 from pysnmp.hlapi.v3arch.asyncio import (
-    CommunityData,
     ContextData,
     ObjectIdentity,
     ObjectType,
     SnmpEngine,
     UdpTransportTarget,
+    UsmUserData,
     bulk_cmd,
     get_cmd,
+    usmHMACMD5AuthProtocol,
 )
 from pysnmp.proto.errind import EmptyResponse
 from pysnmp.proto.rfc1905 import EndOfMibView
@@ -26,16 +27,25 @@ class SnmpProber:
     def __init__(
         self,
         host: str,
-        community: str,
+        username: str,
         port: int,
+        auth_password: str,
         timeout: float = 5.0,
         retries: int = 2,
     ) -> None:
         self._host = host
-        self._community = community
+        self._username = username
         self._port = port
+        self._auth_password = auth_password
         self._timeout = timeout
         self._retries = retries
+
+    def _auth(self) -> UsmUserData:
+        return UsmUserData(
+            self._username,
+            authKey=self._auth_password,
+            authProtocol=usmHMACMD5AuthProtocol,
+        )
 
     async def bulk_walk(self, root_oid: str, bulk_size: int) -> AsyncGenerator[Batch]:
         engine = SnmpEngine()
@@ -50,18 +60,17 @@ class SnmpProber:
                 t0 = monotonic()
                 error_indication, _status, _index, var_binds = await bulk_cmd(
                     engine,
-                    CommunityData(self._community),
+                    self._auth(),
                     transport,
                     ContextData(),
-                    0,  # nonRepeaters
-                    bulk_size,  # maxRepetitions
+                    0,
+                    bulk_size,
                     ObjectType(ObjectIdentity(cursor)),
                     lookupMib=False,
                 )
                 elapsed_ms = (monotonic() - t0) * 1000
 
                 if error_indication:
-                    # EmptyResponse means the emulator/device has no more OIDs — end of walk
                     if isinstance(error_indication, EmptyResponse):
                         return
                     yield Batch(oids=[(cursor, "")], elapsed_ms=elapsed_ms, timed_out=True)
@@ -77,7 +86,6 @@ class SnmpProber:
                     return
 
                 oids = [(str(vb[0]), str(vb[1])) for vb in real_vbs]
-
                 yield Batch(oids=oids, elapsed_ms=elapsed_ms, timed_out=False)
 
                 if end_of_mib:
@@ -98,7 +106,7 @@ class SnmpProber:
             t0 = monotonic()
             error_indication, _status, _index, var_binds = await get_cmd(
                 engine,
-                CommunityData(self._community),
+                self._auth(),
                 transport,
                 ContextData(),
                 ObjectType(ObjectIdentity(oid)),
