@@ -6,7 +6,7 @@ test:
     uv run pytest tests --durations=10 -q
 
 types:
-    uv run pyrefly check
+    uv run pyrefly check --remove-unused-ignores
 
 lint:
     uv run ruff check . --fix

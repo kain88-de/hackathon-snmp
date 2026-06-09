@@ -16,8 +16,7 @@ run-dev:
     uv run python snmp_emulator.py
 
 types:
-    uv run pyrefly check
-
+    uv run pyrefly check --remove-unused-ignores
 lint:
     uv run ruff check . --fix
 

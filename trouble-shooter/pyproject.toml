@@ -17,6 +17,8 @@ dev = [
     "httpx2",
     "pyinstrument>=5.1.2",
     "types-pyasn1>=0.6.0.20260408",
+    "pytest-asyncio>=1.4.0",
+    "pytest-random-order",
 ]
 
 [tool.uv.sources]
@@ -25,6 +27,9 @@ emulator = { workspace = true }
 [tool.pytest.ini_options]
 pythonpath = ["."]
 testpaths = ["tests"]
+asyncio_mode = "auto"
+addopts = "--random-order"
+
 
 [tool.hatch.build.targets.wheel]
 sources = ["."]
@@ -49,8 +54,9 @@ target-version = "py314"
 
 [tool.ruff.lint]
 ignore = [
-    "S603", # subprocess with trusted input — host is validated before call
-    "S104", # binding to all interfaces — intentional for dev server
+    "S603",    # subprocess with trusted input — host is validated before call
+    "S104",    # binding to all interfaces — intentional for dev server
+    "ASYNC109", # timeout param passed to pysnmp transport layer, not asyncio.timeout
 ]
 
 [tool.ruff.lint.per-file-ignores]

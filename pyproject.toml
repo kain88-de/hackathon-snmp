@@ -19,6 +19,7 @@ select = [
     "N",   # pep8-naming
     "ANN", # flake8-annotations
     "S",   # flake8-bandit
+    "ASYNC"
 ]
 ignore = []
 

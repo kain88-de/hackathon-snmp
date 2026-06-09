@@ -1,8 +1,9 @@
-from collections.abc import Generator
+from collections.abc import AsyncGenerator, Generator
 
 import pytest
 from emulator import EmulatorConfig, EmulatorServer
 from fastapi.testclient import TestClient
+from pysnmp.hlapi.v3arch.asyncio import SnmpEngine
 
 from main import app
 
@@ -36,6 +37,13 @@ def emulator_fast(_fast_server: EmulatorServer) -> Generator[EmulatorServer]:
 def emulator_slow(_slow_server: EmulatorServer) -> Generator[EmulatorServer]:
     yield _slow_server
     _slow_server.reset()
+
+
+@pytest.fixture
+async def snmp_engine() -> AsyncGenerator[SnmpEngine]:
+    engine = SnmpEngine()
+    yield engine
+    engine.close_dispatcher()
 
 
 @pytest.fixture(scope="session")
