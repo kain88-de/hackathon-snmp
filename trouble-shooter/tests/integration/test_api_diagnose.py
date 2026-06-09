@@ -1,0 +1,84 @@
+from __future__ import annotations
+
+from typing import TYPE_CHECKING
+
+if TYPE_CHECKING:
+    from emulator import EmulatorServer
+    from starlette.testclient import TestClient
+
+
+def test_diagnose_endpoint_returns_valid_report(
+    client: TestClient, emulator_clean: EmulatorServer
+) -> None:
+    resp = client.post(
+        "/api/diagnose",
+        json={
+            "host": "127.0.0.1",
+            "port": emulator_clean.port,
+            "community": "public",
+            "root_oid": "1.3.6.1.2.1.1",
+            "bulk_size": 10,
+            "timeout": 2.0,
+            "retries": 1,
+            "total_timeout": 30.0,
+            "pinpoint": False,
+            "buckets": [
+                {"name": "OK", "max_ms": 500},
+                {"name": "SLOW", "max_ms": 3000},
+                {"name": "CRITICAL", "max_ms": None},
+            ],
+        },
+    )
+    assert resp.status_code == 200
+    data = resp.json()
+    assert data["complete"] is True
+    assert data["reason"] == "END_OF_MIB"
+    assert "summary" in data
+    assert "regions" in data
+    assert "oids" in data
+    assert "elapsed_total_ms" in data
+    assert len(data["oids"]) > 0
+
+
+def test_diagnose_endpoint_invalid_host(client: TestClient) -> None:
+    resp = client.post(
+        "/api/diagnose",
+        json={
+            "host": "not_valid!!",
+            "community": "public",
+            "port": 1161,
+            "buckets": [{"name": "OK", "max_ms": 500}, {"name": "CRIT", "max_ms": None}],
+        },
+    )
+    assert resp.status_code == 400
+
+
+def test_diagnose_endpoint_region_excludes_oids_field(
+    client: TestClient, emulator_clean: EmulatorServer
+) -> None:
+    resp = client.post(
+        "/api/diagnose",
+        json={
+            "host": "127.0.0.1",
+            "port": emulator_clean.port,
+            "community": "public",
+            "root_oid": "1.3.6.1.2.1.1",
+            "bulk_size": 10,
+            "timeout": 2.0,
+            "retries": 1,
+            "total_timeout": 30.0,
+            "pinpoint": False,
+            "buckets": [
+                {"name": "OK", "max_ms": 500},
+                {"name": "SLOW", "max_ms": 3000},
+                {"name": "CRITICAL", "max_ms": None},
+            ],
+        },
+    )
+    assert resp.status_code == 200
+    for region in resp.json()["regions"]:
+        assert "prefix" in region
+        assert "bucket" in region
+        assert "batch_ms" in region
+        assert "oid_count" in region
+        assert "oids" not in region  # internal field must be excluded from API response
