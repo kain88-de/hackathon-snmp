@@ -1,6 +1,7 @@
 import asyncio
 import threading
 import time
+from typing import TYPE_CHECKING
 
 from pysnmp.hlapi.v3arch.asyncio import (
     CommunityData,
@@ -11,9 +12,11 @@ from pysnmp.hlapi.v3arch.asyncio import (
     UdpTransportTarget,
     get_cmd,
 )
-from pysnmp.proto import errind
 
 from emulator import EmulatorConfig, EmulatorServer
+
+if TYPE_CHECKING:
+    from pysnmp.proto import errind
 
 
 async def _snmp_get(

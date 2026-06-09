@@ -1,8 +1,13 @@
-from collections.abc import Generator
+from __future__ import annotations
+
+from typing import TYPE_CHECKING
 
 import pytest
 from emulator import EmulatorConfig, EmulatorServer
 from fastapi.testclient import TestClient
+
+if TYPE_CHECKING:
+    from collections.abc import Generator
 
 from trouble_shooter.main import app
 

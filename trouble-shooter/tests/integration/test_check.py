@@ -1,5 +1,10 @@
-from emulator import EmulatorServer
-from starlette.testclient import TestClient
+from __future__ import annotations
+
+from typing import TYPE_CHECKING
+
+if TYPE_CHECKING:
+    from emulator import EmulatorServer
+    from starlette.testclient import TestClient
 
 
 def test_check_reachable_device(client: TestClient, emulator_fast: EmulatorServer) -> None:

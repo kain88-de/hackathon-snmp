@@ -6,22 +6,33 @@ line-length = 100
 
 [tool.ruff.lint]
 select = [
-    "E",   # pycodestyle errors
-    "W",   # pycodestyle warnings
-    "F",   # pyflakes
-    "I",   # isort
-    "B",   # flake8-bugbear
-    "C4",  # flake8-comprehensions
-    "UP",  # pyupgrade
-    "RUF", # ruff-specific
-    "SIM", # flake8-simplify
-    "PTH", # flake8-use-pathlib
-    "N",   # pep8-naming
-    "ANN", # flake8-annotations
-    "S",   # flake8-bandit
-    "ASYNC"
+    "E",    # pycodestyle errors
+    "W",    # pycodestyle warnings
+    "F",    # pyflakes
+    "I",    # isort
+    "B",    # flake8-bugbear
+    "C4",   # flake8-comprehensions
+    "UP",   # pyupgrade
+    "RUF",  # ruff-specific
+    "SIM",  # flake8-simplify
+    "PTH",  # flake8-use-pathlib
+    "N",    # pep8-naming
+    "ANN",  # flake8-annotations
+    "S",    # flake8-bandit
+    "ASYNC",
+    "TC",   # flake8-type-checking
+    "PERF", # perflint
+    "ARG",  # flake8-unused-arguments
+    "PLE",  # pylint errors
+    "PLR",  # pylint refactor
+    "PLW",  # pylint warnings
 ]
-ignore = []
+ignore = [
+    "PLR2004", # magic value comparisons — too noisy for test assertions
+    "PLR0912", # too many branches — not a useful limit
+    "PLR0913", # too many arguments — not a useful limit
+    "PLR0915", # too many statements — not a useful limit
+]
 
 [tool.ruff.lint.per-file-ignores]
-"tests/**" = ["S101"] # allow assert in tests
+"tests/**" = ["S101", "ARG001", "ARG002"] # assert ok; fixtures look unused to ruff

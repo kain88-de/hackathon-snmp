@@ -112,7 +112,7 @@ class EmulatorServer:
         s = ".".join(map(str, oid_tuple))
         return any(s.startswith(p) for p in self._config.slow_prefixes)
 
-    def _process(self, data: bytes, addr: tuple[str, int]) -> bytes | None:
+    def _process(self, data: bytes, _addr: tuple[str, int]) -> bytes | None:
         t0 = time.monotonic()
 
         try:

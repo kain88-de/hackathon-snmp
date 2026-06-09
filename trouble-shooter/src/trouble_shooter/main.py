@@ -79,6 +79,7 @@ def _ping(host: str) -> bool:
     result = subprocess.run(
         ["/usr/bin/ping", "-c", "1", "-W", "2", "--", host],
         capture_output=True,
+        check=False,
     )
     return result.returncode == 0
 
@@ -136,14 +137,10 @@ async def _snmp_walk(
                     break
                 if error_status and int(error_status):
                     break
-                for var_bind in var_binds:
-                    results.append(
-                        {
-                            "oid": str(var_bind[0]),
-                            "value": str(var_bind[1]),
-                            "ms": elapsed_ms,
-                        }
-                    )
+                results.extend(
+                    {"oid": str(var_bind[0]), "value": str(var_bind[1]), "ms": elapsed_ms}
+                    for var_bind in var_binds
+                )
     except TimeoutError:
         pass
     finally:
