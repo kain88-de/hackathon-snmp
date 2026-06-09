@@ -70,15 +70,20 @@ class SnmpProber:
                 if not var_binds:
                     return
 
-                oids = [(str(vb[0]), str(vb[1])) for vb in var_binds]
-                end_of_mib = isinstance(var_binds[-1][1], EndOfMibView)
+                end_of_mib = any(isinstance(vb[1], EndOfMibView) for vb in var_binds)
+                real_vbs = [vb for vb in var_binds if not isinstance(vb[1], EndOfMibView)]
+
+                if not real_vbs:
+                    return
+
+                oids = [(str(vb[0]), str(vb[1])) for vb in real_vbs]
 
                 yield Batch(oids=oids, elapsed_ms=elapsed_ms, timed_out=False)
 
                 if end_of_mib:
                     return
 
-                cursor = str(var_binds[-1][0])
+                cursor = str(real_vbs[-1][0])
         finally:
             engine.close_dispatcher()
 
