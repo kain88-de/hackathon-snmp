@@ -8,7 +8,7 @@ types:
     uv run pyrefly check
 
 types-pyright:
-    uv run pyright src
+    uv run pyright src tests
 
 test:
     uv run pytest -m "not reference_tools" -q
