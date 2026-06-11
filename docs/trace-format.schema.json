@@ -38,7 +38,7 @@
     },
     "header": {
       "type": "object",
-      "required": ["type", "format_version", "tool", "started_at", "snmp", "settings"],
+      "required": ["type", "format_version", "tool", "started_at", "session", "snmp", "settings"],
       "properties": {
         "type": { "const": "header" },
         "format_version": { "const": 1 },
@@ -49,6 +49,18 @@
           "description": "ISO 8601 UTC; the only wall-clock time in the file"
         },
         "label": { "type": "string" },
+        "session": {
+          "type": "object",
+          "required": ["id", "run", "runs_total"],
+          "properties": {
+            "id": {
+              "type": "string",
+              "description": "Random UUID per walk invocation; shared by all files of a matrix run"
+            },
+            "run": { "type": "integer", "minimum": 1 },
+            "runs_total": { "type": "integer", "minimum": 1 }
+          }
+        },
         "snmp": {
           "type": "object",
           "required": ["version"],
@@ -127,8 +139,14 @@
               "sent_at": { "$ref": "#/$defs/reltime" },
               "received_at": {
                 "oneOf": [{ "$ref": "#/$defs/reltime" }, { "type": "null" }]
+              },
+              "error": {
+                "type": "string",
+                "description": "Open enum; socket-level error instead of silence. Known: icmp-port-unreachable, icmp-host-unreachable, send-failed. When set, received_at is null."
               }
-            }
+            },
+            "if": { "required": ["error"] },
+            "then": { "properties": { "received_at": { "type": "null" } } }
           }
         },
         "response": {
@@ -163,7 +181,7 @@
           "type": "array",
           "items": {
             "type": "string",
-            "description": "Open enum; known: request-id-mismatch, oid-not-increasing, missing-end-of-mib, duplicate-response, malformed-ber"
+            "description": "Open enum; known: request-id-mismatch, oid-not-increasing, missing-end-of-mib, duplicate-response, malformed-ber, response-from-unexpected-source"
           }
         },
         "malformed": {

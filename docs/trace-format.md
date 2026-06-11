@@ -67,8 +67,15 @@ First record of every file.
 | `tool`           | string | yes  | Producer and version, e.g. `"oidtrace 0.1.0"`      |
 | `started_at`     | string | yes  | ISO 8601 UTC wall-clock walk start                 |
 | `label`          | string | no   | Admin-chosen run label; the only correlation handle |
+| `session`        | object | yes  | Ties files of one invocation together (see below)  |
 | `snmp.version`   | string | yes  | `"1"` or `"2c"` (v3 fields reserved for later)     |
 | `settings`       | object | yes  | See below                                          |
+
+`session` fields: `id` (string — random UUID generated per `walk` invocation; derived
+from nothing, leaks nothing), `run` (int, 1-based index within the invocation),
+`runs_total` (int). A matrix invocation writes one file per settings combo, all sharing
+the same `session.id` — the correlation profile fitting and cross-run analysis need. A
+single walk is `run: 1, runs_total: 1`.
 
 `settings` fields: `bulk_size` (int; `0` means GetNext walk), `timeout_s` (number),
 `retries` (int), `start_oid` (string), `time_budget_s` (number, optional).
@@ -78,6 +85,7 @@ The header deliberately contains **no target host name, IP, or port** (§ 7).
 ```json
 {"type":"header","format_version":1,"tool":"oidtrace 0.1.0",
  "started_at":"2026-06-11T14:03:07Z","label":"switch-floor3",
+ "session":{"id":"5e1f3a9c-6a86-4a0b-9b6e-2f6d6a9c1d42","run":2,"runs_total":5},
  "snmp":{"version":"2c"},
  "settings":{"bulk_size":10,"timeout_s":2.0,"retries":2,"start_oid":"1.3.6.1"}}
 ```
@@ -97,6 +105,12 @@ start and again at walk end. Absent entirely when the admin hides system info.
 Allowlist in format version 1: sysDescr.0 (`1.3.6.1.2.1.1.1.0`, string), sysObjectID.0
 (`1.3.6.1.2.1.1.2.0`, OID string), sysUpTime.0 (`1.3.6.1.2.1.1.3.0`, integer ticks).
 A sysUpTime at `end` lower than at `start` proves a mid-walk device reboot.
+
+The underlying Get requests are real wire traffic and are **also recorded as ordinary
+`exchange` records** (participating in `seq`, scrubbed like everything else) — their
+timing and any violations are evidence too. The `system_info` record carries only the
+admin-approved values; hiding system info removes the `system_info` records but the
+(value-free, scrubbed) exchanges remain.
 
 ```json
 {"type":"system_info","at":0.0412,"point":"start",
@@ -128,7 +142,15 @@ both absent (no answer at all — every attempt timed out).
 `raw` (hex, scrubbed).
 
 `attempts[]`: `sent_at` (number), `received_at` (number | null — null means this attempt
-got no datagram). The response is attributed to the attempt whose `received_at` is set.
+got no datagram), `error` (string, optional, open enum — a socket-level error for this
+attempt instead of silence: `"icmp-port-unreachable"`, `"icmp-host-unreachable"`,
+`"send-failed"`; when set, `received_at` is null). Instant ICMP refusal and silent
+timeout are diagnostically opposite outcomes and must be distinguishable.
+
+Retries resend the **byte-identical datagram** (same request-id) — this is why
+`request.raw` is singular, and why a late-arriving response is inherently ambiguous
+between attempts. The response is attributed to the attempt whose `received_at` is set;
+consumers doing latency analysis must treat multi-attempt exchanges accordingly.
 
 `response`: `request_id` (int, **as returned by the device** — compare with
 `request.request_id`), `error_status` (int), `error_index` (int), `varbinds` (array),
@@ -144,7 +166,9 @@ replies to earlier requests, unsolicited datagrams.
 optional — whatever fields could be partially decoded).
 
 `violations[]` initial vocabulary: `"request-id-mismatch"`, `"oid-not-increasing"`,
-`"missing-end-of-mib"`, `"duplicate-response"`, `"malformed-ber"`.
+`"missing-end-of-mib"`, `"duplicate-response"`, `"malformed-ber"`,
+`"response-from-unexpected-source"` (datagram arrived from a different source port or
+address than queried — the *fact* is recorded, the address never is).
 
 ```json
 {"type":"exchange","seq":42,
@@ -198,7 +222,10 @@ BER universal and SNMP application types: `"Integer"`, `"OctetString"`, `"Null"`
 `raw` fields hold the BER packet re-encoded with **value octets and the community string
 replaced by zero bytes of the same length**. Structure, tags, lengths, OIDs, request-ids,
 and total packet size are preserved exactly. Consequence: packet sizes in the trace match
-the wire, which downstream consumers (OIDEmu profile fitting) rely on.
+the wire, which downstream consumers (OIDEmu profile fitting) rely on. Note for those
+consumers: non-canonical BER habits (long-form lengths where short form would do, padded
+integers) survive only in `raw` — exact wire encodings must be taken from `raw`, not
+reconstructed from parsed fields.
 
 The sole unscrubbed bytes in a trace are `malformed.raw`: packets we could not parse
 cannot be scrubbed. They are kept verbatim because undecodability is itself the evidence;
