@@ -105,10 +105,13 @@ add v3 fields (auth params, decrypted-PDU bytes) later without breaking readers.
 ```
 {type: "header", format_version: 1, tool: "oidtrace 0.1.0",
  started_at: <timestamp>,
- target: {host: <as given on CLI>, resolved_ip: <IP used>, port: 161},
  snmp: {version: "2c"},                  # community redacted, never stored
  settings: {bulk_size: 10, timeout_s: 2.0, retries: 2, start_oid: "1.3.6.1"}}
 ```
+
+The trace deliberately stores no target host name, IP, or port: device identity is not
+needed for playback, and omitting it makes traces safer to share. `export-pcap` uses
+placeholder addresses in its synthesized frames.
 
 ### `exchange` (one per logical request)
 
@@ -148,7 +151,7 @@ continues. Only three things abort a walk:
 1. **Local/operator errors** — bad CLI args, DNS name does not resolve, cannot bind socket,
    cannot write trace file. The target is resolved **once, up front, before any socket is
    opened**; resolution failure fails fast with a clear message and no trace file. The
-   resolved IP is pinned for the whole walk and recorded in the header.
+   resolved IP is pinned for the whole walk (but not recorded in the trace).
 2. **Total silence** — device never answers. Give up after the first N fully-timed-out
    exchanges (configurable); write `summary` with `end_reason: "unresponsive"`. Still a
    valid trace.
