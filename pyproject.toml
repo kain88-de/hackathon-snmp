@@ -1,2 +1,6 @@
 [tool.uv.workspace]
 members = ["oidtrace"]
+
+[tool.pyright]
+venvPath = "."
+venv = ".venv"
