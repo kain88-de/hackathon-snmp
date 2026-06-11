@@ -54,6 +54,11 @@ walk pipeline:
        └────────────┴───────────┴──> Scrubber ──> Trace Writer (CBOR append)
 ```
 
+`walk` accepts a **settings matrix** (e.g. several bulk sizes / timeouts); the combos run
+sequentially and **each run writes its own trace file** into an output directory (zippable
+for a ticket). The trace schema stays one-walk-per-file; the matrix is purely a CLI
+convenience.
+
 ### Transport
 
 Owns a plain UDP socket. Sends datagrams, receives everything that comes back with precise
@@ -61,6 +66,11 @@ timestamps, and never validates: responses with wrong request-ids, duplicates, a
 replies arriving after a retry are recorded, not dropped. This is the load-bearing decision —
 high-level SNMP libraries hide exactly this traffic, so OIDTrace cannot sit on top of one
 for the wire path.
+
+Because request-ids cannot be trusted, they are never used to match responses to requests.
+The walk is strictly sequential — exactly one outstanding request at a time — so every
+datagram arriving during the wait window is attributed to the current exchange; a
+request-id mismatch is recorded as a violation, not used for routing.
 
 ### Codec
 
@@ -72,13 +82,16 @@ OIDs, missing endOfMibView) are pure functions over decoded PDUs.
 ### Walk engine
 
 Drives the GetNext/GetBulk loop with configurable settings (bulk size, timeout, retries,
-start OID), handles retries, and decides termination: endOfMibView, walked past subtree,
-OID-loop detection, or overall time budget.
+start OID), handles retries, and decides termination: end of MIB (`endOfMibView` in v2c,
+`noSuchName` error-status in v1), walked past subtree, OID-loop detection, or overall time
+budget.
 
 ### Scrubber
 
-Re-encodes each packet with value octets zeroed before anything touches disk, and redacts
-the community string (present in every v1/v2c message header). Unparseable packets are
+Re-encodes each packet before anything touches disk: value octets and the community string
+(present in every v1/v2c message header) are replaced with zero bytes **of the same
+length**, so packet sizes and structure are preserved exactly — sizes affect real device
+behavior, and OIDPlayback wants to reproduce them. Unparseable packets are
 flagged and kept verbatim — "we couldn't even parse it" is evidence — with a
 `--drop-unparsed` escape hatch. `show` highlights verbatim packets so the admin knows
 exactly what they would be sharing.
@@ -124,7 +137,7 @@ placeholder addresses in its synthesized frames.
             error_status: 0, error_index: 0,
             varbinds: [{oid: "...", vtype: "OctetString"}, ...],  # types only, no values
             raw: <bytes, scrubbed>} | null,                       # null = never answered
- stray_responses: [...],          # datagrams matching no outstanding request
+ stray_responses: [{received_at: <ts>, raw: <bytes, scrubbed>}, ...],  # dupes, late replies
  violations: ["request-id-mismatch"],
  malformed: {raw: <bytes>, error: "..."} | absent}
 ```
@@ -134,13 +147,19 @@ Timing is derivable from per-attempt timestamps (latency, retry cost, cumulative
 
 ### `event`
 
-Walk-level observations not tied to one exchange: `oid-loop-detected`,
-`walk-aborted-by-user`, `time-budget-exceeded`.
+Walk-level observations not tied to one exchange:
+
+```
+{type: "event", at: <ts>, kind: "oid-loop-detected", detail: {...}}
+```
+
+Kinds: `oid-loop-detected`, `walk-aborted-by-user`, `time-budget-exceeded`.
 
 ### `summary` (last, best-effort)
 
-Exchange count, duration, end reason, violation tally — `show` prints a one-screen verdict
-without re-scanning.
+Exchange count, duration, violation tally, and `end_reason` (one of `completed`,
+`unresponsive`, `interrupted`, `time-budget-exceeded`, `oid-loop`) — `show` prints a
+one-screen verdict without re-scanning.
 
 ## Error handling
 
@@ -207,4 +226,5 @@ our code.
 - SNMPv3 (all security levels) — format leaves room via versioning and unknown-field
   tolerance; full support including priv requires storing decrypted PDU bytes.
 - OIDPlayback and OIDSense themselves — separate specs; they consume this trace format.
-- Recording SNMP values in any form.
+- Recording SNMP values in any form — with one acknowledged exception: unparseable packets
+  kept verbatim (flagged, highlighted by `show`, removable via `--drop-unparsed`).
