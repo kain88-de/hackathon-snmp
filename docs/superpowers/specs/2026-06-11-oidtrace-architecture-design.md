@@ -69,7 +69,7 @@ smaller still); gzip brings it to single-digit MB, well within support-ticket li
 ```
 oidtrace CLI
 ├── walk         capture a trace (prints summary at end, progress on stderr)
-└── show         summarize / pretty-print a trace (the file is readable without it)
+└── show         pretty-print a trace [post-MVP — the file is zcat/jq-readable]
 
 walk pipeline:
   Walk Engine ──> Codec ──> Transport ──> device
@@ -111,7 +111,8 @@ derive settings) is another driver of the same stack; every probing session emit
 
 - `--label "switch-floor3"` — admin-chosen run label recorded in the header; the only
   device-correlating information in a trace, and the admin typed it themselves.
-- Community string is taken from a prompt or environment variable, never a CLI argument
+- Community string is taken from the `OIDTRACE_COMMUNITY` environment variable
+  (default `public`; interactive prompt post-MVP) — never a CLI argument
   (shell history on a shared monitoring server).
 - Progress on stderr during the walk; a terminal summary at the end (exchange count,
   violations found, slowest ranges, path of the written trace).
@@ -152,7 +153,8 @@ trivially. If wire-level forensics or exact-encoding reproduction (e.g. for bett
 emulation) ever earns its keep, that is a **format v2** with redacted packet capture —
 a problem to design then, not now.
 
-**System-OID allowlist** — the one deliberate exception to "no values": a handful of system
+**System-OID allowlist (post-MVP — format supports it, v1 tooling does not emit it)** —
+the one deliberate exception to "no values": a handful of system
 OIDs (sysDescr, sysObjectID, sysUpTime) are read with a dedicated Get at walk start and
 walk end and stored with values in `system_info` records. Rationale: sysDescr/sysObjectID
 answer support's first question ("what device/firmware is this?"), and sysUpTime
@@ -244,9 +246,10 @@ skip-if-missing cannot silently become never-runs.
 The test emulator is a **scripted simple device** — small hardcoded OID tree, quirks
 injected via test configuration — not a trace consumer, so there is no chicken-and-egg
 with traces. It is built as a **responder core with a pluggable behavior source**:
-scripted source now for tests; profile-driven sources later grow into OIDEmu (including
-profiles fitted from traces). The emulator reuses the shared codec package (with raw-byte
-escape hatches for deliberately malformed quirks).
+scripted source now for tests; a fuller OIDEmu product (declarative profiles, fitting
+from traces, provenance) was explored and shelved — design sketch in git history. The
+emulator reuses the shared codec package (with raw-byte escape hatches for deliberately
+malformed quirks).
 
 Sharing the codec between walker and emulator means a shared encoding bug could pass tests
 silently; the reference-tool layer (`snmpbulkwalk` cross-walk) and the pysnmp spec-driven
@@ -255,6 +258,10 @@ decode in unit tests exist to break exactly that circularity, independently of o
 ## De-scoping order
 
 If time runs short, cut in this order (decided now, not under pressure):
+
+Already cut from the MVP for implementor simplicity (design retained, see plan
+backlog): system-OID allowlist capture, GetNext walk mode (GetBulk max-repetitions 1
+covers it), `show` subcommand, interactive community prompt.
 
 1. SNMP v1 support — v2c GetBulk covers the troubleshooting doc's cases.
 2. The settings-matrix CLI convenience — admins can invoke the tool repeatedly.

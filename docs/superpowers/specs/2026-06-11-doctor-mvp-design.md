@@ -47,6 +47,18 @@ doctor vs the quirk emulator with each pathology, asserting the verdict and the 
 bundle. Inherits the OIDTrace plan's test pyramid; the net-snmp cross-walk stays the
 independent reference check.
 
+## Scope notes
+
+- **v1 report = verdict + rung table** (static HTML, no charts); waterfall/heat views
+  arrive with OIDViz's shared rendering.
+- A bulk-**stress** rung (raising max-repetitions to find the crash threshold) is
+  **opt-in only**: on the wrong device the failure mode is a reboot.
+- The verdict is phrased in the consumer's terms — Checkmk's per-host SNMP knobs
+  (timing, bulk size) — paste-ready, not a prose diagnosis.
+- An adaptive settings finder (survey → pinpoint slow OIDs at bulk 1 → derive settings)
+  is the doctor's natural successor; design sketches live in git history
+  (`2026-06-11-oidsense-design.md`, `2026-06-11-oidemu-design.md`, both deleted).
+
 ## Open questions (for the real brainstorming session)
 
 - Exact ladder definition and stopping rules (first-working-rung vs full fingerprint).

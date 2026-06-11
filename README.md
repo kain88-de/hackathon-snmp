@@ -22,13 +22,11 @@ device identity; an admin can read one with `zcat` before sharing it. Format spe
 verdict panel, latency waterfall, subtree heat, run comparison. Opens by double-click,
 attaches to a ticket, works offline. Shares its rendering with the doctor's report.
 
-**OIDSense** — the troubleshooting brain: offline trace analysis plus an adaptive
-settings finder that evolves from the doctor's deterministic ladder (survey → pinpoint
-slow OIDs → derive settings).
-
-**OIDEmu** — a quirk-faithful device emulator (latency curves, bulk-size crashes, fixed
-request-ids) for tests, algorithm development, and demos. Internal infrastructure;
-fitting profiles from customer traces is deferred until traces actually flow.
+Under the hood, a **quirk emulator** (fixed request-ids, bulk-size crashes, slow
+subtrees, end-of-MIB silence) lives in the test suite — every pathology the tools must
+handle is reproducible over loopback UDP. An **adaptive settings finder** (survey →
+pinpoint slow OIDs → derive settings) is the doctor's planned successor; its design
+sketches live in git history.
 
 ## Where things stand
 
