@@ -150,74 +150,24 @@ beyond a test fixture).
 
 ## Trace record schema
 
-Each line is a JSON object with a `type` field. Readers ignore unknown fields;
-`format_version` in the header gates breaking changes. This is the whole compatibility
-story — enough room to add v3 fields (auth params, decrypted-PDU bytes) later without
-breaking readers. Raw bytes are lowercase hex strings.
+The file format is specified authoritatively in **`docs/trace-format.md`** (record types
+`header`, `system_info`, `exchange`, `event`, `summary`; field tables, type vocabularies,
+timestamp and scrubbing semantics, privacy guarantees, versioning rules). Where this
+design document and the format spec disagree, the format spec wins.
 
-### `header` (always first)
+Design-level points worth restating here:
 
-```
-{type: "header", format_version: 1, tool: "oidtrace 0.1.0",
- started_at: <timestamp>,
- label: "switch-floor3",                 # admin-chosen, optional
- snmp: {version: "2c"},                  # community redacted, never stored
- settings: {bulk_size: 10, timeout_s: 2.0, retries: 2, start_oid: "1.3.6.1"}}
-```
-
-The trace deliberately stores no target host name, IP, or port: device identity is not
-needed for playback, and omitting it makes traces safer to share. The optional `label` is
-the only correlation handle, and the admin chooses it. `export-pcap` uses placeholder
-addresses in its synthesized frames.
-
-### `system_info` (after header, and again before summary; admin-approved)
-
-```
-{type: "system_info", at: <ts>, point: "start" | "end",
- values: {"1.3.6.1.2.1.1.1.0": "<sysDescr>", "1.3.6.1.2.1.1.2.0": "<sysObjectID>",
-          "1.3.6.1.2.1.1.3.0": <sysUpTime>}}
-```
-
-Absent entirely when the admin hides system info. Start-vs-end sysUpTime lets OIDSense
-prove a mid-walk device reboot.
-
-### `exchange` (one per logical request)
-
-```
-{type: "exchange", seq: 42,
- request: {pdu: "getbulk", request_id: 1042, oids: ["1.3.6.1.2.1.2.2.1.3"],
-           non_repeaters: 0, max_repetitions: 10, raw: "<hex, scrubbed>"},
- attempts: [{sent_at: <ts>, received_at: <ts> | null}, ...],   # one per send incl. retries
- response: {request_id: 1,                # request_id AS RETURNED by the device
-            error_status: 0, error_index: 0,
-            varbinds: [{oid: "...", vtype: "OctetString", vlen: 14}, ...],  # type + length, no values
-                                     # vlen makes parsed records self-sufficient for profile
-                                     # fitting (packet sizes) without re-parsing raw hex
-            raw: "<hex, scrubbed>"} | null,                       # null = never answered
- stray_responses: [{received_at: <ts>, raw: "<hex, scrubbed>"}, ...],  # dupes, late replies
- violations: ["request-id-mismatch"],
- malformed: {raw: "<hex>", error: "..."} | absent}
-```
-
-Timing is derivable from per-attempt timestamps (latency, retry cost, cumulative
-`timeout × retries × OIDs`); no duplicated duration fields.
-
-### `event`
-
-Walk-level observations not tied to one exchange:
-
-```
-{type: "event", at: <ts>, kind: "oid-loop-detected", detail: {...}}
-```
-
-Kinds: `oid-loop-detected`, `walk-aborted-by-user`, `time-budget-exceeded`.
-
-### `summary` (last, best-effort)
-
-Exchange count, duration, violation tally, and `end_reason` (one of `completed`,
-`unresponsive`, `interrupted`, `time-budget-exceeded`, `oid-loop`) — `show` prints a
-one-screen verdict without re-scanning, and `walk` prints the same verdict to the terminal
-when the walk ends.
+- Timing is derivable from per-attempt timestamps (latency, retry cost, cumulative
+  `timeout × retries × OIDs`); no duplicated duration fields.
+- The exchange record stores the request-id **as returned by the device** next to the one
+  sent — the wrong-request-id smoking gun.
+- Varbinds carry `oid`, `vtype`, and `vlen` (value byte length) but never values; `vlen`
+  makes parsed records self-sufficient for OIDEmu profile fitting without re-parsing raw
+  hex.
+- The trace stores no target host name, IP, or port; the optional admin-chosen `label` is
+  the only correlation handle. `export-pcap` uses placeholder addresses in its
+  synthesized frames.
+- `walk` prints the same verdict to the terminal that the `summary` record carries.
 
 ## Error handling
 
