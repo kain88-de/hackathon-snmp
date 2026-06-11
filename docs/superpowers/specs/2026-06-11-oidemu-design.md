@@ -68,8 +68,13 @@ Pure function: trace bundle (files sharing one `session.id`, see
 `docs/trace-format.md`) → profile draft.
 
 - **Tree shape** ← union of response varbinds in walk order; `vlen` for sizes.
-- **Timing** ← per-attempt timestamps. Bulk-N runs support only range-level rules;
-  bulk-1 runs give per-OID rules; repeated passes expose caching.
+- **Timing** ← per-attempt timestamps, **single-attempt exchanges only** (trace format
+  § 4.3 normative rules: multi-attempt latency is ambiguous between retries and would
+  systematically underestimate when device latency exceeds the timeout; stray-correlated
+  pairs may be used where present). Bulk-N runs support only range-level rules; bulk-1
+  runs give per-OID rules; repeated passes expose caching. Ranges yielding only
+  multi-attempt exchanges are fitted as `assumed` and flagged in the fiction report:
+  "recapture with larger timeout".
 - **Quirks** ← recorded violations (request-id pattern, end-of-MIB behavior, source
   mismatch), attempt-level socket errors (refusal vs silence), sysUpTime resets between
   `system_info` records (reboot/crash thresholds, correlated with bulk-size changes

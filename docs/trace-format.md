@@ -147,10 +147,29 @@ attempt instead of silence: `"icmp-port-unreachable"`, `"icmp-host-unreachable"`
 `"send-failed"`; when set, `received_at` is null). Instant ICMP refusal and silent
 timeout are diagnostically opposite outcomes and must be distinguishable.
 
-Retries resend the **byte-identical datagram** (same request-id) — this is why
-`request.raw` is singular, and why a late-arriving response is inherently ambiguous
-between attempts. The response is attributed to the attempt whose `received_at` is set;
-consumers doing latency analysis must treat multi-attempt exchanges accordingly.
+Retries resend the **byte-identical datagram** (same request-id, matching net-snmp
+behavior and avoiding double-processing semantics on agents that dedupe by request-id) —
+this is why `request.raw` is singular, and why a late-arriving response is inherently
+ambiguous between attempts: a reply to attempt 1 arriving just after attempt 2 was sent
+is indistinguishable from a fast reply to attempt 2. The recorder attributes the response
+to the attempt whose `received_at` is set, but that attribution is a bookkeeping
+convention, not a timing claim.
+
+**Normative rules for timing consumers** (profile fitting, latency analysis):
+
+1. Only **single-attempt exchanges** (`len(attempts) == 1`) are valid point samples for
+   latency. They are unambiguous by construction.
+2. For multi-attempt exchanges, the true latency is only bounded:
+   `received_at − attempts[-1].sent_at ≤ latency ≤ received_at − attempts[0].sent_at`.
+   Use the bounds or discard; never use the naive last-attempt delta — when device
+   latency consistently exceeds the timeout, that delta systematically underestimates.
+3. **Disambiguation via strays**: a device answering every attempt produces the response
+   plus a stray whose arrival gap matches the gap between attempt sends; when present,
+   this pins the true latency to `first datagram − attempts[0].sent_at`. The per-datagram
+   timestamps exist precisely to allow this.
+4. A range that yields *only* multi-attempt exchanges means the timeout was too low for
+   reliable measurement there — the correct remedy is recapturing that range with a
+   larger timeout, not statistical heroics over ambiguous samples.
 
 `response`: `request_id` (int, **as returned by the device** — compare with
 `request.request_id`), `error_status` (int), `error_index` (int), `varbinds` (array),
