@@ -6,58 +6,88 @@ Status: approved
 ## Purpose
 
 OIDTrace captures an SNMP walk against a single device in a highly detailed, portable trace.
-The trace is the input for OIDPlayback (replay the device as truthfully as possible) and
-OIDSense (troubleshooting analysis). Traces are produced by customer admins on-site and
-attached to support tickets, so they must be: a single file, inspectable, reasonably small,
-and free of device values.
+The trace is the input for OIDPlayback (replays the device's **protocol behavior and
+timing** — not its values, which are not recorded) and OIDSense (troubleshooting analysis,
+including an automated settings finder). Traces are produced by customer admins on-site and
+attached to support tickets, so they must be: a single file per walk, inspectable with
+nothing but a text tool, reasonably small, and free of device values.
 
 Core requirements:
 
 - Record both parsed PDU-level data (human-readable) and raw wire bytes, to capture
   RFC violations — especially responses returning a wrong request-id.
-- Never store SNMP values or the community string. Raw packets are scrubbed.
+- Never store SNMP values or the community string — except a small, admin-approved
+  system-OID allowlist (see Scrubber). Raw packets are always scrubbed.
 - Support SNMP v1 + v2c first; the format must leave room for v3 (including priv) later.
 - A partial trace (crash, Ctrl-C, unresponsive device) is still a valid, useful trace.
 
-## Trace format decision: CBOR sequence
+### Usage reality the design serves
 
-The trace file is a **CBOR sequence (RFC 8949 + RFC 8742)**: concatenated CBOR records,
-appended one per exchange during the walk.
+The admin almost always runs OIDTrace **on the monitoring server** (SNMP access is ACL'd to
+its IP), against a device that is slow by definition. The benchmark to beat is support
+saying "run `snmpbulkwalk` and paste the output" — so invocation must be one command,
+progress must be visible, and the admin must get an immediate payoff (a terminal summary),
+not just an opaque file.
 
-Why CBOR over the alternatives considered:
+## Trace format decision: gzipped JSON Lines
 
-- **vs. JSONL+gzip**: same data model and same streaming/append property, but CBOR has a
-  native bytes type — raw packets are stored as bytes, not hex/base64. JSON remains the
-  *presentation* format: `oidtrace show` renders the trace as JSON losslessly (bytes → hex),
-  which satisfies the "portable json we can show to admins" requirement.
+The trace file is **gzipped JSON Lines**: one JSON object per line, appended and flushed
+per exchange during the walk. Raw packet bytes are lowercase hex strings.
+
+Why JSONL over the alternatives considered:
+
+- **vs. CBOR sequence**: CBOR was the initial choice (native bytes, binary-JSONL
+  semantics), but it fails the transparency test at both ends: the admin needs our tool to
+  verify what they are about to share, and support needs it to read a ticket attachment.
+  JSONL+gzip means `zcat | less` / `jq` works everywhere with zero setup. CBOR's remaining
+  advantage — no hex encoding of raw bytes — is an efficiency argument that gzip makes
+  irrelevant.
 - **vs. pcapng (+ JSONL sidecar)**: Wireshark support is attractive, but pcapng has no home
   for derived data (settings, retries, violations, walk events); correlating a two-file
-  format is the expensive kind of custom tooling. Instead, `oidtrace export-pcap` generates
-  a pcapng *view* on demand from the stored raw bytes.
+  format is the expensive kind of custom tooling. Instead, `oidtrace export-pcap` can
+  generate a pcapng *view* on demand from the stored raw bytes (explicitly deferrable, see
+  De-scoping order).
 - **vs. protobuf/Avro/Parquet**: schema artifacts defeat admin transparency; Parquet cannot
   append.
 
-Size estimate: a large device (~100k OIDs, bulk 10) is ~10k exchanges → tens of MB,
-well within support-ticket limits; scrubbed packets compress extremely well if needed.
+Size estimate: a large device (~100k OIDs, bulk 10) is ~10k exchanges → tens of MB
+uncompressed (hex roughly doubles the raw-bytes share); gzip brings it to single-digit MB —
+well within support-ticket limits.
 
 ## Components
 
 ```
 oidtrace CLI
-├── walk         capture a trace
-├── show         render trace as JSON (the portable view for admins)
-└── export-pcap  emit pcapng of captured packets for Wireshark
+├── walk         capture a trace (prints summary at end, progress on stderr)
+├── show         summarize / pretty-print a trace (the raw file is readable without it)
+└── export-pcap  emit pcapng of captured packets for Wireshark [deferrable]
 
 walk pipeline:
   Walk Engine ──> Codec ──> Transport ──> device
        │            │           │
-       └────────────┴───────────┴──> Scrubber ──> Trace Writer (CBOR append)
+       └────────────┴───────────┴──> Scrubber ──> Trace Writer (JSONL append)
 ```
 
 `walk` accepts a **settings matrix** (e.g. several bulk sizes / timeouts); the combos run
 sequentially and **each run writes its own trace file** into an output directory (zippable
 for a ticket). The trace schema stays one-walk-per-file; the matrix is purely a CLI
-convenience.
+convenience. Matrix capture (e.g. bulk-10 survey plus bulk-1 over slow ranges) is also the
+guidance for capturing a problem device for algorithm development: a single bulk walk
+contains no per-OID timing, so OIDPlayback can only answer truthfully about request shapes
+the trace bundle actually contains.
+
+The walk engine is **one pluggable driver** of the codec/transport/scrubber/writer
+pipeline. The future OIDSense settings finder (survey walk → pinpoint slow OIDs at bulk 1 →
+derive settings) is another driver of the same stack; every probing session emits a trace.
+
+### CLI usability requirements
+
+- `--label "switch-floor3"` — admin-chosen run label recorded in the header; the only
+  device-correlating information in a trace, and the admin typed it themselves.
+- Community string is taken from a prompt or environment variable, never a CLI argument
+  (shell history on a shared monitoring server).
+- Progress on stderr during the walk; a terminal summary at the end (exchange count,
+  violations found, slowest ranges, path of the written trace).
 
 ### Transport
 
@@ -96,10 +126,19 @@ flagged and kept verbatim — "we couldn't even parse it" is evidence — with a
 `--drop-unparsed` escape hatch. `show` highlights verbatim packets so the admin knows
 exactly what they would be sharing.
 
+**System-OID allowlist** — the one deliberate exception to "no values": a handful of system
+OIDs (sysDescr, sysObjectID, sysUpTime) are read with a dedicated Get at walk start and
+walk end and stored with values in `system_info` records. Rationale: sysDescr/sysObjectID
+answer support's first question ("what device/firmware is this?"), and sysUpTime
+before/after is the only proof of the worst quirk — *device reboots on large bulk
+requests*. The captured values are **shown to the admin at capture time for approval**;
+they can be excluded interactively or via `--hide-system-info`. Raw packets are scrubbed
+regardless — allowlisted values live only in the explicit, visible `system_info` records.
+
 ### Trace writer
 
-Appends one CBOR record per exchange, flushed as the walk proceeds, so a crash or Ctrl-C
-leaves a valid trace.
+Appends one JSON line per record to the gzipped trace, flushed as the walk proceeds, so a
+crash or Ctrl-C leaves a valid (possibly truncated, still readable) trace.
 
 ### Packaging
 
@@ -109,37 +148,51 @@ where both can import them (small shared package now, or extracted when OIDPlayb
 
 ## Trace record schema
 
-Each record is a CBOR map with a `type` field. Readers ignore unknown fields; `format_version`
-in the header gates breaking changes. This is the whole compatibility story — enough room to
-add v3 fields (auth params, decrypted-PDU bytes) later without breaking readers.
+Each line is a JSON object with a `type` field. Readers ignore unknown fields;
+`format_version` in the header gates breaking changes. This is the whole compatibility
+story — enough room to add v3 fields (auth params, decrypted-PDU bytes) later without
+breaking readers. Raw bytes are lowercase hex strings.
 
 ### `header` (always first)
 
 ```
 {type: "header", format_version: 1, tool: "oidtrace 0.1.0",
  started_at: <timestamp>,
+ label: "switch-floor3",                 # admin-chosen, optional
  snmp: {version: "2c"},                  # community redacted, never stored
  settings: {bulk_size: 10, timeout_s: 2.0, retries: 2, start_oid: "1.3.6.1"}}
 ```
 
 The trace deliberately stores no target host name, IP, or port: device identity is not
-needed for playback, and omitting it makes traces safer to share. `export-pcap` uses
-placeholder addresses in its synthesized frames.
+needed for playback, and omitting it makes traces safer to share. The optional `label` is
+the only correlation handle, and the admin chooses it. `export-pcap` uses placeholder
+addresses in its synthesized frames.
+
+### `system_info` (after header, and again before summary; admin-approved)
+
+```
+{type: "system_info", at: <ts>, point: "start" | "end",
+ values: {"1.3.6.1.2.1.1.1.0": "<sysDescr>", "1.3.6.1.2.1.1.2.0": "<sysObjectID>",
+          "1.3.6.1.2.1.1.3.0": <sysUpTime>}}
+```
+
+Absent entirely when the admin hides system info. Start-vs-end sysUpTime lets OIDSense
+prove a mid-walk device reboot.
 
 ### `exchange` (one per logical request)
 
 ```
 {type: "exchange", seq: 42,
  request: {pdu: "getbulk", request_id: 1042, oids: ["1.3.6.1.2.1.2.2.1.3"],
-           non_repeaters: 0, max_repetitions: 10, raw: <bytes, scrubbed>},
+           non_repeaters: 0, max_repetitions: 10, raw: "<hex, scrubbed>"},
  attempts: [{sent_at: <ts>, received_at: <ts> | null}, ...],   # one per send incl. retries
  response: {request_id: 1,                # request_id AS RETURNED by the device
             error_status: 0, error_index: 0,
             varbinds: [{oid: "...", vtype: "OctetString"}, ...],  # types only, no values
-            raw: <bytes, scrubbed>} | null,                       # null = never answered
- stray_responses: [{received_at: <ts>, raw: <bytes, scrubbed>}, ...],  # dupes, late replies
+            raw: "<hex, scrubbed>"} | null,                       # null = never answered
+ stray_responses: [{received_at: <ts>, raw: "<hex, scrubbed>"}, ...],  # dupes, late replies
  violations: ["request-id-mismatch"],
- malformed: {raw: <bytes>, error: "..."} | absent}
+ malformed: {raw: "<hex>", error: "..."} | absent}
 ```
 
 Timing is derivable from per-attempt timestamps (latency, retry cost, cumulative
@@ -159,7 +212,8 @@ Kinds: `oid-loop-detected`, `walk-aborted-by-user`, `time-budget-exceeded`.
 
 Exchange count, duration, violation tally, and `end_reason` (one of `completed`,
 `unresponsive`, `interrupted`, `time-budget-exceeded`, `oid-loop`) — `show` prints a
-one-screen verdict without re-scanning.
+one-screen verdict without re-scanning, and `walk` prints the same verdict to the terminal
+when the walk ends.
 
 ## Error handling
 
@@ -188,8 +242,8 @@ Three layers, ordered fast-to-slow:
    decode against hand-crafted malformed BER; the critical scrubber property — *a scrubbed
    packet parses identically to the original except values are zeroed, and contains no byte
    sequence from any original value* (Hypothesis candidate). Trace format round-trips,
-   including truncated-file reads (the crash-safety claim is tested, not assumed) and
-   `show` emitting valid JSON. Cross-validation without system tools: **pysnmp as a
+   including truncated-file reads (the crash-safety claim is tested, not assumed) and every
+   line parsing as valid JSON. Cross-validation without system tools: **pysnmp as a
    test-only dependency** must parse packets our codec encodes into the same fields.
 2. **Integration over loopback UDP**: the quirk emulator runs in-process as an asyncio UDP
    server on `127.0.0.1:<random port>` (the fast pattern from the previous project). Each
@@ -200,8 +254,9 @@ Three layers, ordered fast-to-slow:
    the tool is absent):
    - **net-snmp cross-walk**: `snmpbulkwalk` (subprocess) and our walker both walk the same
      emulator; the OID sequences must match.
-   - **tshark validation**: `export-pcap` output fed to `tshark -T json`; the SNMP
-     dissector must see the same request-ids/OIDs the trace claims.
+   - **tshark validation** (with export-pcap, deferrable): `export-pcap` output fed to
+     `tshark -T json`; the SNMP dissector must see the same request-ids/OIDs the trace
+     claims.
 
 Runner: pytest with async test functions. `just test` runs layers 1–2 (fast default);
 `just test-all` runs everything and **fails hard** if reference tools are missing, so
@@ -221,10 +276,26 @@ silently; the reference-tool layer exists to break exactly that circularity —
 `snmpbulkwalk` validates the emulator and tshark validates the walker, independently of
 our code.
 
+## De-scoping order
+
+If time runs short, cut in this order (decided now, not under pressure):
+
+1. `export-pcap` (and its tshark test) — zero critical-path value.
+2. SNMP v1 support — v2c GetBulk covers the troubleshooting doc's cases.
+3. The settings-matrix CLI convenience — admins can invoke the tool repeatedly.
+
+The codec, transport, scrubber, trace writer, and walk-end summary are the product and
+cannot be cut; the codec's scope stays ruthlessly minimal (encode two PDU types, decode
+one).
+
 ## Out of scope (for now)
 
 - SNMPv3 (all security levels) — format leaves room via versioning and unknown-field
   tolerance; full support including priv requires storing decrypted PDU bytes.
 - OIDPlayback and OIDSense themselves — separate specs; they consume this trace format.
-- Recording SNMP values in any form — with one acknowledged exception: unparseable packets
-  kept verbatim (flagged, highlighted by `show`, removable via `--drop-unparsed`).
+  Note the scope line: OIDPlayback replays protocol behavior and timing, **not values** —
+  it cannot stand in for the device against value-parsing consumers (e.g. Checkmk checks);
+  value-faithful replay is snmpsim's territory, quirk-faithful replay is ours.
+- Recording SNMP values in any form — with two acknowledged exceptions: the admin-approved
+  system-OID allowlist (`system_info` records), and unparseable packets kept verbatim
+  (flagged, highlighted by `show`, removable via `--drop-unparsed`).
