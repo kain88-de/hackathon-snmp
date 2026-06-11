@@ -5,7 +5,7 @@ BER decoder, which is an independent implementation of the same wire format.
 """
 
 from pyasn1.codec.ber import decoder as ber_decoder  # type: ignore[import-untyped]
-from pysnmp.proto import api as snmp_api  # type: ignore[import-untyped]
+from pysnmp.proto.api import v2c as pmod  # type: ignore[import-untyped]
 
 from oidtrace.codec import encode_getbulk, encode_response
 from oidtrace.oid import Oid
@@ -13,9 +13,7 @@ from oidtrace.oid import Oid
 # ---------------------------------------------------------------------------
 # pysnmp spec — shared across all tests
 
-_pmods = snmp_api.PROTOCOL_MODULES
-_v2c = snmp_api.SNMP_VERSION_2C
-_SPEC = _pmods[_v2c].Message()
+_SPEC = pmod.Message()
 
 _OID = Oid.from_str("1.3.6.1.2.1.1.1")
 
@@ -33,12 +31,28 @@ def _decode(raw: bytes) -> object:
 
 def test_getbulk_bulk10_decodes_via_pysnmp() -> None:
     raw = encode_getbulk(42, _OID, non_repeaters=0, max_repetitions=10)
-    _decode(raw)
+    msg = _decode(raw)
+    decoded_pdu = pmod.apiMessage.get_pdu(msg)  # pyright: ignore[reportUnknownVariableType]
+    varbinds = pmod.apiBulkPDU.get_varbind_list(decoded_pdu)  # pyright: ignore[reportUnknownVariableType]
+    oid0, _ = pmod.apiVarBind.get_oid_value(varbinds[0])  # pyright: ignore[reportUnknownVariableType]
+    assert int(pmod.apiPDU.get_request_id(decoded_pdu)) == 42  # pyright: ignore[reportUnknownVariableType]
+    assert int(pmod.apiBulkPDU.get_non_repeaters(decoded_pdu)) == 0  # pyright: ignore[reportUnknownVariableType]
+    assert int(pmod.apiBulkPDU.get_max_repetitions(decoded_pdu)) == 10  # pyright: ignore[reportUnknownVariableType]
+    assert len(varbinds) == 1
+    assert oid0.prettyPrint() == str(_OID)  # pyright: ignore[reportUnknownVariableType]
 
 
 def test_getbulk_bulk1_decodes_via_pysnmp() -> None:
     raw = encode_getbulk(1, _OID, non_repeaters=0, max_repetitions=1)
-    _decode(raw)
+    msg = _decode(raw)
+    decoded_pdu = pmod.apiMessage.get_pdu(msg)  # pyright: ignore[reportUnknownVariableType]
+    varbinds = pmod.apiBulkPDU.get_varbind_list(decoded_pdu)  # pyright: ignore[reportUnknownVariableType]
+    oid0, _ = pmod.apiVarBind.get_oid_value(varbinds[0])  # pyright: ignore[reportUnknownVariableType]
+    assert int(pmod.apiPDU.get_request_id(decoded_pdu)) == 1  # pyright: ignore[reportUnknownVariableType]
+    assert int(pmod.apiBulkPDU.get_non_repeaters(decoded_pdu)) == 0  # pyright: ignore[reportUnknownVariableType]
+    assert int(pmod.apiBulkPDU.get_max_repetitions(decoded_pdu)) == 1  # pyright: ignore[reportUnknownVariableType]
+    assert len(varbinds) == 1
+    assert oid0.prettyPrint() == str(_OID)  # pyright: ignore[reportUnknownVariableType]
 
 
 def test_getbulk_max_repetitions_visible_on_wire() -> None:
@@ -73,7 +87,12 @@ def test_response_with_octetstring_and_counter32_decodes_via_pysnmp() -> None:
 def test_response_single_varbind_decodes_via_pysnmp() -> None:
     varbinds = [(Oid.from_str("1.3.6.1.2.1.1.1.0"), 0x04, b"hello")]
     raw = encode_response(5, varbinds)
-    _decode(raw)
+    msg = _decode(raw)
+    decoded_pdu = pmod.apiMessage.get_pdu(msg)  # pyright: ignore[reportUnknownVariableType]
+    assert int(pmod.apiPDU.get_request_id(decoded_pdu)) == 5  # pyright: ignore[reportUnknownVariableType]
+    assert int(pmod.apiPDU.get_error_status(decoded_pdu)) == 0  # pyright: ignore[reportUnknownVariableType]
+    assert int(pmod.apiPDU.get_error_index(decoded_pdu)) == 0  # pyright: ignore[reportUnknownVariableType]
+    assert len(pmod.apiPDU.get_varbind_list(decoded_pdu)) == 1  # pyright: ignore[reportUnknownVariableType]
 
 
 def test_response_community_settable() -> None:
