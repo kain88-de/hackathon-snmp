@@ -10,8 +10,8 @@ quirk-tolerant walk, schema-valid traces); format performance measured by
 
 OIDTrace captures an SNMP walk against a single device in a highly detailed, portable trace.
 The trace serves OIDSense (troubleshooting analysis, including an automated settings
-finder) and is the raw material for fitting OIDEmu device profiles (a recording cannot
-answer the novel probes an adaptive algorithm asks; a model fitted from recordings can).
+finder) and is the raw material for fitting OIDEmu device profiles (deferred until
+traces flow — see the OIDEmu spec's scope decision).
 Traces are produced by customer admins on-site and
 attached to support tickets, so they must be: a single file per walk, inspectable with
 nothing but a text tool, reasonably small, and free of device values.
@@ -23,7 +23,8 @@ Core requirements:
   not in format v1 at all; see "Raw capture (format v2 remark)" below.)
 - Never store SNMP values or the community string — except a small, admin-approved
   system-OID allowlist.
-- Support SNMP v1 + v2c first; the format must leave room for v3 (including priv) later.
+- Support SNMP v2c first; v1 next (explicitly de-scopable); the format must leave room
+  for v3 (including priv) later.
 - A partial trace (crash, Ctrl-C, unresponsive device) is still a valid, useful trace.
 
 ### Usage reality the design serves
@@ -98,7 +99,9 @@ OIDTrace — that is OIDSense's settings finder driving the same pipeline; the
 admin-facing capture tool stays deterministic, predictable, and explainable.
 
 The walk engine is **one pluggable driver** of the codec/transport/writer
-pipeline, and records flow to **pluggable sinks**: the gzip trace file is the canonical
+pipeline — the **doctor** (the suite's MVP) is the first additional driver, running the
+support settings ladder over the same stack, and the OIDSense adaptive finder follows.
+Records flow to **pluggable sinks**: the gzip trace file is the canonical
 sink, terminal progress is a second, and an SSE endpoint for a live web UI is a third —
 the format's streaming guarantee (one self-contained record per line) makes every sink
 see the same stream with no second data path. The future OIDSense settings finder (survey walk → pinpoint slow OIDs at bulk 1 →
@@ -128,7 +131,7 @@ request-id mismatch is recorded as a violation, not used for routing.
 
 ### Codec
 
-BER encoding for requests (v1 GetNext, v2c GetBulk initially) and a **tolerant decoder** for
+BER encoding for requests (v2c Get/GetNext/GetBulk initially; v1 later) and a **tolerant decoder** for
 responses: decode failures do not raise, they produce a "malformed" record carrying the
 decode error, the datagram length, and whatever was salvageable. Violation checks (request-id mismatch, non-increasing
 OIDs, missing endOfMibView) are pure functions over decoded PDUs.

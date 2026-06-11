@@ -1,26 +1,38 @@
 # OIDSense
 
-OIDSense is a suite of programs to trouble shoot snmp devices.
+OIDSense is a suite of tools to troubleshoot SNMP devices — the slow, the
+RFC-violating, and the silently broken.
 
-OIDTrace: capture a queries in a highly detailed trace
-OIDViz: render a trace as a self-contained HTML report — waterfall, violations, verdict
-OIDEmu: device emulator for tests, OIDSense development and demos (internal infrastructure;
-trace-fitted profiles deferred until traces actually flow)
-OIDSense: Troubleshoot the device — trace analysis plus an adaptive settings finder
+## The tools
 
-MVP: the **doctor** — one command that runs the support settings ladder automatically
-(bulk 10 → 8 → 5 → 1, then timeouts), subtree-scoped and time-budgeted, driving the
-OIDTrace pipeline: per-request timing, request-id evidence, traces as the escalation
-artifact. It produces a paste-ready settings verdict plus a self-contained HTML report.
-The record stream is live — the same trace records feed the file, terminal progress,
-and (later) an SSE web UI showing the walk as it happens. Captures are behavioral
-fingerprints in under a minute, never exhaustive walks. Long term, capture belongs
-inside Checkmk; the trace format is the durable artifact, the CLI the bootstrap.
+**doctor** — the MVP. One command that automates the support settings ladder
+(bulk 10 → 8 → 5 → 1, then timeouts), subtree-scoped and time-budgeted, and answers:
+_which settings make this device work?_ Output: a paste-ready Checkmk settings verdict,
+a self-contained HTML report, and a trace bundle as the escalation artifact. Progress
+streams live while it runs.
 
-## OIDTrace
+**OIDTrace** — the capture layer and CLI underneath everything. Walks a device and
+records parsed wire evidence — per-attempt timing, the request-id the device actually
+returned, protocol violations — into a portable gzipped-JSONL trace. Traces contain no
+values (except a small, admin-approved system-OID allowlist), no packet bytes, and no
+device identity; an admin can read one with `zcat` before sharing it. Format spec:
+`docs/trace-format.md` (+ JSON Schema).
 
-OIDTrace can do an snmp walk with different settings.
-The results are portable json, so we can show to admins what we collect.
-We do not record values, not interesting for trouble shooting — except a small
-system-OID allowlist (sysDescr, sysObjectID, sysUpTime) that is shown to the admin
-at capture time for approval, used to identify the device and to prove mid-walk reboots.
+**OIDViz** — renders a trace or session bundle as a self-contained HTML report:
+verdict panel, latency waterfall, subtree heat, run comparison. Opens by double-click,
+attaches to a ticket, works offline. Shares its rendering with the doctor's report.
+
+**OIDSense** — the troubleshooting brain: offline trace analysis plus an adaptive
+settings finder that evolves from the doctor's deterministic ladder (survey → pinpoint
+slow OIDs → derive settings).
+
+**OIDEmu** — a quirk-faithful device emulator (latency curves, bulk-size crashes, fixed
+request-ids) for tests, algorithm development, and demos. Internal infrastructure;
+fitting profiles from customer traces is deferred until traces actually flow.
+
+## Where things stand
+
+Design specs live in `docs/superpowers/specs/`; the trace format
+(`docs/trace-format.md` + `docs/trace-format.schema.json`) is authoritative and
+validated by experiments in `experiments/`. Implementation plan for the capture layer:
+`docs/superpowers/plans/2026-06-11-oidtrace.md`.

@@ -5,9 +5,10 @@ Status: **draft — captures the idea and scope; not yet fully brainstormed**
 
 OIDViz renders a trace (or a session bundle) for humans. Premise: for many support
 cases the trace alone, made visible, is the diagnosis — a latency waterfall with
-violation markers points at the problem without any automation. **OIDTrace + OIDViz is
-the suite's MVP**: capture the evidence, see the problem. OIDSense (automated settings
-finder) and OIDEmu build on top.
+violation markers points at the problem without any automation. The **doctor** (the
+suite's MVP, see the doctor spec) embeds the same rendering in its HTML report; OIDViz
+is the standalone "render any trace" form of it, and the two share one rendering
+library.
 
 ## Product shape
 
@@ -33,7 +34,7 @@ waterfall/heatmap/flamegraph demo pages.)
 
 ## Constraints
 
-- **Streaming reader** (format spec § 6a): report generation is a single pass per file;
+- **Streaming reader** (format spec § 6): report generation is a single pass per file;
   the embedded data is the _aggregated_ view model, not the raw trace, so report size
   stays small even for 100k-line traces.
 - No values and no packet bytes exist in traces (except the admin-approved

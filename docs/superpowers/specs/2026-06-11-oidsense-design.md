@@ -11,6 +11,10 @@ OIDSense is the troubleshooting brain of the suite: offline analysis of traces p
 **online adaptive settings finder**. The visualization of traces is OIDViz's job
 (separate spec); OIDSense produces _verdicts and recommended settings_.
 
+**Phase 0 is the doctor** (the suite's MVP, separate spec): the deterministic support
+ladder over the same pipeline. The adaptive finder described here evolves from it —
+same drivers, same verdict output, smarter probe selection.
+
 ## Why the settings finder must be online
 
 A GetBulk exchange yields one latency number for ~10 OIDs — attribution inside a bulk is

@@ -141,7 +141,7 @@ comfortably emulatable; sub-100 µs timing fidelity would be limited by Python a
 kernel, not by the profile data structures or the trace format.
 
 **Fitting is one streaming pass per file** (guaranteed by the trace format's streaming
-guarantee, `docs/trace-format.md` § 6a), with per-file aggregates merged across the
+guarantee, `docs/trace-format.md` § 6), with per-file aggregates merged across the
 bundle. Memory is proportional to distinct OIDs, not trace bytes. Worst realistic bundle
 (100k-OID device, 5-run matrix incl. a bulk-1 run, ~300 MB uncompressed) is seconds of
 one-time CPU. Profiles, not traces, are the artifact that must stay compact and
