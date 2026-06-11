@@ -14,8 +14,8 @@ streams live while it runs.
 **OIDTrace** — the capture layer and CLI underneath everything. Walks a device and
 records parsed wire evidence — per-attempt timing, the request-id the device actually
 returned, protocol violations — into a portable gzipped-JSONL trace. Traces contain no
-values (except a small, admin-approved system-OID allowlist), no packet bytes, and no
-device identity; an admin can read one with `zcat` before sharing it. Format spec:
+values, no packet bytes, and no device identity; an admin can read one with `zcat`
+before sharing it. Format spec:
 `docs/trace-format.md` (+ JSON Schema).
 
 **OIDViz** — renders a trace or session bundle as a self-contained HTML report:
