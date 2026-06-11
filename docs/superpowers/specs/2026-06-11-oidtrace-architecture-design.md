@@ -33,6 +33,12 @@ saying "run `snmpbulkwalk` and paste the output" — so invocation must be one c
 progress must be visible, and the admin must get an immediate payoff (a terminal summary),
 not just an opaque file.
 
+**Adoption thesis**: trace acquisition friction is the suite's biggest external risk.
+The mitigation is that the admin's payoff is immediate and local (terminal verdict, an
+OIDViz report they see themselves) — not "upload and wait". Long term, capture belongs
+*inside* Checkmk, which already speaks SNMP to the device from the right network
+position; the trace format is the durable artifact, the standalone CLI the bootstrap.
+
 ## Trace format decision: gzipped JSON Lines
 
 The trace file is **gzipped JSON Lines**: one JSON object per line, appended and flushed
@@ -79,6 +85,19 @@ convenience. Matrix capture (e.g. bulk-10 survey plus bulk-1 over slow ranges) i
 guidance for capturing a problem device: a single bulk walk contains no per-OID timing, so
 an OIDEmu profile fitted from the bundle is only as truthful as the request shapes the
 bundle actually contains.
+
+**Capture scope guidance**: full-tree walks are the wrong default for large devices —
+monitoring polls specific subtrees, and the diagnostic question is whether *those* fit
+the cycle window. The recommended pattern is **subtree-scoped, time-budgeted runs**
+(e.g. three ~15 s runs: bulk 10 baseline, bulk 0/GetNext slow-check, bulk-stress),
+not exhaustive coverage; a bounded behavioral fingerprint in under a minute beats an
+hours-long map. Mechanics: multiple `--start-oid` values spawn one run per subtree
+within the same session (one-walk-per-file preserved); `--resume <trace>` continues
+where a previous run's time budget hit, recording the optional `settings.resume_from`
+field (additive, no format version bump) while `start_oid` remains the subtree bound.
+Adaptivity (changing settings based on observed latency) deliberately stays out of
+OIDTrace — that is OIDSense's settings finder driving the same pipeline; the
+admin-facing capture tool stays deterministic, predictable, and explainable.
 
 The walk engine is **one pluggable driver** of the codec/transport/scrubber/writer
 pipeline. The future OIDSense settings finder (survey walk → pinpoint slow OIDs at bulk 1 →

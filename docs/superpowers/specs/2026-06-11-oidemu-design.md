@@ -15,6 +15,19 @@ three consumers:
    standalone trace replay, "OIDPlayback", was dropped.)
 3. **Demos** — a library of pathological device personalities, no broken hardware needed.
 
+## Scope decision (2026-06-11): infrastructure now, product later
+
+OIDEmu splits into two halves with very different dependencies:
+
+- **The emulator** (responder core + hand-written profiles) is needed regardless of
+  external adoption — it serves all three consumers above and is already being built as
+  the OIDTrace test fixture. Build it.
+- **`fit-profile`** is the only part gated on customer traces actually existing — i.e.
+  on people running OIDTrace and sending results, which is the suite's biggest adoption
+  risk. **Deferred** until traces flow. The trace format already guarantees fitting
+  stays possible (validated under the emulator-sufficiency review), so deferral costs
+  nothing; if traces never materialize, only this spec section is wasted.
+
 ## Architecture
 
 Thin asyncio UDP responder + the shared codec package. Per request: decode → ask the

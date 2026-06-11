@@ -78,7 +78,9 @@ the same `session.id` — the correlation profile fitting and cross-run analysis
 single walk is `run: 1, runs_total: 1`.
 
 `settings` fields: `bulk_size` (int; `0` means GetNext walk), `timeout_s` (number),
-`retries` (int), `start_oid` (string), `time_budget_s` (number, optional).
+`retries` (int), `start_oid` (string), `time_budget_s` (number, optional),
+`resume_from` (OID string, optional — the walk cursor was continued from a previous
+run's stopping point; `start_oid` remains the subtree bound).
 
 The header deliberately contains **no target host name, IP, or port** (§ 7).
 

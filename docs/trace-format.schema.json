@@ -80,7 +80,11 @@
             "timeout_s": { "type": "number", "exclusiveMinimum": 0 },
             "retries": { "type": "integer", "minimum": 0 },
             "start_oid": { "$ref": "#/$defs/oid" },
-            "time_budget_s": { "type": "number", "exclusiveMinimum": 0 }
+            "time_budget_s": { "type": "number", "exclusiveMinimum": 0 },
+            "resume_from": {
+              "$ref": "#/$defs/oid",
+              "description": "Walk cursor continued from a previous run; start_oid remains the subtree bound"
+            }
           }
         }
       }
