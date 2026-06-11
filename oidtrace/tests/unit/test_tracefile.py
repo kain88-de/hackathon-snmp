@@ -1,12 +1,12 @@
 """Tests for oidtrace.tracefile — gzip-JSONL trace I/O."""
 
-import pytest
+from pathlib import Path
 
 from oidtrace.tracefile import TraceWriter, read_trace
 
 
-def test_round_trip(tmp_path: pytest.TempPathFactory) -> None:
-    path = tmp_path / "trace.jsonl.gz"  # type: ignore[operator]
+def test_round_trip(tmp_path: Path) -> None:
+    path = tmp_path / "trace.jsonl.gz"
     records = [
         {"type": "get", "oid": "1.3.6.1.2.1.1.1.0"},
         {"type": "response", "value": 42},
@@ -20,8 +20,8 @@ def test_round_trip(tmp_path: pytest.TempPathFactory) -> None:
     assert result == records
 
 
-def test_truncation_tolerance(tmp_path: pytest.TempPathFactory) -> None:
-    path = tmp_path / "trace.jsonl.gz"  # type: ignore[operator]
+def test_truncation_tolerance(tmp_path: Path) -> None:
+    path = tmp_path / "trace.jsonl.gz"
     records = [
         {"seq": 0},
         {"seq": 1},
@@ -42,9 +42,9 @@ def test_truncation_tolerance(tmp_path: pytest.TempPathFactory) -> None:
         assert rec == records[i]
 
 
-def test_ctrl_c_safety(tmp_path: pytest.TempPathFactory) -> None:
+def test_ctrl_c_safety(tmp_path: Path) -> None:
     """After write() without close(), the record is already readable."""
-    path = tmp_path / "trace.jsonl.gz"  # type: ignore[operator]
+    path = tmp_path / "trace.jsonl.gz"
     record = {"event": "hello"}
 
     w = TraceWriter(path)
