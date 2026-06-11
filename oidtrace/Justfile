@@ -1,0 +1,19 @@
+fmt:
+    uv run ruff format src tests
+
+lint:
+    uv run ruff check src tests
+
+types:
+    uv run pyrefly check
+
+types-pyright:
+    uv run pyright src
+
+test:
+    uv run pytest -m "not reference_tools" -q
+
+test-all:
+    REQUIRE_REFERENCE_TOOLS=1 uv run pytest -q
+
+ci: fmt lint types test
