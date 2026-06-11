@@ -3,7 +3,7 @@
 import pytest
 
 from oidtrace.ber import decode_int, decode_oid, encode_int, encode_oid, read_tlv, tlv
-from oidtrace.oid import parse_oid
+from oidtrace.oid import Oid
 
 # ------------------------------------------------------------------ tlv / read_tlv
 
@@ -65,12 +65,20 @@ def test_int_roundtrip(v: int) -> None:
     ],
 )
 def test_oid_roundtrip(oid_str: str) -> None:
-    oid = parse_oid(oid_str)
+    oid = Oid.from_str(oid_str)
     buf = encode_oid(oid)
     tag, body, next_i = read_tlv(buf, 0)
     assert tag == 0x06
     assert next_i == len(buf)
     assert decode_oid(body) == oid
+
+
+def test_oid_roundtrip_str() -> None:
+    oid_str = "1.3.6.1.2.1"
+    oid = Oid.from_str(oid_str)
+    buf = encode_oid(oid)
+    _, body, _ = read_tlv(buf, 0)
+    assert str(decode_oid(body)) == oid_str
 
 
 # ------------------------------------------------------------------ read_tlv error cases

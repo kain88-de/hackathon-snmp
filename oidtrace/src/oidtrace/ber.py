@@ -25,8 +25,8 @@ def encode_int(v: int, tag: int = 0x02) -> bytes:
 
 def encode_oid(oid: Oid) -> bytes:
     """OID TLV: first two arcs packed as 40*a+b, remaining arcs base-128."""
-    body = bytearray([40 * oid[0] + oid[1]])
-    for arc in oid[2:]:
+    body = bytearray([40 * oid.arcs[0] + oid.arcs[1]])
+    for arc in oid.arcs[2:]:
         chunk = [arc & 0x7F]
         remaining = arc >> 7
         while remaining:
@@ -89,4 +89,4 @@ def decode_oid(body: bytes) -> Oid:
             in_multibyte = False
     if in_multibyte:
         raise ValueError("truncated multi-byte OID arc")
-    return tuple(arcs)
+    return Oid(tuple(arcs))
