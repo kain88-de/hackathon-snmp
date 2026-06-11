@@ -98,7 +98,10 @@ OIDTrace — that is OIDSense's settings finder driving the same pipeline; the
 admin-facing capture tool stays deterministic, predictable, and explainable.
 
 The walk engine is **one pluggable driver** of the codec/transport/writer
-pipeline. The future OIDSense settings finder (survey walk → pinpoint slow OIDs at bulk 1 →
+pipeline, and records flow to **pluggable sinks**: the gzip trace file is the canonical
+sink, terminal progress is a second, and an SSE endpoint for a live web UI is a third —
+the format's streaming guarantee (one self-contained record per line) makes every sink
+see the same stream with no second data path. The future OIDSense settings finder (survey walk → pinpoint slow OIDs at bulk 1 →
 derive settings) is another driver of the same stack; every probing session emits a trace.
 
 ### CLI usability requirements

@@ -14,45 +14,43 @@ reduce retries"_ — and turns it into a verdict plus a self-contained HTML repo
   recites, automated.
 - The admin's payoff is immediate and local: a terminal verdict with **paste-ready
   Checkmk settings** and an HTML report. No upload-and-wait.
-- Full evidence capture (OIDTrace) and visualization (OIDViz) slot in underneath and
-  behind it, staged.
+- Full evidence capture (OIDTrace) sits underneath it; visualization (OIDViz) renders
+  what it produces.
 
-## Stage 1 (the real MVP): ladder over net-snmp
+## Architecture: the ladder drives the OIDTrace pipeline
 
-- Driver: subprocess `snmpbulkwalk` / `snmpgetnext` with varied `-Cr` (bulk), `-t`
-  (timeout), `-r` (retries); subtree-scoped (`--start-oid`, multiple allowed) and
-  time-budgeted per rung (~15 s; subprocess timeout enforces it).
-- Measurement: wall clock per rung; completed-vs-timed-out; OID count from stdout.
-  Streaming stdout with per-line timestamps gives rough slow-region attribution for
-  free (inter-line gaps).
-- Output: terminal verdict ("works at bulk 5, timeout 3 s — set these Checkmk knobs"),
-  a self-contained HTML report (rung table, slow regions, recommendation), and a small
-  JSON result document per session.
-- Hard runtime dependency on net-snmp — acceptable: it is preinstalled on monitoring
-  servers, and the doctor runs there.
-- What stage 1 cannot see: per-request timing, returned request-ids, stray/duplicate
-  responses, ICMP-vs-silence distinction. Acceptable for the ladder verdict.
+The doctor is a **driver of the OIDTrace stack** (codec/transport/walker) from day one —
+no net-snmp orchestration stage. Two reasons:
 
-## Stage 2: swap the driver for the OIDTrace stack
+1. **Evidence quality**: per-request timing, returned request-ids, ICMP-vs-silence — the
+   verdict can say _why_, not just _which rung worked_.
+2. **Streaming architecture**: the trace format's streaming guarantee (one
+   self-contained record per line) means the record stream is also a **live event
+   stream**. The walker emits each record to pluggable sinks: the gzip trace file
+   (canonical), terminal progress (stderr), and later an SSE endpoint for an
+   interactive web UI that shows the walk live — same records, three consumers, no
+   second data path. (The previous project's SSE diagnose streaming validated this UX.)
 
-Same ladder, same report — the net-snmp subprocess is replaced by the
-codec/transport/walker pipeline (already planned and PoC-proven). Gains: per-request
-timing, violation evidence ("your device answers with request-id 1 — that is why your
-library fails"), ICMP-vs-silence, and **lite traces (format v1) as the escalation
-artifact**: when the ladder finds no working settings, the admin already holds the
-session bundle for support.
+Per ladder rung: subtree-scoped, time-budgeted walk via `run_walk` with that rung's
+settings; all rungs share one session id, one trace file per rung (the escalation
+bundle when no rung works). net-snmp remains a **test-time reference tool only**
+(cross-walk validation), not a runtime dependency.
+
+Output: terminal verdict ("works at bulk 5, timeout 3 s — set these Checkmk knobs"),
+a self-contained HTML report (rung table, slow regions, violations, recommendation),
+and the trace bundle.
 
 ## Testing
 
-Stage 1 is tested against the quirk emulator (net-snmp talks to it — proven by the
-reference-tools cross-walk pattern); these tests require `snmpbulkwalk` on PATH, which
-is a hard dependency of stage 1 anyway. Stage 2 inherits the OIDTrace plan's test
-pyramid.
+Ladder logic is pure (rung results in → verdict out): unit-testable. End-to-end:
+doctor vs the quirk emulator with each pathology, asserting the verdict and the trace
+bundle. Inherits the OIDTrace plan's test pyramid; the net-snmp cross-walk stays the
+independent reference check.
 
 ## Open questions (for the real brainstorming session)
 
 - Exact ladder definition and stopping rules (first-working-rung vs full fingerprint).
 - Verdict wording and the exact Checkmk ruleset fields it should name.
 - HTML report rendering stack (shared with OIDViz; must stay single-file).
-- Whether stage 1's JSON result document should be a profile of the trace format's
-  header/summary records or its own tiny schema.
+- Whether the verdict document is derived purely from the trace bundle's
+  header/summary records or needs its own tiny schema.

@@ -9,10 +9,11 @@ trace-fitted profiles deferred until traces actually flow)
 OIDSense: Troubleshoot the device — trace analysis plus an adaptive settings finder
 
 MVP: the **doctor** — one command that runs the support settings ladder automatically
-(bulk 10 → 8 → 5 → 1, then timeouts) over net-snmp, subtree-scoped and time-budgeted,
-and produces a self-contained HTML report plus a paste-ready settings verdict.
-Stage 2 swaps the net-snmp driver for the OIDTrace stack (per-request timing,
-request-id evidence, lite traces as the escalation artifact). Captures are behavioral
+(bulk 10 → 8 → 5 → 1, then timeouts), subtree-scoped and time-budgeted, driving the
+OIDTrace pipeline: per-request timing, request-id evidence, traces as the escalation
+artifact. It produces a paste-ready settings verdict plus a self-contained HTML report.
+The record stream is live — the same trace records feed the file, terminal progress,
+and (later) an SSE web UI showing the walk as it happens. Captures are behavioral
 fingerprints in under a minute, never exhaustive walks. Long term, capture belongs
 inside Checkmk; the trace format is the durable artifact, the CLI the bootstrap.
 
