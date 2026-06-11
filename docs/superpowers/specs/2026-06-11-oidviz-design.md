@@ -28,16 +28,16 @@ waterfall/heatmap/flamegraph demo pages.)
 4. **Run comparison** — for session bundles: the same device at bulk 10 vs bulk 8 vs
    bulk 1, side by side. This is the visual form of the troubleshooting workflow.
 5. **Exchange detail** — drill-down per exchange: parsed request/response, returned vs
-   sent request-id, hex dump of scrubbed raw. Verbatim `malformed` packets prominently
-   flagged (they are the one place values can hide — § 7 of the format spec).
+   sent request-id, per-attempt timing. `malformed` markers (decode error + datagram
+   length) prominently flagged.
 
 ## Constraints
 
 - **Streaming reader** (format spec § 6a): report generation is a single pass per file;
-  the embedded data is the *aggregated* view model, not the raw trace, so report size
+  the embedded data is the _aggregated_ view model, not the raw trace, so report size
   stays small even for 100k-line traces.
-- No values exist in traces, so none can leak into reports — except `malformed.raw`,
-  which the report must flag exactly like `oidtrace show` does.
+- No values and no packet bytes exist in traces (except the admin-approved
+  `system_info` allowlist), so none can leak into reports.
 - Reads only the documented format (`docs/trace-format.md`); no private coupling to
   OIDTrace internals.
 

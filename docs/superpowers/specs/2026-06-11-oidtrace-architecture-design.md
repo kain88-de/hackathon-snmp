@@ -18,10 +18,11 @@ nothing but a text tool, reasonably small, and free of device values.
 
 Core requirements:
 
-- Record both parsed PDU-level data (human-readable) and raw wire bytes, to capture
-  RFC violations — especially responses returning a wrong request-id.
+- Record parsed PDU-level evidence — per-attempt timing, varbind types/lengths, and RFC
+  violations, especially responses returning a wrong request-id. (Raw wire bytes are
+  not in format v1 at all; see "Raw capture (format v2 remark)" below.)
 - Never store SNMP values or the community string — except a small, admin-approved
-  system-OID allowlist (see Scrubber). Raw packets are always scrubbed.
+  system-OID allowlist.
 - Support SNMP v1 + v2c first; the format must leave room for v3 (including priv) later.
 - A partial trace (crash, Ctrl-C, unresponsive device) is still a valid, useful trace.
 
@@ -36,13 +37,13 @@ not just an opaque file.
 **Adoption thesis**: trace acquisition friction is the suite's biggest external risk.
 The mitigation is that the admin's payoff is immediate and local (terminal verdict, an
 OIDViz report they see themselves) — not "upload and wait". Long term, capture belongs
-*inside* Checkmk, which already speaks SNMP to the device from the right network
+_inside_ Checkmk, which already speaks SNMP to the device from the right network
 position; the trace format is the durable artifact, the standalone CLI the bootstrap.
 
 ## Trace format decision: gzipped JSON Lines
 
 The trace file is **gzipped JSON Lines**: one JSON object per line, appended and flushed
-per exchange during the walk. Raw packet bytes are lowercase hex strings.
+per exchange during the walk.
 
 Why JSONL over the alternatives considered:
 
@@ -50,32 +51,29 @@ Why JSONL over the alternatives considered:
   semantics), but it fails the transparency test at both ends: the admin needs our tool to
   verify what they are about to share, and support needs it to read a ticket attachment.
   JSONL+gzip means `zcat | less` / `jq` works everywhere with zero setup. CBOR's remaining
-  advantage — no hex encoding of raw bytes — is an efficiency argument that gzip makes
-  irrelevant.
+  advantage — native bytes — became moot when packet bytes left the format entirely.
 - **vs. pcapng (+ JSONL sidecar)**: Wireshark support is attractive, but pcapng has no home
   for derived data (settings, retries, violations, walk events); correlating a two-file
-  format is the expensive kind of custom tooling. Instead, `oidtrace export-pcap` can
-  generate a pcapng *view* on demand from the stored raw bytes (explicitly deferrable, see
-  De-scoping order).
+  format is the expensive kind of custom tooling. A pcapng export would anyway need
+  packet bytes — format v2 territory.
 - **vs. protobuf/Avro/Parquet**: schema artifacts defeat admin transparency; Parquet cannot
   append.
 
 Size estimate: a large device (~100k OIDs, bulk 10) is ~10k exchanges → tens of MB
-uncompressed (hex roughly doubles the raw-bytes share); gzip brings it to single-digit MB —
-well within support-ticket limits.
+uncompressed (measured with the since-removed raw fields included — lite v1 traces are
+smaller still); gzip brings it to single-digit MB, well within support-ticket limits.
 
 ## Components
 
 ```
 oidtrace CLI
 ├── walk         capture a trace (prints summary at end, progress on stderr)
-├── show         summarize / pretty-print a trace (the raw file is readable without it)
-└── export-pcap  emit pcapng of captured packets for Wireshark [deferrable]
+└── show         summarize / pretty-print a trace (the file is readable without it)
 
 walk pipeline:
   Walk Engine ──> Codec ──> Transport ──> device
        │            │           │
-       └────────────┴───────────┴──> Scrubber ──> Trace Writer (JSONL append)
+       └────────────┴───────────┴──> Trace Writer (JSONL append)
 ```
 
 `walk` accepts a **settings matrix** (e.g. several bulk sizes / timeouts); the combos run
@@ -87,7 +85,7 @@ an OIDEmu profile fitted from the bundle is only as truthful as the request shap
 bundle actually contains.
 
 **Capture scope guidance**: full-tree walks are the wrong default for large devices —
-monitoring polls specific subtrees, and the diagnostic question is whether *those* fit
+monitoring polls specific subtrees, and the diagnostic question is whether _those_ fit
 the cycle window. The recommended pattern is **subtree-scoped, time-budgeted runs**
 (e.g. three ~15 s runs: bulk 10 baseline, bulk 0/GetNext slow-check, bulk-stress),
 not exhaustive coverage; a bounded behavioral fingerprint in under a minute beats an
@@ -99,7 +97,7 @@ Adaptivity (changing settings based on observed latency) deliberately stays out 
 OIDTrace — that is OIDSense's settings finder driving the same pipeline; the
 admin-facing capture tool stays deterministic, predictable, and explainable.
 
-The walk engine is **one pluggable driver** of the codec/transport/scrubber/writer
+The walk engine is **one pluggable driver** of the codec/transport/writer
 pipeline. The future OIDSense settings finder (survey walk → pinpoint slow OIDs at bulk 1 →
 derive settings) is another driver of the same stack; every probing session emits a trace.
 
@@ -128,8 +126,8 @@ request-id mismatch is recorded as a violation, not used for routing.
 ### Codec
 
 BER encoding for requests (v1 GetNext, v2c GetBulk initially) and a **tolerant decoder** for
-responses: decode failures do not raise, they produce a "malformed" record carrying the raw
-bytes and whatever was salvageable. Violation checks (request-id mismatch, non-increasing
+responses: decode failures do not raise, they produce a "malformed" record carrying the
+decode error, the datagram length, and whatever was salvageable. Violation checks (request-id mismatch, non-increasing
 OIDs, missing endOfMibView) are pure functions over decoded PDUs.
 
 ### Walk engine
@@ -139,24 +137,23 @@ start OID), handles retries, and decides termination: end of MIB (`endOfMibView`
 `noSuchName` error-status in v1), walked past subtree, OID-loop detection, or overall time
 budget.
 
-### Scrubber
+### Raw capture (format v2 remark)
 
-Re-encodes each packet before anything touches disk: value octets and the community string
-(present in every v1/v2c message header) are replaced with zero bytes **of the same
-length**, so packet sizes and structure are preserved exactly — sizes affect real device
-behavior, and fitted OIDEmu profiles want to reproduce them. Unparseable packets are
-flagged and kept verbatim — "we couldn't even parse it" is evidence — with a
-`--drop-unparsed` escape hatch. `show` highlights verbatim packets so the admin knows
-exactly what they would be sharing.
+Format v1 stores **no packet bytes at all** — parsed evidence (timing, varbind
+types/lengths, returned request-ids, violations, malformed markers with error + length)
+carries the diagnostic load, and with no bytes on disk the no-values promise holds
+trivially. If wire-level forensics or exact-encoding reproduction (e.g. for better
+emulation) ever earns its keep, that is a **format v2** with redacted packet capture —
+a problem to design then, not now.
 
 **System-OID allowlist** — the one deliberate exception to "no values": a handful of system
 OIDs (sysDescr, sysObjectID, sysUpTime) are read with a dedicated Get at walk start and
 walk end and stored with values in `system_info` records. Rationale: sysDescr/sysObjectID
 answer support's first question ("what device/firmware is this?"), and sysUpTime
-before/after is the only proof of the worst quirk — *device reboots on large bulk
-requests*. The captured values are **shown to the admin at capture time for approval**;
-they can be excluded interactively or via `--hide-system-info`. Raw packets are scrubbed
-regardless — allowlisted values live only in the explicit, visible `system_info` records.
+before/after is the only proof of the worst quirk — _device reboots on large bulk
+requests_. The captured values are **shown to the admin at capture time for approval**;
+they can be excluded interactively or via `--hide-system-info`. Allowlisted values live
+only in the explicit, visible `system_info` records.
 
 ### Trace writer
 
@@ -174,7 +171,7 @@ beyond a test fixture).
 
 The file format is specified authoritatively in **`docs/trace-format.md`** (record types
 `header`, `system_info`, `exchange`, `event`, `summary`; field tables, type vocabularies,
-timestamp and scrubbing semantics, privacy guarantees, versioning rules). Where this
+timestamp semantics, privacy guarantees, versioning rules). Where this
 design document and the format spec disagree, the format spec wins.
 
 Design-level points worth restating here:
@@ -184,11 +181,10 @@ Design-level points worth restating here:
 - The exchange record stores the request-id **as returned by the device** next to the one
   sent — the wrong-request-id smoking gun.
 - Varbinds carry `oid`, `vtype`, and `vlen` (value byte length) but never values; `vlen`
-  makes parsed records self-sufficient for OIDEmu profile fitting without re-parsing raw
-  hex.
+  is the format's only source of value sizes (for size-aware analysis and profile
+  fitting).
 - The trace stores no target host name, IP, or port; the optional admin-chosen `label` is
-  the only correlation handle. `export-pcap` uses placeholder addresses in its
-  synthesized frames.
+  the only correlation handle.
 - `walk` prints the same verdict to the terminal that the `summary` record carries.
 
 ## Error handling
@@ -215,9 +211,7 @@ Ctrl-C is a first-class exit: flush the current record, write `summary` with
 Three layers, ordered fast-to-slow:
 
 1. **Unit tests** (pure Python, no network): codec encode/decode round-trips; tolerant
-   decode against hand-crafted malformed BER; the critical scrubber property — *a scrubbed
-   packet parses identically to the original except values are zeroed, and contains no byte
-   sequence from any original value* (Hypothesis candidate). Trace format round-trips,
+   decode against hand-crafted malformed BER. Trace format round-trips,
    including truncated-file reads (the crash-safety claim is tested, not assumed) and every
    written line validating against `docs/trace-format.schema.json`. Cross-validation
    without system tools: **pysnmp as a test-only dependency** must parse packets our
@@ -234,9 +228,6 @@ Three layers, ordered fast-to-slow:
    the tool is absent):
    - **net-snmp cross-walk**: `snmpbulkwalk` (subprocess) and our walker both walk the same
      emulator; the OID sequences must match.
-   - **tshark validation** (with export-pcap, deferrable): `export-pcap` output fed to
-     `tshark -T json`; the SNMP dissector must see the same request-ids/OIDs the trace
-     claims.
 
 Runner: pytest with async test functions. `just test` runs layers 1–2 (fast default);
 `just test-all` runs everything and **fails hard** if reference tools are missing, so
@@ -252,27 +243,24 @@ profiles fitted from traces). The emulator reuses the shared codec package (with
 escape hatches for deliberately malformed quirks).
 
 Sharing the codec between walker and emulator means a shared encoding bug could pass tests
-silently; the reference-tool layer exists to break exactly that circularity —
-`snmpbulkwalk` validates the emulator and tshark validates the walker, independently of
-our code.
+silently; the reference-tool layer (`snmpbulkwalk` cross-walk) and the pysnmp spec-driven
+decode in unit tests exist to break exactly that circularity, independently of our code.
 
 ## De-scoping order
 
 If time runs short, cut in this order (decided now, not under pressure):
 
-1. `export-pcap` (and its tshark test) — zero critical-path value.
-2. SNMP v1 support — v2c GetBulk covers the troubleshooting doc's cases.
-3. The settings-matrix CLI convenience — admins can invoke the tool repeatedly.
+1. SNMP v1 support — v2c GetBulk covers the troubleshooting doc's cases.
+2. The settings-matrix CLI convenience — admins can invoke the tool repeatedly.
 
-The codec, transport, scrubber, trace writer, and walk-end summary are the product and
-cannot be cut; the codec's scope stays ruthlessly minimal (encode two PDU types, decode
-one).
+The codec, transport, trace writer, and walk-end summary are the product and cannot be
+cut; the codec's scope stays ruthlessly minimal (encode two PDU types, decode one).
 
 ## Out of scope (for now)
 
 - SNMPv3 (all security levels) — format leaves room via versioning and unknown-field
   tolerance; full support including priv requires storing decrypted PDU bytes. When v3
-  arrives, the plan is to reuse pysnmp's USM/crypto machinery *below* our own message
+  arrives, the plan is to reuse pysnmp's USM/crypto machinery _below_ our own message
   layer rather than hand-rolling key localization and DES/AES.
 - OIDEmu (beyond the test fixture) and OIDSense — separate specs; they consume this trace
   format. Note the scope line: an emulator profile fitted from traces reproduces protocol
@@ -280,6 +268,6 @@ one).
   value-parsing consumers (e.g. Checkmk checks); value-faithful replay is snmpsim's
   territory, quirk-faithful emulation is ours. (Standalone trace replay — "OIDPlayback" —
   was dropped: a recording cannot answer the novel probes an adaptive settings finder asks.)
-- Recording SNMP values in any form — with two acknowledged exceptions: the admin-approved
-  system-OID allowlist (`system_info` records), and unparseable packets kept verbatim
-  (flagged, highlighted by `show`, removable via `--drop-unparsed`).
+- Recording SNMP values in any form — with one acknowledged exception: the admin-approved
+  system-OID allowlist (`system_info` records). Unparseable packets are recorded as
+  markers (decode error + datagram length), never as bytes.

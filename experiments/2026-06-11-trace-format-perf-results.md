@@ -5,11 +5,11 @@ Script: `experiments/trace_format_perf.py` (`uv run --with jsonschema python exp
 Tests the claims in `docs/trace-format.md` § 6a and the OIDEmu draft's performance model,
 on schema-validated synthetic traces with realistic scrubbed-packet entropy.
 
-| case                          | gz MB | raw MB | lines  | fit s | MB/s | peak MB | tail s |
-|-------------------------------|-------|--------|--------|-------|------|---------|--------|
-| 1k OIDs, bulk 10              | 0.01  | 0.2    | 104    | 0.00  | 44   | 0.5     | 0.00   |
-| 100k OIDs, bulk 10            | 1.11  | 18.7   | 10004  | 0.40  | 46   | 23.8    | 0.02   |
-| 100k OIDs, bulk 1 (worst)     | 2.98  | 56.5   | 100004 | 1.72  | 33   | 39.6    | 0.06   |
+| case                      | gz MB | raw MB | lines  | fit s | MB/s | peak MB | tail s |
+| ------------------------- | ----- | ------ | ------ | ----- | ---- | ------- | ------ |
+| 1k OIDs, bulk 10          | 0.01  | 0.2    | 104    | 0.00  | 44   | 0.5     | 0.00   |
+| 100k OIDs, bulk 10        | 1.11  | 18.7   | 10004  | 0.40  | 46   | 23.8    | 0.02   |
+| 100k OIDs, bulk 1 (worst) | 2.98  | 56.5   | 100004 | 1.72  | 33   | 39.6    | 0.06   |
 
 Serve path: successor lookup over 100k sorted OIDs = **1.05 µs/lookup** (sorted list + bisect).
 

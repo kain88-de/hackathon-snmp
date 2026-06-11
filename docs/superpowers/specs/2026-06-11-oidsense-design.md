@@ -9,20 +9,20 @@ emulated quirky device)
 
 OIDSense is the troubleshooting brain of the suite: offline analysis of traces plus an
 **online adaptive settings finder**. The visualization of traces is OIDViz's job
-(separate spec); OIDSense produces *verdicts and recommended settings*.
+(separate spec); OIDSense produces _verdicts and recommended settings_.
 
 ## Why the settings finder must be online
 
 A GetBulk exchange yields one latency number for ~10 OIDs — attribution inside a bulk is
-impossible from bulk data alone. Finding the slow OIDs therefore requires *new, adaptively
-chosen* requests. A recording cannot answer those (this is why standalone trace replay
+impossible from bulk data alone. Finding the slow OIDs therefore requires _new, adaptively
+chosen_ requests. A recording cannot answer those (this is why standalone trace replay
 was dropped); a live device or an OIDEmu profile can.
 
 ## The algorithm (three phases)
 
 1. **Survey** — bulk walk with conservative settings (bulk 8–10, generous timeout).
    Per-exchange latency from the trace's `attempts` timestamps yields a latency profile
-   over OID ranges; slow *ranges* identified.
+   over OID ranges; slow _ranges_ identified.
 2. **Pinpoint** — re-walk each slow range at bulk 1 (per-OID attribution), several
    passes: first-touch caching is common (sensor reads cached after first query), so
    median-of-N separates consistent slowness from jitter. Binary search with
@@ -42,11 +42,10 @@ knobs (timing, bulk size) — so the recommendation is paste-ready, not a prose 
 ## Architecture notes
 
 - The settings finder is **another driver of the OIDTrace pipeline**
-  (codec/transport/scrubber/writer); every probing session emits a trace. No second
-  SNMP stack.
+  (codec/transport/writer); every probing session emits a trace. No second SNMP stack.
 - Development and CI run against OIDEmu profiles. The emulator's **fiction report**
   (answers served from `assumed` profile territory) is consumed by OIDSense to emit a
-  *capture plan*: which additional runs (e.g. bulk-1 over range X) would turn assumed
+  _capture plan_: which additional runs (e.g. bulk-1 over range X) would turn assumed
   dimensions into measured ones. Results obtained against assumed dimensions validate
   the algorithm's mechanics, not its accuracy on that device.
 - Offline analysis (verdicts over existing traces: violation patterns, reboot proof via

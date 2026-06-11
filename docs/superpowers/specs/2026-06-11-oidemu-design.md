@@ -11,7 +11,7 @@ three consumers:
 
 1. **OIDTrace/OIDSense test suites** — quirky fake devices over loopback UDP.
 2. **OIDSense algorithm development** — the settings finder is adaptive and asks novel
-   questions; it needs a *model* that can answer anything, not a recording. (This is why
+   questions; it needs a _model_ that can answer anything, not a recording. (This is why
    standalone trace replay, "OIDPlayback", was dropped.)
 3. **Demos** — a library of pathological device personalities, no broken hardware needed.
 
@@ -46,8 +46,8 @@ A human-readable, hand-editable document (YAML or JSON) with three parts:
 
 1. **Tree shape** — ordered `(OID, vtype, vlen)` list. Values are synthesized at response
    time (zeros of the right type and length) so response packet sizes match the real
-   device. Exact wire encodings for non-canonical-BER devices come from trace `raw`
-   fields, not parsed records.
+   device (from `vlen`). Exact wire-encoding reproduction for non-canonical-BER devices
+   would need a future format v2 with packet capture — out of scope.
 2. **Timing model** — latency rules attached to OID ranges plus a default; bulk response
    latency = sum of per-OID costs of what the agent processed. Cache modeling
    (first-touch cost, TTL).
@@ -56,9 +56,9 @@ A human-readable, hand-editable document (YAML or JSON) with three parts:
    latency:
      default_ms: 5
      rules:
-       - prefix: 1.3.6.1.4.1.2636.3.60   # SFP sensors
+       - prefix: 1.3.6.1.4.1.2636.3.60 # SFP sensors
          per_oid_ms: 7000
-         cache: {after_first_touch_ms: 10, ttl_s: 30}
+         cache: { after_first_touch_ms: 10, ttl_s: 30 }
    ```
 
 3. **Quirks** — declarative switches: `request_id: echo | fixed:<n>`;
@@ -101,14 +101,14 @@ consumers (e.g. Checkmk checks). Value-faithful emulation is snmpsim's territory
 
 The emulator never refuses to run on incomplete data; it degrades per dimension:
 
-| Profile dimension      | Full matrix              | Single bulk-10 walk                          |
-|------------------------|--------------------------|----------------------------------------------|
-| Tree shape             | measured                 | measured (complete if the walk completed)    |
-| Range-level latency    | measured                 | measured                                     |
-| Per-OID latency        | measured (bulk-1 runs)   | assumed — range total spread uniformly       |
-| Bulk-size threshold    | measured (varied bulks)  | assumed — compliant at all sizes             |
-| Cache/TTL              | measured (repeated runs) | assumed — no caching                         |
-| Quirks                 | measured                 | measured, but only those triggered           |
+| Profile dimension   | Full matrix              | Single bulk-10 walk                       |
+| ------------------- | ------------------------ | ----------------------------------------- |
+| Tree shape          | measured                 | measured (complete if the walk completed) |
+| Range-level latency | measured                 | measured                                  |
+| Per-OID latency     | measured (bulk-1 runs)   | assumed — range total spread uniformly    |
+| Bulk-size threshold | measured (varied bulks)  | assumed — compliant at all sizes          |
+| Cache/TTL           | measured (repeated runs) | assumed — no caching                      |
+| Quirks              | measured                 | measured, but only those triggered        |
 
 **Fiction report**: at runtime the emulator logs every answer that came from `assumed`
 territory. After a run: "23% of probes hit assumed territory: per-OID timing in range X,
@@ -118,7 +118,7 @@ names the runs that would buy real confidence → request only those. A full mat
 converged end state, not a prerequisite.
 
 Caveat to keep visible: results against assumed dimensions validate an algorithm's
-*mechanics*, not its *accuracy* on that device.
+_mechanics_, not its _accuracy_ on that device.
 
 ## Performance model
 

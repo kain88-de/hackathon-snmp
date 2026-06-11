@@ -1,5 +1,6 @@
 # SNMP Troubleshooting
-<!-- Source: https://checkmk.com/blog/snmp-troubleshooting --> 
+
+<!-- Source: https://checkmk.com/blog/snmp-troubleshooting -->
 
 ## Overview
 

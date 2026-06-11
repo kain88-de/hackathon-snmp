@@ -15,10 +15,6 @@
       "type": "string",
       "pattern": "^[0-9]+(\\.[0-9]+)*$"
     },
-    "hex": {
-      "type": "string",
-      "pattern": "^([0-9a-f]{2})*$"
-    },
     "reltime": {
       "type": "number",
       "minimum": 0,
@@ -117,7 +113,7 @@
         "seq": { "type": "integer", "minimum": 1 },
         "request": {
           "type": "object",
-          "required": ["pdu", "request_id", "oids", "raw"],
+          "required": ["pdu", "request_id", "oids"],
           "properties": {
             "pdu": { "enum": ["get", "getnext", "getbulk"] },
             "request_id": { "type": "integer" },
@@ -127,8 +123,7 @@
               "items": { "$ref": "#/$defs/oid" }
             },
             "non_repeaters": { "type": "integer", "minimum": 0 },
-            "max_repetitions": { "type": "integer", "minimum": 0 },
-            "raw": { "$ref": "#/$defs/hex" }
+            "max_repetitions": { "type": "integer", "minimum": 0 }
           },
           "if": { "properties": { "pdu": { "const": "getbulk" } } },
           "then": { "required": ["non_repeaters", "max_repetitions"] }
@@ -155,7 +150,7 @@
         },
         "response": {
           "type": "object",
-          "required": ["request_id", "error_status", "error_index", "varbinds", "raw"],
+          "required": ["request_id", "error_status", "error_index", "varbinds"],
           "properties": {
             "request_id": {
               "type": "integer",
@@ -166,18 +161,16 @@
             "varbinds": {
               "type": "array",
               "items": { "$ref": "#/$defs/varbind" }
-            },
-            "raw": { "$ref": "#/$defs/hex" }
+            }
           }
         },
         "stray_responses": {
           "type": "array",
           "items": {
             "type": "object",
-            "required": ["received_at", "raw"],
+            "required": ["received_at"],
             "properties": {
-              "received_at": { "$ref": "#/$defs/reltime" },
-              "raw": { "$ref": "#/$defs/hex" }
+              "received_at": { "$ref": "#/$defs/reltime" }
             }
           }
         },
@@ -190,13 +183,14 @@
         },
         "malformed": {
           "type": "object",
-          "required": ["raw", "error"],
+          "required": ["error"],
           "properties": {
-            "raw": {
-              "$ref": "#/$defs/hex",
-              "description": "Verbatim, NOT scrubbed — unparseable packets cannot be scrubbed"
-            },
             "error": { "type": "string" },
+            "length": {
+              "type": "integer",
+              "minimum": 0,
+              "description": "Datagram size in bytes (the bytes themselves are not stored)"
+            },
             "salvaged": { "type": "object" }
           }
         }
