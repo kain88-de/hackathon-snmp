@@ -216,7 +216,17 @@ A format-version-1 trace never contains:
 It does contain: OID names and tree structure (reveals device vendor/MIBs and table
 cardinalities), value types and lengths, timing, and the optional admin-chosen `label`.
 
-## 8. Versioning
+## 8. JSON Schema
+
+A machine-checkable companion schema lives at **`docs/trace-format.schema.json`** (JSON
+Schema draft 2020-12): one `oneOf` branch per record type, validating any single line of a
+trace. It encodes the structural rules of this document — including the
+`response`/`malformed` mutual exclusion and the getbulk-requires-repetition-fields rule —
+while leaving open enums and unknown extra fields unconstrained, as § 3 requires. The test
+suite validates every line the trace writer emits against it. If this document and the
+schema disagree, this document wins; fix the schema.
+
+## 9. Versioning
 
 `format_version` is a single integer. Within a version: new optional fields and new enum
 values may appear; readers ignore/tolerate them. Any change that removes, re-types, or

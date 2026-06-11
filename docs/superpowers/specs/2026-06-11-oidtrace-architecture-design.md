@@ -197,7 +197,8 @@ Three layers, ordered fast-to-slow:
    packet parses identically to the original except values are zeroed, and contains no byte
    sequence from any original value* (Hypothesis candidate). Trace format round-trips,
    including truncated-file reads (the crash-safety claim is tested, not assumed) and every
-   line parsing as valid JSON. Cross-validation without system tools: **pysnmp as a
+   written line validating against `docs/trace-format.schema.json`. Cross-validation
+   without system tools: **pysnmp as a
    test-only dependency** must parse packets our codec encodes into the same fields.
 2. **Integration over loopback UDP**: the quirk emulator runs in-process as an asyncio UDP
    server on `127.0.0.1:<random port>` (the fast pattern from the previous project). Each
