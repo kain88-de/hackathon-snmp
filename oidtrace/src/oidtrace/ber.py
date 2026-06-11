@@ -18,7 +18,8 @@ def tlv(tag: int, payload: bytes) -> bytes:
 
 
 def encode_int(v: int, tag: int = 0x02) -> bytes:
-    """Minimal two's-complement BER integer TLV."""
+    """Minimal two's-complement BER integer TLV.  Targets non-negative SNMP integers;
+    negative powers-of-two (e.g. -128) get a non-minimal but valid two-byte body."""
     body = v.to_bytes(v.bit_length() // 8 + 1, "big", signed=True)
     return tlv(tag, body)
 

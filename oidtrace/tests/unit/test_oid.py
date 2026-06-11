@@ -33,6 +33,11 @@ def test_in_subtree_equal_to_root() -> None:
     assert root.in_subtree(root)
 
 
+def test_in_subtree_sibling_prefix_is_not_inside() -> None:
+    # 1.3.6.10 shares the prefix "1.3.6.1" as a string but is a sibling, not a child
+    assert not Oid.from_str("1.3.6.10").in_subtree(Oid.from_str("1.3.6.1"))
+
+
 @pytest.mark.parametrize(
     "bad",
     [
