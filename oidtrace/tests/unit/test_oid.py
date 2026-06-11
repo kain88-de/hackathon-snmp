@@ -40,8 +40,17 @@ def test_in_subtree_equal_to_root() -> None:
         "1.3.x",
         "1..3",
         ".1.3",
+        "1.-3",
+        " 1.3",
+        "+1.3",
+        "1_000",
+        "01",
     ],
 )
 def test_parse_rejects_bad_input(bad: str) -> None:
     with pytest.raises(ValueError):
         parse_oid(bad)
+
+
+def test_parse_zero_arcs() -> None:
+    assert parse_oid("0.0") == (0, 0)

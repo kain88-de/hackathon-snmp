@@ -13,15 +13,19 @@ def parse_oid(s: str) -> Oid:
     """Parse a dotted-decimal OID string into an Oid tuple.
 
     Raises ValueError for any input that is not a non-empty sequence of
-    non-negative integers separated by single dots.
+    non-negative integers separated by single dots.  Each arc must consist
+    solely of ASCII digits with no leading zeros (so parse∘format is an
+    identity on accepted inputs).
     """
     if not s or s.startswith("."):
         raise ValueError(f"Invalid OID: {s!r}")
     parts = s.split(".")
-    try:
-        return tuple(int(p) for p in parts)
-    except ValueError:
-        raise ValueError(f"Invalid OID: {s!r}") from None
+    for p in parts:
+        if not (p.isascii() and p.isdigit()):
+            raise ValueError(f"Invalid OID: {s!r}")
+        if len(p) > 1 and p[0] == "0":
+            raise ValueError(f"Invalid OID: {s!r}")
+    return tuple(int(p) for p in parts)
 
 
 def format_oid(oid: Oid) -> str:
