@@ -6,9 +6,10 @@ Status: approved
 ## Purpose
 
 OIDTrace captures an SNMP walk against a single device in a highly detailed, portable trace.
-The trace is the input for OIDPlayback (replays the device's **protocol behavior and
-timing** — not its values, which are not recorded) and OIDSense (troubleshooting analysis,
-including an automated settings finder). Traces are produced by customer admins on-site and
+The trace serves OIDSense (troubleshooting analysis, including an automated settings
+finder) and is the raw material for fitting OIDEmu device profiles (a recording cannot
+answer the novel probes an adaptive algorithm asks; a model fitted from recordings can).
+Traces are produced by customer admins on-site and
 attached to support tickets, so they must be: a single file per walk, inspectable with
 nothing but a text tool, reasonably small, and free of device values.
 
@@ -72,9 +73,9 @@ walk pipeline:
 sequentially and **each run writes its own trace file** into an output directory (zippable
 for a ticket). The trace schema stays one-walk-per-file; the matrix is purely a CLI
 convenience. Matrix capture (e.g. bulk-10 survey plus bulk-1 over slow ranges) is also the
-guidance for capturing a problem device for algorithm development: a single bulk walk
-contains no per-OID timing, so OIDPlayback can only answer truthfully about request shapes
-the trace bundle actually contains.
+guidance for capturing a problem device: a single bulk walk contains no per-OID timing, so
+an OIDEmu profile fitted from the bundle is only as truthful as the request shapes the
+bundle actually contains.
 
 The walk engine is **one pluggable driver** of the codec/transport/scrubber/writer
 pipeline. The future OIDSense settings finder (survey walk → pinpoint slow OIDs at bulk 1 →
@@ -121,7 +122,7 @@ budget.
 Re-encodes each packet before anything touches disk: value octets and the community string
 (present in every v1/v2c message header) are replaced with zero bytes **of the same
 length**, so packet sizes and structure are preserved exactly — sizes affect real device
-behavior, and OIDPlayback wants to reproduce them. Unparseable packets are
+behavior, and fitted OIDEmu profiles want to reproduce them. Unparseable packets are
 flagged and kept verbatim — "we couldn't even parse it" is evidence — with a
 `--drop-unparsed` escape hatch. `show` highlights verbatim packets so the admin knows
 exactly what they would be sharing.
@@ -142,9 +143,10 @@ crash or Ctrl-C leaves a valid (possibly truncated, still readable) trace.
 
 ### Packaging
 
-Python package managed with uv, following the existing monorepo layout. OIDPlayback and
+Python package managed with uv, following the existing monorepo layout. OIDEmu and
 OIDSense will need the codec and trace-reading code; the trace schema + codec should live
-where both can import them (small shared package now, or extracted when OIDPlayback starts).
+where all of them can import it (small shared package now, or extracted when OIDEmu grows
+beyond a test fixture).
 
 ## Trace record schema
 
@@ -262,14 +264,14 @@ Runner: pytest with async test functions. `just test` runs layers 1–2 (fast de
 `just test-all` runs everything and **fails hard** if reference tools are missing, so
 skip-if-missing cannot silently become never-runs.
 
-### Quirk emulator = seed of OIDPlayback
+### Quirk emulator = seed of OIDEmu
 
 The test emulator is a **scripted simple device** — small hardcoded OID tree, quirks
-injected via test configuration — not a trace consumer, which avoids the chicken-and-egg
-with OIDPlayback. It is built as a **responder core with a pluggable behavior source**:
-scripted source now for tests; a trace-driven source later *is* OIDPlayback. The emulator
-reuses the shared codec package (with raw-byte escape hatches for deliberately malformed
-quirks).
+injected via test configuration — not a trace consumer, so there is no chicken-and-egg
+with traces. It is built as a **responder core with a pluggable behavior source**:
+scripted source now for tests; profile-driven sources later grow into OIDEmu (including
+profiles fitted from traces). The emulator reuses the shared codec package (with raw-byte
+escape hatches for deliberately malformed quirks).
 
 Sharing the codec between walker and emulator means a shared encoding bug could pass tests
 silently; the reference-tool layer exists to break exactly that circularity —
@@ -292,10 +294,12 @@ one).
 
 - SNMPv3 (all security levels) — format leaves room via versioning and unknown-field
   tolerance; full support including priv requires storing decrypted PDU bytes.
-- OIDPlayback and OIDSense themselves — separate specs; they consume this trace format.
-  Note the scope line: OIDPlayback replays protocol behavior and timing, **not values** —
-  it cannot stand in for the device against value-parsing consumers (e.g. Checkmk checks);
-  value-faithful replay is snmpsim's territory, quirk-faithful replay is ours.
+- OIDEmu (beyond the test fixture) and OIDSense — separate specs; they consume this trace
+  format. Note the scope line: an emulator profile fitted from traces reproduces protocol
+  behavior and timing, **not values** — it cannot stand in for the device against
+  value-parsing consumers (e.g. Checkmk checks); value-faithful replay is snmpsim's
+  territory, quirk-faithful emulation is ours. (Standalone trace replay — "OIDPlayback" —
+  was dropped: a recording cannot answer the novel probes an adaptive settings finder asks.)
 - Recording SNMP values in any form — with two acknowledged exceptions: the admin-approved
   system-OID allowlist (`system_info` records), and unparseable packets kept verbatim
   (flagged, highlighted by `show`, removable via `--drop-unparsed`).
