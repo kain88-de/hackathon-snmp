@@ -190,7 +190,9 @@ prove a mid-walk device reboot.
  attempts: [{sent_at: <ts>, received_at: <ts> | null}, ...],   # one per send incl. retries
  response: {request_id: 1,                # request_id AS RETURNED by the device
             error_status: 0, error_index: 0,
-            varbinds: [{oid: "...", vtype: "OctetString"}, ...],  # types only, no values
+            varbinds: [{oid: "...", vtype: "OctetString", vlen: 14}, ...],  # type + length, no values
+                                     # vlen makes parsed records self-sufficient for profile
+                                     # fitting (packet sizes) without re-parsing raw hex
             raw: "<hex, scrubbed>"} | null,                       # null = never answered
  stray_responses: [{received_at: <ts>, raw: "<hex, scrubbed>"}, ...],  # dupes, late replies
  violations: ["request-id-mismatch"],
