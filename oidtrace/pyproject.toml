@@ -34,6 +34,7 @@ ignore = []
 
 [tool.ruff.lint.per-file-ignores]
 "tests/**" = ["PLR2004"]
+"src/oidtrace/violations.py" = ["PLR0913"]
 
 [tool.pyrefly]
 project_includes = ["src", "tests"]
