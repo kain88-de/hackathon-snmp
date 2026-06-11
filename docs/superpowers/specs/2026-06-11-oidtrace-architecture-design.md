@@ -163,19 +163,44 @@ Ctrl-C is a first-class exit: flush the current record, write `summary` with
 
 ## Testing
 
-1. **Codec + scrubber unit tests** (the bulk): encode/decode round-trips; tolerant decode
-   against hand-crafted malformed BER; the critical scrubber property — *a scrubbed packet
-   parses identically to the original except values are zeroed, and contains no byte
-   sequence from any original value*. Candidate for Hypothesis property-based tests.
-2. **Trace format tests**: write → read round-trip; truncated-file reads (the crash-safety
-   claim is tested, not assumed); `show` output is valid JSON; `export-pcap` output parses
-   with tshark where available.
-3. **Integration against a quirk emulator**: walk a local fake device injecting the known
-   pathologies — wrong request-id, no end-of-MIB, fixed sequence numbers, slow OIDs, crash
-   above bulk size 8 — and assert the trace records each violation. The deleted `emulator/`
-   package in git history covers much of this; resurrect rather than rewrite.
+Three layers, ordered fast-to-slow:
 
-Async test functions; `just` targets for the suite.
+1. **Unit tests** (pure Python, no network): codec encode/decode round-trips; tolerant
+   decode against hand-crafted malformed BER; the critical scrubber property — *a scrubbed
+   packet parses identically to the original except values are zeroed, and contains no byte
+   sequence from any original value* (Hypothesis candidate). Trace format round-trips,
+   including truncated-file reads (the crash-safety claim is tested, not assumed) and
+   `show` emitting valid JSON. Cross-validation without system tools: **pysnmp as a
+   test-only dependency** must parse packets our codec encodes into the same fields.
+2. **Integration over loopback UDP**: the quirk emulator runs in-process as an asyncio UDP
+   server on `127.0.0.1:<random port>` (the fast pattern from the previous project). Each
+   test configures a quirk — wrong request-id, no end-of-MIB, fixed sequence numbers, slow
+   OIDs, crash above bulk size 8 — runs a real walk, and asserts the trace records the
+   violation.
+3. **Reference-tool tests** (marked `reference_tools`, skipped with a visible warning when
+   the tool is absent):
+   - **net-snmp cross-walk**: `snmpbulkwalk` (subprocess) and our walker both walk the same
+     emulator; the OID sequences must match.
+   - **tshark validation**: `export-pcap` output fed to `tshark -T json`; the SNMP
+     dissector must see the same request-ids/OIDs the trace claims.
+
+Runner: pytest with async test functions. `just test` runs layers 1–2 (fast default);
+`just test-all` runs everything and **fails hard** if reference tools are missing, so
+skip-if-missing cannot silently become never-runs.
+
+### Quirk emulator = seed of OIDPlayback
+
+The test emulator is a **scripted simple device** — small hardcoded OID tree, quirks
+injected via test configuration — not a trace consumer, which avoids the chicken-and-egg
+with OIDPlayback. It is built as a **responder core with a pluggable behavior source**:
+scripted source now for tests; a trace-driven source later *is* OIDPlayback. The emulator
+reuses the shared codec package (with raw-byte escape hatches for deliberately malformed
+quirks).
+
+Sharing the codec between walker and emulator means a shared encoding bug could pass tests
+silently; the reference-tool layer exists to break exactly that circularity —
+`snmpbulkwalk` validates the emulator and tshark validates the walker, independently of
+our code.
 
 ## Out of scope (for now)
 
