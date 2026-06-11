@@ -2,6 +2,9 @@
 
 Date: 2026-06-11
 Status: approved
+Validation: core ideas proven end-to-end by `experiments/poc_roundtrip.py` (codec,
+quirk-tolerant walk, schema-valid traces); format performance measured by
+`experiments/trace_format_perf.py` — results in `experiments/*-results.md`
 
 ## Purpose
 
@@ -198,8 +201,11 @@ Three layers, ordered fast-to-slow:
    sequence from any original value* (Hypothesis candidate). Trace format round-trips,
    including truncated-file reads (the crash-safety claim is tested, not assumed) and every
    written line validating against `docs/trace-format.schema.json`. Cross-validation
-   without system tools: **pysnmp as a
-   test-only dependency** must parse packets our codec encodes into the same fields.
+   without system tools: **pysnmp as a test-only dependency** must parse packets our
+   codec encodes into the same fields — decoding **spec-driven**
+   (`asn1Spec=Message()`); pyasn1's schemaless decoder cannot walk SNMP's
+   context-tagged PDUs (learned in the PoC, see
+   `experiments/2026-06-11-poc-roundtrip-results.md`).
 2. **Integration over loopback UDP**: the quirk emulator runs in-process as an asyncio UDP
    server on `127.0.0.1:<random port>` (the fast pattern from the previous project). Each
    test configures a quirk — wrong request-id, no end-of-MIB, fixed sequence numbers, slow
@@ -246,7 +252,9 @@ one).
 ## Out of scope (for now)
 
 - SNMPv3 (all security levels) — format leaves room via versioning and unknown-field
-  tolerance; full support including priv requires storing decrypted PDU bytes.
+  tolerance; full support including priv requires storing decrypted PDU bytes. When v3
+  arrives, the plan is to reuse pysnmp's USM/crypto machinery *below* our own message
+  layer rather than hand-rolling key localization and DES/AES.
 - OIDEmu (beyond the test fixture) and OIDSense — separate specs; they consume this trace
   format. Note the scope line: an emulator profile fitted from traces reproduces protocol
   behavior and timing, **not values** — it cannot stand in for the device against

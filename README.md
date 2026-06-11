@@ -3,8 +3,12 @@
 OIDSense is a suite of programs to trouble shoot snmp devices.
 
 OIDTrace: capture a queries in a highly detailed trace
+OIDViz: render a trace as a self-contained HTML report — waterfall, violations, verdict
 OIDEmu: profile-driven device emulator — hand-written quirk profiles now, trace-fitted later
 OIDSense: Troubleshoot the device — trace analysis plus an adaptive settings finder
+
+MVP: OIDTrace + OIDViz — capture the evidence, see the problem. OIDSense and OIDEmu
+build on top.
 
 ## OIDTrace
 

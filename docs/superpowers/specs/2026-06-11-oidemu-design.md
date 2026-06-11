@@ -2,6 +2,9 @@
 
 Date: 2026-06-11
 Status: **draft — captures decisions made during OIDTrace design; not yet fully brainstormed**
+Validation: the profile-driven responder shape (tree + latency rules + quirks over real
+UDP) is proven by `experiments/poc_roundtrip.py`; serve-path lookup measured at ~1 µs
+(`experiments/2026-06-11-trace-format-perf-results.md`)
 
 OIDEmu is the profile-driven SNMP device emulator of the OIDSense suite. It exists for
 three consumers:
@@ -102,9 +105,22 @@ Caveat to keep visible: results against assumed dimensions validate an algorithm
 ## Performance model
 
 **Serving never touches traces.** The request path reads only the in-memory profile:
-tree successor lookup is a sorted OID array + bisect (O(log n), microseconds; ~few MB
-resident per 100k OIDs). This is an architectural rule, not an optimization — traces are
-offline inputs to `fit-profile`, full stop.
+tree successor lookup is a sorted OID array + bisect (O(log n), measured 1.05 µs at 100k
+OIDs; ~few MB resident). This is an architectural rule, not an optimization — traces are
+offline inputs to `fit-profile`, full stop. There is no "which file to look into" at
+request time: `fit-profile` merges the whole session bundle into **one** profile;
+file selection happens at fit time, never at serve time.
+
+**Per-request cost arithmetic**: one bisect per request (a bulk-10 response is one
+search plus an array slice, not ten searches); latency rules are precompiled at profile
+load into a per-OID cost array, so timing lookup is O(1). Total request-path overhead
+~1–2 µs against modeled response times of ≥1 ms: 0.1–0.2%, non-compounding.
+
+**Timing fidelity floor**: emulated latency is produced by sleeping, and OS scheduler
+granularity puts ±50–100 µs jitter on any sleep — ~50× the lookup cost. Below that sits
+Python's UDP stack (~tens of µs per recv/send). Devices with ≥1 ms response times are
+comfortably emulatable; sub-100 µs timing fidelity would be limited by Python and the
+kernel, not by the profile data structures or the trace format.
 
 **Fitting is one streaming pass per file** (guaranteed by the trace format's streaming
 guarantee, `docs/trace-format.md` § 6a), with per-file aggregates merged across the
