@@ -100,7 +100,7 @@ def decode_message(raw: bytes) -> Message | Malformed:
     """
     try:
         return _decode(raw)
-    except Exception as exc:
+    except ValueError as exc:
         return Malformed(raw=raw, error=str(exc) or repr(exc))
 
 
