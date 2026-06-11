@@ -231,6 +231,26 @@ The sole unscrubbed bytes in a trace are `malformed.raw`: packets we could not p
 cannot be scrubbed. They are kept verbatim because undecodability is itself the evidence;
 `oidtrace show` highlights them, and `--drop-unparsed` removes them at capture time.
 
+## 6a. Streaming guarantee
+
+The format is designed for **single-pass streaming consumption**: every record is
+self-contained, all run-level context lives in the `header` (first line), and no record
+references a later one. A conforming reader processes any trace with memory proportional
+to its own aggregates (e.g. distinct OIDs), never to file size. This is a normative
+constraint on future format changes: no record type may require look-ahead or whole-file
+loading.
+
+Realistic scale for consumers: a 100k-OID device walked at bulk 1 is ~100k lines,
+~10 MB gzipped — seconds of one-time streaming CPU. Trace files are inputs to offline
+aggregation (fitting, analysis, summaries); request-time consumers (OIDEmu serving) read
+fitted profiles, never traces.
+
+Known limitation: gzip is not seekable, so random access (reading only the trailing
+`summary`, jumping to one exchange) costs a decompression of everything before it.
+Designated escape hatch if interactive tooling ever needs it: write BGZF (block-gzip) —
+output remains a valid gzip stream for all existing readers, gains block-level random
+access. Additive writer change; no format version bump.
+
 ## 7. Privacy guarantees
 
 A format-version-1 trace never contains:

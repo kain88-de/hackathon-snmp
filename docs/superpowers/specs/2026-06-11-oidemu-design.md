@@ -99,6 +99,20 @@ converged end state, not a prerequisite.
 Caveat to keep visible: results against assumed dimensions validate an algorithm's
 *mechanics*, not its *accuracy* on that device.
 
+## Performance model
+
+**Serving never touches traces.** The request path reads only the in-memory profile:
+tree successor lookup is a sorted OID array + bisect (O(log n), microseconds; ~few MB
+resident per 100k OIDs). This is an architectural rule, not an optimization — traces are
+offline inputs to `fit-profile`, full stop.
+
+**Fitting is one streaming pass per file** (guaranteed by the trace format's streaming
+guarantee, `docs/trace-format.md` § 6a), with per-file aggregates merged across the
+bundle. Memory is proportional to distinct OIDs, not trace bytes. Worst realistic bundle
+(100k-OID device, 5-run matrix incl. a bulk-1 run, ~300 MB uncompressed) is seconds of
+one-time CPU. Profiles, not traces, are the artifact that must stay compact and
+loadable.
+
 ## Open questions (for the real brainstorming session)
 
 - Profile file format details (YAML vs JSON, schema, versioning) and a JSON Schema like
