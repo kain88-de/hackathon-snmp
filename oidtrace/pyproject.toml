@@ -39,6 +39,7 @@ ignore = []
 "tests/**" = ["PLR2004"]
 "src/oidtrace/violations.py" = ["PLR0913"]
 "src/oidtrace/records.py" = ["PLR0913"]
+"src/oidtrace/walker.py" = ["PLR0912", "PLR0913", "PLR0915"]
 
 [tool.pyrefly]
 project_includes = ["src", "tests"]
