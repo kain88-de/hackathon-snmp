@@ -126,7 +126,6 @@ class EmuProtocol(asyncio.DatagramProtocol):
         request_oid = msg.varbinds[0].oid
         max_reps = max(msg.f2, 1)
 
-        # Bisect: find the first tree entry strictly AFTER request_oid
         tree = device.tree
         keys = [e[0] for e in tree]
         idx = bisect.bisect_right(keys, request_oid)

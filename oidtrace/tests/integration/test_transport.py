@@ -25,9 +25,6 @@ def _rel() -> float:
     return time.monotonic()
 
 
-# ---------------------------------------------------------------------------
-# 1. Simple device → response, one attempt, received_at > sent_at >= 0
-# ---------------------------------------------------------------------------
 async def test_simple_response(emulator_factory: _EmuFactory) -> None:
     """A simple device returns one response with proper timestamps."""
     async with (
@@ -45,9 +42,6 @@ async def test_simple_response(emulator_factory: _EmuFactory) -> None:
     assert attempt.received_at > attempt.sent_at
 
 
-# ---------------------------------------------------------------------------
-# 2. drop_all, timeout_s=0.1, retries=2 → None response, exactly 3 attempts
-# ---------------------------------------------------------------------------
 async def test_drop_all_timeout(emulator_factory: _EmuFactory) -> None:
     """drop_all with 2 retries yields no response and 3 unanswered attempts."""
     quirks = Quirks(drop_all=True)
@@ -64,10 +58,6 @@ async def test_drop_all_timeout(emulator_factory: _EmuFactory) -> None:
         assert attempt.error is None
 
 
-# ---------------------------------------------------------------------------
-# 3. duplicate_responses, retries=0 → one stray, bytes == response bytes,
-#    stray timestamp close to response timestamp (arrival-stamped, abs < 0.05 s)
-# ---------------------------------------------------------------------------
 async def test_duplicate_responses_creates_stray(emulator_factory: _EmuFactory) -> None:
     """duplicate_responses quirk produces exactly one stray with honest timestamps."""
     quirks = Quirks(duplicate_responses=True)
@@ -91,9 +81,6 @@ async def test_duplicate_responses_creates_stray(emulator_factory: _EmuFactory) 
     assert abs(stray_at - resp_at) < 0.05
 
 
-# ---------------------------------------------------------------------------
-# 4. Closed local UDP port → ICMP error per attempt; retries=1 → 2 attempts
-# ---------------------------------------------------------------------------
 async def test_icmp_port_unreachable() -> None:
     """ICMP error on an attempt continues to the next attempt (bounded by retries).
 
@@ -139,9 +126,6 @@ async def test_stray_drain_no_response_returns_empty_strays(emulator_factory: _E
     assert result.strays == ()
 
 
-# ---------------------------------------------------------------------------
-# 5. Async CM usage: async with await UdpTransport.create(...) as t:
-# ---------------------------------------------------------------------------
 async def test_async_context_manager(emulator_factory: _EmuFactory) -> None:
     """UdpTransport works as an async context manager (required CM form)."""
     async with (
@@ -154,9 +138,6 @@ async def test_async_context_manager(emulator_factory: _EmuFactory) -> None:
     assert len(result.attempts) == 1
 
 
-# ---------------------------------------------------------------------------
-# Extra: idempotent close (no exception on double-close)
-# ---------------------------------------------------------------------------
 async def test_close_is_idempotent(emulator_factory: _EmuFactory) -> None:
     """Calling __aexit__ twice must not raise."""
     async with emulator_factory(EmuDevice.simple()) as (host, port):

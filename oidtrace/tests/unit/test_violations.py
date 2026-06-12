@@ -106,7 +106,6 @@ def test_exception_tag_skipped_no_cursor_advance() -> None:
 
 
 def test_exception_tag_only_varbinds_no_violation() -> None:
-    # All exception tags → no data cursor movement → no OID_NOT_INCREASING
     vbs = [_vb("1.1.0", _EXCEPTION_TAG), _vb("0.9.0", _EXCEPTION_TAG)]
     result = _clean(prev_oid=Oid.from_str("1.2.0"), varbinds=vbs)
     assert Violation.OID_NOT_INCREASING not in result

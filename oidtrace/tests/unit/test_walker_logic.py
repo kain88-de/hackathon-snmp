@@ -121,12 +121,6 @@ def _validate_all(records: list[TraceRecord], validator: Draft202012Validator) -
 
 
 # ---------------------------------------------------------------------------
-# Fixtures
-# ---------------------------------------------------------------------------
-
-
-
-# ---------------------------------------------------------------------------
 # Tests
 # ---------------------------------------------------------------------------
 
@@ -352,7 +346,6 @@ async def test_give_up_with_recovery_resets_count(
     assert isinstance(records[-1], Summary)
     summary = records[-1]
     assert summary.end_reason == str(EndReason.UNRESPONSIVE)
-    # 4 exchanges total
     assert summary.exchanges == 4
     _validate_all(records, record_validator)
 

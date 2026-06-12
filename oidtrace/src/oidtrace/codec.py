@@ -30,14 +30,12 @@ if TYPE_CHECKING:
 
     from oidtrace.oid import Oid
 
-# PDU context-class tags (application, constructed)
 PDU_GETBULK: int = 0xA5
 PDU_RESPONSE: int = 0xA2
 
 # v2c exception tags (§ 5 of trace-format.md)
 EXCEPTION_TAGS: frozenset[int] = frozenset({0x80, 0x81, 0x82})
 
-# Module-private BER tag constants
 _TAG_SEQUENCE: int = 0x30
 _TAG_INTEGER: int = 0x02
 _TAG_OCTET_STRING: int = 0x04
@@ -45,7 +43,7 @@ _TAG_OID: int = 0x06
 _TAG_NULL: int = 0x05
 _TAG_END_OF_MIB_VIEW: int = 0x82
 
-# Private: BER tag → vtype name per format spec § 5
+# BER tag → vtype name per format spec § 5
 _TAG_NAMES: dict[int, str] = {
     0x02: "Integer",
     0x04: "OctetString",
@@ -216,24 +214,20 @@ def decode_message(raw: bytes) -> Message | Malformed:
         }
     """
     try:
-        # --- outer SEQUENCE ---
         outer_tag, outer_body, _ = read_tlv(raw, 0)
         if outer_tag != _TAG_SEQUENCE:
             raise ValueError(f"Expected outer SEQUENCE tag 0x30, got 0x{outer_tag:02x}")
 
         i = 0
 
-        # --- version INTEGER ---
         ver_tag, _ver_body, i = read_tlv(outer_body, i)
         if ver_tag != _TAG_INTEGER:
             raise ValueError(f"Expected version INTEGER tag 0x02, got 0x{ver_tag:02x}")
 
-        # --- community OCTET STRING ---
         comm_tag, _comm_body, i = read_tlv(outer_body, i)
         if comm_tag != _TAG_OCTET_STRING:
             raise ValueError(f"Expected community OCTET STRING tag 0x04, got 0x{comm_tag:02x}")
 
-        # --- PDU (context-constructed, class bits 0xA0-0xBF) ---
         pdu_tag, pdu_body, _i = read_tlv(outer_body, i)
         if (pdu_tag & 0xE0) != 0xA0:  # noqa: PLR2004
             raise ValueError(
@@ -242,30 +236,25 @@ def decode_message(raw: bytes) -> Message | Malformed:
 
         j = 0
 
-        # --- request-id INTEGER ---
         rid_tag, rid_body, j = read_tlv(pdu_body, j)
         if rid_tag != _TAG_INTEGER:
             raise ValueError(f"Expected request-id INTEGER tag 0x02, got 0x{rid_tag:02x}")
         request_id = decode_int(rid_body)
 
-        # --- f1 INTEGER (error-status or non-repeaters) ---
         f1_tag, f1_body, j = read_tlv(pdu_body, j)
         if f1_tag != _TAG_INTEGER:
             raise ValueError(f"Expected f1 INTEGER tag 0x02, got 0x{f1_tag:02x}")
         f1 = decode_int(f1_body)
 
-        # --- f2 INTEGER (error-index or max-repetitions) ---
         f2_tag, f2_body, j = read_tlv(pdu_body, j)
         if f2_tag != _TAG_INTEGER:
             raise ValueError(f"Expected f2 INTEGER tag 0x02, got 0x{f2_tag:02x}")
         f2 = decode_int(f2_body)
 
-        # --- varbind-list SEQUENCE ---
         vblist_tag, vblist_body, _j = read_tlv(pdu_body, j)
         if vblist_tag != _TAG_SEQUENCE:
             raise ValueError(f"Expected varbind-list SEQUENCE tag 0x30, got 0x{vblist_tag:02x}")
 
-        # --- individual varbinds ---
         varbinds: list[Varbind] = []
         k = 0
         while k < len(vblist_body):

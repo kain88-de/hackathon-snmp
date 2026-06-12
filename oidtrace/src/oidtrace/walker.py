@@ -271,7 +271,6 @@ async def walk_records(  # noqa: PLR0912, PLR0913, PLR0915
         settings.bulk_size,
     )
 
-    # --- Header ---
     yield header_record(
         tool=_TOOL_NAME,
         started_at=started_at,
@@ -283,7 +282,6 @@ async def walk_records(  # noqa: PLR0912, PLR0913, PLR0915
         settings=_make_settings_model(settings),
     )
 
-    # --- Loop state ---
     cursor: Oid = settings.start_oid
     seq: int = 0
     consecutive_no_response: int = 0
@@ -291,7 +289,6 @@ async def walk_records(  # noqa: PLR0912, PLR0913, PLR0915
     oids_seen_set: set[Oid] = set()  # distinct in-subtree OIDs
     end_reason: EndReason | None = None
 
-    # Walk the subtree
     while end_reason is None:
         # --- Time budget check (at loop top — zero-exchange trace intentional) ---
         if settings.time_budget_s is not None and _now(rel) >= settings.time_budget_s:
@@ -322,7 +319,6 @@ async def walk_records(  # noqa: PLR0912, PLR0913, PLR0915
             max_repetitions=settings.bulk_size,
         )
 
-        # THE ONLY I/O
         exchange_io: ExchangeIO = await transport.exchange(
             raw_request,
             timeout_s=settings.timeout_s,
@@ -336,15 +332,11 @@ async def walk_records(  # noqa: PLR0912, PLR0913, PLR0915
             "yes" if exchange_io.response is not None else "no",
         )
 
-        # Convert transport attempts → model attempts
         model_attempts = [_transport_attempt_to_model(a) for a in exchange_io.attempts]
-
-        # Convert strays → model strays
         model_strays = [
             tf.StrayResponse(received_at=tf.Reltime(round(ts, 6))) for ts, _ in exchange_io.strays
         ]
 
-        # Decode response
         decoded_msg: Message | None = None
         malformed_model: tf.Malformed | None = None
         varbinds_from_response: list[Varbind] = []
@@ -372,7 +364,6 @@ async def walk_records(  # noqa: PLR0912, PLR0913, PLR0915
         else:
             consecutive_no_response += 1
 
-        # Check violations
         exchange_violations: list[Violation] = []
         if malformed_model is not None:
             exchange_violations.append(Violation.MALFORMED_BER)
@@ -388,11 +379,9 @@ async def walk_records(  # noqa: PLR0912, PLR0913, PLR0915
                 strays=[raw for _, raw in exchange_io.strays],
             )
 
-        # Accumulate violation counts
         for v in exchange_violations:
             violation_counts[v] = violation_counts.get(v, 0) + 1
 
-        # Build and yield the Exchange record
         typed_vbs: list[Varbind] = list(varbinds_from_response)
         yield exchange_record(
             seq=seq,
@@ -408,27 +397,21 @@ async def walk_records(  # noqa: PLR0912, PLR0913, PLR0915
         )
 
         # --- Termination decisions (after yielding the exchange) ---
-
-        # Give-up check
         if consecutive_no_response >= settings.give_up_after:
             log.info("walk unresponsive after %d consecutive misses", consecutive_no_response)
             end_reason = EndReason.UNRESPONSIVE
             break
 
-        # No response → cursor stays, loop continues
         if exchange_io.response is None or malformed_model is not None:
             continue
 
-        # Decoded OK — check varbinds for termination
         vbs: list[Varbind] = list(varbinds_from_response)
 
-        # Empty varbind list → COMPLETED
         if not vbs:
             log.info("walk completed: empty varbind response")
             end_reason = EndReason.COMPLETED
             break
 
-        # EndOfMibView on any varbind → COMPLETED
         if any(vb.tag == 0x82 for vb in vbs):  # noqa: PLR2004
             log.info("walk completed: EndOfMibView")
             end_reason = EndReason.COMPLETED
@@ -456,20 +439,17 @@ async def walk_records(  # noqa: PLR0912, PLR0913, PLR0915
             end_reason = EndReason.OID_LOOP
             break
 
-        # Left subtree → COMPLETED (OID jumped outside start_oid subtree)
         if not new_cursor.in_subtree(settings.start_oid):
             log.info("walk completed: left subtree oid=%s", new_cursor)
             end_reason = EndReason.COMPLETED
             break
 
-        # Count distinct in-subtree OIDs seen
         for vb in data_vbs:
             if vb.oid.in_subtree(settings.start_oid):
                 oids_seen_set.add(vb.oid)
 
         cursor = new_cursor
 
-    # --- Summary ---
     assert end_reason is not None
     at = _now(rel)
     oids_seen = len(oids_seen_set)
@@ -544,7 +524,6 @@ async def walk_with_transport(  # noqa: PLR0913
                 if isinstance(record, tf.Summary):
                     end_reason = EndReason(record.end_reason)
     except asyncio.CancelledError:
-        # Emit interrupted summary to sinks synchronously, then re-raise
         at = _now(rel)
         interrupted = summary_record(
             at=at,
@@ -597,7 +576,6 @@ async def run_walk(  # noqa: PLR0913
         runs_total: Total runs in matrix.
         sinks: Additional record sinks (writer is always first).
     """
-    # ONE shared clock — this is the key invariant (trap #11)
     rel = _monotonic_rel()
 
     with TraceWriter(path) as writer:

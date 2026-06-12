@@ -32,10 +32,6 @@ class Oid:
 
     arcs: tuple[int, ...]
 
-    # ------------------------------------------------------------------
-    # Construction
-    # ------------------------------------------------------------------
-
     @classmethod
     def from_str(cls, s: str) -> Oid:
         """Parse a dotted-decimal OID string.
@@ -55,10 +51,6 @@ class Oid:
             arcs.append(int(part))
         return cls(arcs=tuple(arcs))
 
-    # ------------------------------------------------------------------
-    # Conversion
-    # ------------------------------------------------------------------
-
     @override
     def __str__(self) -> str:
         return ".".join(str(a) for a in self.arcs)
@@ -66,10 +58,6 @@ class Oid:
     @override
     def __repr__(self) -> str:
         return f"Oid({'.'.join(str(a) for a in self.arcs)!r})"
-
-    # ------------------------------------------------------------------
-    # Subtree test
-    # ------------------------------------------------------------------
 
     def in_subtree(self, root: Oid) -> bool:
         """Return True if this OID is equal to root or is a descendant of it.

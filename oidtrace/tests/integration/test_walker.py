@@ -96,7 +96,6 @@ async def test_fixed_request_id_mismatch_completes(
             path=trace_path,
         )
 
-    # Walk still completes (violations are recorded, not fatal)
     assert end_reason == EndReason.COMPLETED
 
     from oidtrace.tracefile import read_trace  # noqa: PLC0415
@@ -175,7 +174,6 @@ async def test_drop_all_unresponsive(
     records = list(read_trace(trace_path))
     exchange_records = [r for r in records if isinstance(r, Exchange)]
 
-    # Exactly give_up_after=2 exchanges
     assert len(exchange_records) == 2
 
     # Each exchange has retries+1=2 attempts, no response keys
@@ -290,7 +288,6 @@ async def test_appended_sink_receives_same_records(
     file_records = list(read_trace(trace_path))
     assert len(sink_records) == len(file_records)
 
-    # Records in same order (compare by JSON representation)
     for s, f in zip(sink_records, file_records, strict=True):
         assert dump_record(s) == dump_record(f)
 
@@ -328,7 +325,6 @@ async def test_shared_timeline_sent_at_and_summary(
     first_attempt_sent_at = exchange_records[0].attempts[0].sent_at.root
     summary_at = summary.at.root
 
-    # Both are relative to the same zero: sent_at must be < summary.at
     assert first_attempt_sent_at >= 0.0
     assert summary_at > first_attempt_sent_at, (
         f"summary.at={summary_at} must be > first attempt sent_at={first_attempt_sent_at}"

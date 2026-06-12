@@ -50,7 +50,6 @@ class _ProgressSink:
             sys.stderr.write(f"\r{self._seq} exchanges...")
             sys.stderr.flush()
         elif record.type == "summary":
-            # Clear the progress line
             sys.stderr.write("\r")
             sys.stderr.flush()
 
@@ -131,12 +130,11 @@ def main(argv: list[str] | None = None) -> int:
         parser.print_help(sys.stderr)
         return 2
 
-    # --- Configure logging (only here, never in libraries) ---
     verbosity: int = args.verbose
     level = logging.WARNING
     if verbosity == 1:
         level = logging.INFO
-    elif verbosity >= 2:  # noqa: PLR2004  # verbosity levels: 0=WARNING, 1=INFO, 2+=DEBUG
+    elif verbosity >= 2:  # noqa: PLR2004
         level = logging.DEBUG
 
     logging.basicConfig(
@@ -146,7 +144,6 @@ def main(argv: list[str] | None = None) -> int:
         force=True,
     )
 
-    # --- Validate --start-oid BEFORE DNS (fail fast on cheap check) ---
     from oidtrace.oid import Oid  # noqa: PLC0415  # deferred: keep module-level import light
 
     try:
@@ -155,7 +152,6 @@ def main(argv: list[str] | None = None) -> int:
         print(f"error: invalid --start-oid {args.start_oid!r}: {exc}", file=sys.stderr)
         return 2
 
-    # --- DNS resolution (operator error if it fails) ---
     host: str = args.host
     try:
         results = socket.getaddrinfo(host, None, socket.AF_INET)
@@ -166,7 +162,6 @@ def main(argv: list[str] | None = None) -> int:
 
     log.info("resolved %s -> %s", host, resolved_ip)
 
-    # --- Build trace path ---
     out_dir = Path(args.out)
     out_dir.mkdir(parents=True, exist_ok=True)
 
@@ -177,7 +172,6 @@ def main(argv: list[str] | None = None) -> int:
 
     log.info("trace path: %s", trace_path)
 
-    # --- Build settings ---
     from oidtrace.walker import (  # noqa: PLC0415  # deferred: keep module-level import light
         WalkSettings,
         run_walk,
@@ -193,12 +187,10 @@ def main(argv: list[str] | None = None) -> int:
         community=args.community.encode(),
     )
 
-    # --- Progress sink (only at default verbosity) ---
     extra_sinks: list[RecordSink] = []
     if verbosity == 0:
         extra_sinks.append(_ProgressSink())
 
-    # --- Run the walk ---
     # Ctrl-C falls through to terminal summary; the INTERRUPTED summary is
     # already flushed by walk_with_transport before KeyboardInterrupt propagates.
     with contextlib.suppress(KeyboardInterrupt):
@@ -213,7 +205,6 @@ def main(argv: list[str] | None = None) -> int:
             )
         )
 
-    # --- Terminal summary from the trace ---
     _print_summary(trace_path)
     return 0
 

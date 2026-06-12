@@ -48,11 +48,9 @@ def check_exchange(  # noqa: PLR0913
     """
     violations: list[Violation] = []
 
-    # --- REQUEST_ID_MISMATCH ---
     if returned_id != sent_id:
         violations.append(Violation.REQUEST_ID_MISMATCH)
 
-    # --- OID_NOT_INCREASING ---
     # Walk varbinds in order; exception-tag varbinds are skipped and do NOT
     # advance the cursor.  Report at most once.
     cursor = prev_oid
@@ -65,7 +63,6 @@ def check_exchange(  # noqa: PLR0913
             oid_violation_seen = True
         cursor = vb.oid
 
-    # --- DUPLICATE_RESPONSE ---
     if any(s == response_raw for s in strays):
         violations.append(Violation.DUPLICATE_RESPONSE)
 

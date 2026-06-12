@@ -135,14 +135,12 @@ class _SnmpProtocol(asyncio.DatagramProtocol):
 
     @override
     def datagram_received(self, data: bytes, addr: object) -> None:
-        # Stamp timestamp HERE — event time, in the callback, not at dequeue.
         received_at = self.now()
         log.debug("datagram received len=%d at %.6f", len(data), received_at)
         self._queue.put_nowait(_DatagramEvent(received_at=received_at, data=data))
 
     @override
     def error_received(self, exc: Exception) -> None:
-        # Stamp timestamp HERE — event time, in the callback, not at dequeue.
         received_at = self.now()
         kind = _icmp_error_kind(exc)
         log.debug("error_received %s at %.6f", kind, received_at)
@@ -264,15 +262,12 @@ class UdpTransport:
                 response = (item.received_at, item.data)
                 break
             else:
-                # _ErrorEvent — ICMP or OS error on this attempt; continue to next attempt
                 assert isinstance(item, _ErrorEvent)
                 log.debug("send #%d error %s at %.6f", send_idx, item.kind, item.received_at)
                 attempts.append(Attempt(sent_at=sent_at, error=item.kind))
-                # Record the error and continue to next attempt (bounded by retries).
                 # Errors are consumed in the attempt-wait window (format § 4.3 arrival-window
                 # rule); a single queue.get() per attempt means no cross-attempt deferral.
 
-        # Drain immediately-available strays (unconditional — always runs after the loop)
         await asyncio.sleep(0)
         strays: list[tuple[float, bytes]] = []
         while not protocol.queue.empty():

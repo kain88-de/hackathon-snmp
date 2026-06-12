@@ -220,7 +220,6 @@ def test_successful_walk_stderr_progress(
 
     assert ret == 0
     captured = capsys.readouterr()
-    # At verbosity 0, progress \r lines should appear on stderr
     assert "\r" in captured.err
 
 
@@ -251,9 +250,7 @@ def test_verbose_vv_debug_lines_no_progress(
 
     assert ret == 0
     captured = capsys.readouterr()
-    # DEBUG lines present
     assert "DEBUG" in captured.err
-    # No \r progress at -vv
     assert "\r" not in captured.err
 
 

@@ -68,13 +68,10 @@ def read_trace(path: Path) -> Iterator[TraceRecord]:
             try:
                 line = f.readline()
             except (EOFError, gzip.BadGzipFile):
-                # Truncated mid-stream -- stop quietly.
                 break
             if not line:
-                # readline() returns "" at EOF (clean end of stream).
                 break
             if not line.endswith("\n"):
-                # Partial final line without trailing newline -- skip silently.
                 break
             stripped = line.rstrip("\n")
             if stripped:

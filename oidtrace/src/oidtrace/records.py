@@ -126,7 +126,6 @@ def exchange_record(  # noqa: PLR0913
             "a decoded response and a malformed datagram cannot both be present."
         )
 
-    # Build the response model only when we have a real decoded response.
     response: tf.Response | None = None
     if response_request_id is not None:
         # response_error_status and response_error_index are always set together.

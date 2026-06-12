@@ -16,7 +16,7 @@ from __future__ import annotations
 
 from oidtrace.oid import Oid
 
-_LONG_FORM_THRESHOLD = 0x80  # BER lengths >= 128 require long-form encoding
+_LONG_FORM_THRESHOLD = 0x80
 
 
 def tlv(tag: int, payload: bytes) -> bytes:
@@ -44,8 +44,7 @@ def encode_int(v: int, tag: int = 0x02) -> bytes:
     if v == 0:
         body = b"\x00"
     else:
-        # to_bytes with signed=True uses minimal two's complement.
-        byte_count = (v.bit_length() + 8) // 8  # +8 accounts for sign bit
+        byte_count = (v.bit_length() + 8) // 8
         body = v.to_bytes(byte_count, "big", signed=True)
     return tlv(tag, body)
 
