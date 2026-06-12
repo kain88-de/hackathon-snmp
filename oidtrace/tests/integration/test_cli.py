@@ -26,9 +26,10 @@ def _run_emulator_on_thread(
     port_holder: list[int],
     state: dict[str, object],
     state_ready: threading.Event,
+    quirks: object = None,
 ) -> None:
     """Start an asyncio loop on a daemon thread, bind the emulator, set port_ready."""
-    from tests.support.emulator import EmuDevice, EmuProtocol  # noqa: PLC0415
+    from tests.support.emulator import EmuDevice, EmuProtocol, Quirks  # noqa: PLC0415
 
     loop = asyncio.new_event_loop()
 
@@ -38,7 +39,7 @@ def _run_emulator_on_thread(
         state["stop"] = stop
         state_ready.set()
 
-        device = EmuDevice.simple(n_oids=20)
+        device = EmuDevice.simple(n_oids=20, quirks=quirks if isinstance(quirks, Quirks) else None)
         transport, _ = await loop.create_datagram_endpoint(
             lambda: EmuProtocol(device),
             local_addr=("127.0.0.1", 0),
@@ -56,17 +57,24 @@ def _run_emulator_on_thread(
 class EmulatorThread:
     """Context manager that starts an emulator on a daemon thread and tears it down."""
 
-    def __init__(self) -> None:
+    def __init__(self, quirks: object = None) -> None:
         self._port_ready: threading.Event = threading.Event()
         self._port_holder: list[int] = []
         self._state: dict[str, object] = {}
         self._state_ready: threading.Event = threading.Event()
         self._thread: threading.Thread | None = None
+        self._quirks = quirks
 
     def __enter__(self) -> tuple[str, int]:
         self._thread = threading.Thread(
             target=_run_emulator_on_thread,
-            args=(self._port_ready, self._port_holder, self._state, self._state_ready),
+            args=(
+                self._port_ready,
+                self._port_holder,
+                self._state,
+                self._state_ready,
+                self._quirks,
+            ),
             daemon=True,
         )
         self._thread.start()
@@ -378,3 +386,72 @@ def test_out_dir_created(tmp_path: Path) -> None:
     assert out_dir.exists()
     trace_files = list(out_dir.glob("*.oidtrace.jsonl.gz"))
     assert len(trace_files) == 1
+
+
+def test_violation_counts_in_summary(tmp_path: Path, capsys: pytest.CaptureFixture[str]) -> None:
+    """With fixed_request_id=1, every exchange produces a request-id-mismatch.
+
+    The terminal summary printed to stdout must mention 'request-id-mismatch'
+    and its non-zero count.
+    """
+    from oidtrace.cli import main  # noqa: PLC0415
+    from tests.support.emulator import Quirks  # noqa: PLC0415
+
+    quirks = Quirks(fixed_request_id=1)
+    with EmulatorThread(quirks=quirks) as (host, port):
+        ret = main(
+            [
+                "walk",
+                host,
+                "--port",
+                str(port),
+                "--out",
+                str(tmp_path),
+                "--timeout",
+                "1.0",
+                "--retries",
+                "1",
+                "--give-up-after",
+                "2",
+            ]
+        )
+
+    assert ret == 0
+    captured = capsys.readouterr()
+    out = captured.out
+    assert "request-id-mismatch" in out
+    # The count must be a positive integer — check that the line is not "none"
+    assert "violations  : none" not in out
+
+
+def test_verbose_v_info_lines_no_progress_no_debug(
+    tmp_path: Path, capsys: pytest.CaptureFixture[str]
+) -> None:
+    """walk -v: INFO lines on stderr, no \\r progress, no DEBUG lines."""
+    from oidtrace.cli import main  # noqa: PLC0415
+
+    with EmulatorThread() as (host, port):
+        ret = main(
+            [
+                "walk",
+                host,
+                "--port",
+                str(port),
+                "--out",
+                str(tmp_path),
+                "--timeout",
+                "1.0",
+                "--retries",
+                "1",
+                "--give-up-after",
+                "2",
+                "-v",
+            ]
+        )
+
+    assert ret == 0
+    captured = capsys.readouterr()
+    err = captured.err
+    assert "INFO" in err
+    assert "\r" not in err
+    assert "DEBUG" not in err

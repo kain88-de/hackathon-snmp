@@ -28,6 +28,8 @@ from typing import TYPE_CHECKING, cast
 if TYPE_CHECKING:
     from traceformat import TraceRecord
 
+    from oidtrace.walker import RecordSink
+
 log = logging.getLogger(__name__)
 
 
@@ -189,7 +191,7 @@ def main(argv: list[str] | None = None) -> int:
     )
 
     # --- Progress sink (only at default verbosity) ---
-    extra_sinks = []
+    extra_sinks: list[RecordSink] = []
     if verbosity == 0:
         extra_sinks.append(_ProgressSink())
 
@@ -236,8 +238,10 @@ def _print_summary(trace_path: Path) -> None:
     print(f"exchanges   : {summary.exchanges}", flush=True)  # type: ignore[union-attr]
     print(f"oids_seen   : {summary.oids_seen}", flush=True)  # type: ignore[union-attr]
 
-    violations = getattr(summary, "violations", None)
-    if violations:
-        print(f"violations  : {violations}", flush=True)
+    counts = summary.violation_counts  # type: ignore[union-attr]
+    if counts:
+        print(f"violations  : {counts}", flush=True)
+    else:
+        print("violations  : none", flush=True)
 
     print(f"trace       : {trace_path}", flush=True)
