@@ -25,6 +25,7 @@ dev = [
     "pyright>=1.1",
     "pytest-cov>=7.1.0",
     "vulture>=2.16",
+    "hypothesis>=6.155.2",
 ]
 
 [tool.hatch.build.targets.wheel]
@@ -38,7 +39,7 @@ select = ["E", "F", "W", "I", "N", "UP", "B", "A", "C4", "SIM", "ARG", "RUF", "A
 ignore = []
 
 [tool.ruff.lint.per-file-ignores]
-"tests/**" = ["PLR2004"]
+"tests/**" = ["PLR2004", "PLR0913"]
 "src/oidtrace/violations.py" = ["PLR0913"]
 "src/oidtrace/records.py" = ["PLR0913"]
 "src/oidtrace/walker.py" = ["PLR0912", "PLR0913", "PLR0915"]
