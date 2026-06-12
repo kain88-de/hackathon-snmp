@@ -19,4 +19,33 @@ test:
 cov:
     uv run pytest --cov=traceformat --cov-branch --cov-report=term-missing
 
-ci: fmt lint types test
+gen-types:
+    uv run datamodel-codegen \
+        --input ../docs/trace-format.schema.json \
+        --input-file-type jsonschema \
+        --output src/traceformat/models.py \
+        --output-model-type pydantic_v2.BaseModel \
+        --target-python-version 3.13 \
+        --use-standard-collections \
+        --field-constraints \
+        --formatters ruff-format \
+        --disable-timestamp
+
+types-fresh:
+    #!/usr/bin/env bash
+    set -euo pipefail
+    tmp="src/traceformat/_models_fresh.py"
+    trap 'rm -f "$tmp"' EXIT
+    uv run datamodel-codegen \
+        --input ../docs/trace-format.schema.json \
+        --input-file-type jsonschema \
+        --output "$tmp" \
+        --output-model-type pydantic_v2.BaseModel \
+        --target-python-version 3.13 \
+        --use-standard-collections \
+        --field-constraints \
+        --formatters ruff-format \
+        --disable-timestamp
+    diff src/traceformat/models.py "$tmp"
+
+ci: types-fresh fmt lint types test
