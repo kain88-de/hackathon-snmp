@@ -455,3 +455,13 @@ def test_verbose_v_info_lines_no_progress_no_debug(
     assert "INFO" in err
     assert "\r" not in err
     assert "DEBUG" not in err
+
+
+def test_no_subcommand_returns_2(capsys: pytest.CaptureFixture[str]) -> None:
+    """Calling main() with no subcommand prints help to stderr and returns 2."""
+    from oidtrace.cli import main  # noqa: PLC0415
+
+    ret = main([])
+    assert ret == 2
+    err = capsys.readouterr().err
+    assert "walk" in err.lower() or "usage" in err.lower()

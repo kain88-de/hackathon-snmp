@@ -307,6 +307,22 @@ def test_empty_writer_yields_nothing(tmp_path: Path) -> None:
     assert list(read_trace(path)) == []
 
 
+def test_blank_line_in_stream_is_skipped(tmp_path: Path) -> None:
+    """A blank line (just a newline) between records is silently skipped."""
+    path = tmp_path / "trace.jsonl.gz"
+    header = _header()
+    summary = _summary()
+
+    # Construct content with a blank line between the two records
+    content = dump_record(header) + "\n" + "\n" + dump_record(summary) + "\n"
+    path.write_bytes(gzip.compress(content.encode("utf-8")))
+
+    records = list(read_trace(path))
+    assert len(records) == 2
+    assert records[0] == header
+    assert records[1] == summary
+
+
 # ---------------------------------------------------------------------------
 # read_trace raises on format-invalid complete lines (not silent skip)
 # ---------------------------------------------------------------------------

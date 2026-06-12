@@ -680,3 +680,87 @@ async def test_duplicate_response_stray_violation(
     assert first.violations is not None  # type: ignore[union-attr]
     assert str(Violation.DUPLICATE_RESPONSE) in first.violations  # type: ignore[union-attr]
     _validate_all(records, record_validator)
+
+
+@pytest.mark.asyncio
+async def test_walkstats_unknown_violation_string_tolerated() -> None:
+    """WalkStats.observe tolerates an unrecognised violation string without raising."""
+    from traceformat.models import Attempt as TfAttempt  # noqa: PLC0415
+    from traceformat.models import Exchange, Pdu, Reltime, Request  # noqa: PLC0415
+
+    from oidtrace.walker import WalkStats  # noqa: PLC0415
+
+    req = Request(
+        pdu=Pdu.getbulk,
+        request_id=42,
+        oids=["1.3.6.1"],
+        non_repeaters=0,
+        max_repetitions=10,
+    )
+    attempt = TfAttempt(sent_at=Reltime(0.001), received_at=None)
+    exchange = Exchange.model_validate(
+        {
+            "type": "exchange",
+            "seq": 1,
+            "request": req,
+            "attempts": [attempt],
+            "violations": ["future_unknown_violation"],
+        }
+    )
+    stats = WalkStats()
+    # Must not raise
+    stats.observe(exchange)
+    # No counts accumulated for the unknown string
+    assert stats.violation_counts == {}
+
+
+@pytest.mark.asyncio
+async def test_all_exception_tag_varbinds_completed(
+    record_validator: Draft202012Validator,
+) -> None:
+    """All-NoSuchObject varbinds (no EOM, no data) → COMPLETED."""
+    # Tag 0x80 = NoSuchObject, 0x81 = NoSuchInstance — both are EXCEPTION_TAGS
+    # but NOT EndOfMibView (0x82). The EOM check skips them, leaving data_vbs empty.
+    raw = encode_response(42, [(_OID_A, 0x80, b""), (_OID_A, 0x81, b"")])
+    exc_exchange = ExchangeIO(
+        attempts=(Attempt(sent_at=0.001, received_at=0.002),),
+        response=(0.002, raw),
+        strays=(),
+    )
+    transport = FakeTransport(responses=[exc_exchange])
+    records = await _collect(transport)
+
+    summary = records[-1]
+    assert summary.type == "summary"  # type: ignore[union-attr]
+    assert summary.end_reason == str(EndReason.COMPLETED)  # type: ignore[union-attr]
+    _validate_all(records, record_validator)
+
+
+@pytest.mark.asyncio
+async def test_varbind_outside_subtree_not_counted(
+    record_validator: Draft202012Validator,
+) -> None:
+    """Varbinds outside start_oid subtree are not counted; only in-subtree ones are."""
+    from oidtrace.walker import WalkSettings  # noqa: PLC0415
+
+    # start_oid = 1.3.6.1.2; one varbind inside, next varbind exits subtree
+    # We need multiple data varbinds where the cursor (last) is in subtree
+    # but an earlier one might not be. Use a narrow subtree.
+    inside_oid = Oid.from_str("1.3.6.1.2.1.1.1.0")
+    # After inside_oid the next OID is still in 1.3.6.1.2 subtree
+    next_oid = Oid.from_str("1.3.6.1.2.1.1.2.0")
+    start = Oid.from_str("1.3.6.1.2")
+
+    transport = FakeTransport(
+        responses=[
+            _response_exchange([inside_oid, next_oid]),
+            _eom_exchange(next_oid),
+        ]
+    )
+    records = await _collect(transport, settings=WalkSettings(start_oid=start))
+
+    summary = records[-1]
+    assert summary.type == "summary"  # type: ignore[union-attr]
+    assert summary.end_reason == str(EndReason.COMPLETED)  # type: ignore[union-attr]
+    assert summary.oids_seen == 2  # type: ignore[union-attr]
+    _validate_all(records, record_validator)
