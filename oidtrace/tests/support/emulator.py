@@ -9,6 +9,7 @@ from __future__ import annotations
 import asyncio
 import bisect
 from dataclasses import dataclass, field
+from enum import StrEnum
 from typing import Any
 
 from oidtrace.codec import Malformed, decode_message, encode_response
@@ -18,10 +19,16 @@ from oidtrace.oid import Oid
 # Public data types
 
 
+class EndOfMib(StrEnum):
+    EOM = "eom"
+    SILENCE = "silence"
+    WRAP = "wrap"
+
+
 @dataclass(frozen=True)
 class Quirks:
     fixed_request_id: int | None = None
-    end_of_mib: str = "eom"  # "eom" | "silence" | "wrap"
+    end_of_mib: EndOfMib = EndOfMib.EOM
     duplicate_responses: bool = False
     slow_prefix: Oid | None = None
     per_oid_delay_s: float = 0.0
@@ -67,7 +74,7 @@ class EmuDevice:
 # Asyncio protocol
 
 
-class _EmuProtocol(asyncio.DatagramProtocol):
+class EmuProtocol(asyncio.DatagramProtocol):
     def __init__(self, device: EmuDevice) -> None:
         self._device = device
         self._keys: list[Oid] = [oid for oid, _, _ in device.tree]
@@ -97,6 +104,9 @@ class _EmuProtocol(asyncio.DatagramProtocol):
             return  # malformed — silently drop
         msg = decoded
 
+        if not msg.varbinds:
+            return
+
         # Successor lookup from the first varbind OID
         request_oid = msg.varbinds[0].oid
         idx = bisect.bisect_right(self._keys, request_oid)
@@ -119,14 +129,12 @@ class _EmuProtocol(asyncio.DatagramProtocol):
                     await asyncio.sleep(delay)
         else:
             match quirks.end_of_mib:
-                case "eom":
-                    varbinds = [(request_oid, 0x82, b"")]
-                case "silence":
+                case EndOfMib.SILENCE:
                     return
-                case "wrap":
+                case EndOfMib.WRAP:
                     first_oid, first_tag, first_vlen = self._device.tree[0]
                     varbinds = [(first_oid, first_tag, b"\x00" * first_vlen)]
-                case _:
+                case _:  # EndOfMib.EOM and any unknown future value
                     varbinds = [(request_oid, 0x82, b"")]
 
         rid = quirks.fixed_request_id if quirks.fixed_request_id is not None else msg.request_id

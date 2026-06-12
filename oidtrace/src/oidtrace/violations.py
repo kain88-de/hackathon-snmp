@@ -10,6 +10,7 @@ from __future__ import annotations
 from typing import TYPE_CHECKING
 
 from oidtrace.codec import EXCEPTION_TAGS
+from oidtrace.vocab import Violation
 
 if TYPE_CHECKING:
     from collections.abc import Sequence
@@ -26,23 +27,23 @@ def check_exchange(
     varbinds: Sequence[Varbind],
     response_raw: bytes,
     strays: Sequence[bytes],
-) -> list[str]:
+) -> list[Violation]:
     """Return a list of violation strings for one request/response exchange."""
-    violations: list[str] = []
+    violations: list[Violation] = []
 
     if returned_id != sent_id:
-        violations.append("request-id-mismatch")
+        violations.append(Violation.REQUEST_ID_MISMATCH)
 
     cursor = prev_oid
     for vb in varbinds:
         if vb.tag in EXCEPTION_TAGS:
             continue
         if vb.oid <= cursor:
-            violations.append("oid-not-increasing")
+            violations.append(Violation.OID_NOT_INCREASING)
             break
         cursor = vb.oid
 
     if any(s == response_raw for s in strays):
-        violations.append("duplicate-response")
+        violations.append(Violation.DUPLICATE_RESPONSE)
 
     return violations

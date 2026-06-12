@@ -3,6 +3,7 @@
 from oidtrace.codec import EXCEPTION_TAGS, Varbind
 from oidtrace.oid import Oid
 from oidtrace.violations import check_exchange
+from oidtrace.vocab import Violation
 
 # Helpers
 _OID = Oid.from_str
@@ -26,7 +27,7 @@ def test_request_id_mismatch_detected() -> None:
         response_raw=b"data",
         strays=[],
     )
-    assert "request-id-mismatch" in violations
+    assert Violation.REQUEST_ID_MISMATCH in violations
 
 
 def test_request_id_match_no_mismatch_violation() -> None:
@@ -38,7 +39,7 @@ def test_request_id_match_no_mismatch_violation() -> None:
         response_raw=b"data",
         strays=[],
     )
-    assert "request-id-mismatch" not in violations
+    assert Violation.REQUEST_ID_MISMATCH not in violations
 
 
 # ---------------------------------------------------------------------------
@@ -56,7 +57,7 @@ def test_oid_equal_to_prev_is_not_increasing() -> None:
         response_raw=b"data",
         strays=[],
     )
-    assert "oid-not-increasing" in violations
+    assert Violation.OID_NOT_INCREASING in violations
 
 
 def test_oid_violation_between_two_varbinds() -> None:
@@ -72,7 +73,7 @@ def test_oid_violation_between_two_varbinds() -> None:
         response_raw=b"data",
         strays=[],
     )
-    assert "oid-not-increasing" in violations
+    assert Violation.OID_NOT_INCREASING in violations
 
 
 def test_oid_increasing_is_clean() -> None:
@@ -87,7 +88,7 @@ def test_oid_increasing_is_clean() -> None:
         response_raw=b"data",
         strays=[],
     )
-    assert "oid-not-increasing" not in violations
+    assert Violation.OID_NOT_INCREASING not in violations
 
 
 def test_exception_tag_varbind_skipped_by_ordering_check() -> None:
@@ -106,7 +107,7 @@ def test_exception_tag_varbind_skipped_by_ordering_check() -> None:
         response_raw=b"data",
         strays=[],
     )
-    assert "oid-not-increasing" not in violations
+    assert Violation.OID_NOT_INCREASING not in violations
 
 
 # ---------------------------------------------------------------------------
@@ -123,7 +124,7 @@ def test_duplicate_response_detected_when_stray_equals_response() -> None:
         response_raw=raw,
         strays=[raw],  # exact duplicate
     )
-    assert "duplicate-response" in violations
+    assert Violation.DUPLICATE_RESPONSE in violations
 
 
 def test_different_stray_does_not_trigger_duplicate() -> None:
@@ -135,7 +136,7 @@ def test_different_stray_does_not_trigger_duplicate() -> None:
         response_raw=b"\x30\x01\x00",
         strays=[b"\x30\x01\x01"],  # different bytes
     )
-    assert "duplicate-response" not in violations
+    assert Violation.DUPLICATE_RESPONSE not in violations
 
 
 # ---------------------------------------------------------------------------

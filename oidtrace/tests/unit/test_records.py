@@ -18,6 +18,7 @@ from oidtrace.records import (
     summary_record,
     system_info_record,
 )
+from oidtrace.vocab import Violation
 
 # ---------------------------------------------------------------------------
 # Helpers
@@ -111,7 +112,7 @@ def test_exchange_with_response_and_strays_and_violations(
         response_fields={"request_id": 42, "error_status": 0, "error_index": 0},
         varbinds=[vb],
         strays=[{"received_at": 1.55}],
-        violations=["request-id-mismatch"],
+        violations=[Violation.REQUEST_ID_MISMATCH],
         malformed=None,
     )
     _valid(record_validator, rec)
