@@ -6,8 +6,8 @@ plan `docs/superpowers/plans/2026-06-11-oidtrace.md` fully executed)
 Validation: core ideas proven end-to-end by `experiments/poc_roundtrip.py` (codec,
 quirk-tolerant walk, schema-valid traces); format performance measured by
 `experiments/trace_format_perf.py` — results in `experiments/*-results.md`;
-implementation verified by 141 tests incl. a net-snmp cross-walk, branch coverage
-98–100%, and Hypothesis fuzzing of the tolerant decoder
+implementation verified by 159 tests incl. a net-snmp cross-walk, branch coverage
+98–100%, Hypothesis fuzzing of the tolerant decoder, and a vulture dead-code CI gate
 
 ## Purpose
 
@@ -77,7 +77,10 @@ oidtrace CLI
 walk pipeline:
   Walk Engine ──> Codec ──> Transport ──> device
        │            │           │
-       └────────────┴───────────┴──> Trace Writer (JSONL append)
+       └────────────┴───────────┴──> async record stream (walk_records iterator)
+                                        ├─> Trace Writer sink (gzip JSONL, canonical)
+                                        ├─> progress / logging sinks
+                                        └─> future: SSE sink for a live web UI
 ```
 
 `walk` accepts a **settings matrix** (e.g. several bulk sizes / timeouts); the combos run
@@ -104,10 +107,14 @@ admin-facing capture tool stays deterministic, predictable, and explainable.
 The walk engine is **one pluggable driver** of the codec/transport/writer
 pipeline — the **doctor** (the suite's MVP) is the first additional driver, running the
 support settings ladder over the same stack, and the OIDSense adaptive finder follows.
-Records flow to **pluggable sinks**: the gzip trace file is the canonical
-sink, terminal progress is a second, and an SSE endpoint for a live web UI is a third —
-the format's streaming guarantee (one self-contained record per line) makes every sink
-see the same stream with no second data path. The future OIDSense settings finder (survey walk → pinpoint slow OIDs at bulk 1 →
+The walk core is an **async generator** (`walk_records`) yielding header → exchanges →
+events → summary; a sink adapter (`walk_with_transport`) fans the stream out to
+**pluggable sinks** — the gzip trace file is the canonical sink, terminal progress a
+second, an SSE endpoint for a live web UI a third. Consumers of the iterator decide per
+record and own cancellation (the stream is self-sufficient: `WalkStats` can synthesize
+an interrupted summary from consumed records). The format's streaming guarantee (one
+self-contained record per line) makes every consumer see the same stream with no second
+data path. The future OIDSense settings finder (survey walk → pinpoint slow OIDs at bulk 1 →
 derive settings) is another driver of the same stack; every probing session emits a trace.
 
 ### CLI usability requirements
@@ -117,6 +124,10 @@ derive settings) is another driver of the same stack; every probing session emit
 - Community string is taken from the `OIDTRACE_COMMUNITY` environment variable
   (default `public`; interactive prompt post-MVP) — never a CLI argument
   (shell history on a shared monitoring server).
+- `-v/--verbose` counting flag: stdlib logging to stderr (WARNING → INFO → DEBUG);
+  module loggers, handlers are the adjustable sinks; log lines obey trace privacy
+  (never values, never the community string). The progress line shows only at default
+  verbosity (logs supersede it).
 - Progress on stderr during the walk; a terminal summary at the end (exchange count,
   violations found, path of the written trace). Slowest-ranges in the terminal summary
   is deferred to the doctor/OIDViz latency analysis (plan backlog).
