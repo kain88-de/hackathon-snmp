@@ -115,7 +115,8 @@ derive settings) is another driver of the same stack; every probing session emit
   (default `public`; interactive prompt post-MVP) — never a CLI argument
   (shell history on a shared monitoring server).
 - Progress on stderr during the walk; a terminal summary at the end (exchange count,
-  violations found, slowest ranges, path of the written trace).
+  violations found, path of the written trace). Slowest-ranges in the terminal summary
+  is deferred to the doctor/OIDViz latency analysis (plan backlog).
 
 ### Transport
 
