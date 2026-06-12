@@ -1,14 +1,8 @@
 """gzip-JSONL I/O for OIDTrace records.
 
-TraceWriter: single gzip stream opened once; write() appends one JSON line and
-flushes immediately (per-record durability -- a Ctrl-C after write() means the
-record is already readable by an independent reader).
-
-read_trace: yields validated TraceRecord instances for every complete line;
-stops quietly when the stream is truncated (EOFError, gzip.BadGzipFile, or a
-partial final line without a trailing newline).  A complete line that fails
-pydantic validation is allowed to raise -- that is our own bug, not a tolerance
-case.
+TraceWriter: single gzip stream opened once; write() appends one JSON line;
+close() flushes.  read_trace tolerates truncation so interrupted walks are
+readable up to the last complete line.
 """
 
 from __future__ import annotations
@@ -24,21 +18,19 @@ if TYPE_CHECKING:
 
 
 class TraceWriter:
-    """Append-only gzip-JSONL writer with per-record durability.
+    """Append-only gzip-JSONL writer.
 
     Opens the gzip stream on construction and keeps it open until close() /
-    __exit__.  Every write() flushes to the underlying file so that an
-    independent reader (or a post-Ctrl-C recovery) can see the record without
-    waiting for close().
+    __exit__.  Records are buffered in the gzip stream; close() flushes.
+    read_trace tolerates truncated files so an interrupted walk is still
+    readable up to the last complete line.
     """
 
     def __init__(self, path: Path) -> None:
         self._gz = gzip.open(path, "wt", encoding="utf-8")  # noqa: SIM115
 
     def write(self, record: TraceRecord) -> None:
-        """Append one JSON line and flush."""
         self._gz.write(dump_record(record) + "\n")
-        self._gz.flush()
 
     def close(self) -> None:
         self._gz.close()

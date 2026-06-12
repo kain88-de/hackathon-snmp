@@ -204,43 +204,6 @@ def test_truncation_mid_line_final_record_dropped(tmp_path: Path) -> None:
 # ---------------------------------------------------------------------------
 
 
-def test_flush_per_record_durable_before_close(tmp_path: Path) -> None:
-    """After write() WITHOUT closing the writer, an independent gzip read
-    already sees the written record (per-record durability / Ctrl-C safety)."""
-    path = tmp_path / "trace.jsonl.gz"
-    header = _header()
-
-    writer = TraceWriter(path)
-    writer.write(header)
-    # Deliberately NOT closing the writer — simulates Ctrl-C mid-walk
-
-    # Read independently while the writer is still open
-    records = list(read_trace(path))
-    assert len(records) == 1
-    assert records[0] == header
-
-    # Clean up (avoid ResourceWarning)
-    writer.close()
-
-
-def test_flush_per_record_multiple_records_before_close(tmp_path: Path) -> None:
-    """Multiple records are visible before close()."""
-    path = tmp_path / "trace.jsonl.gz"
-    header = _header()
-    summary = _summary()
-
-    writer = TraceWriter(path)
-    writer.write(header)
-    # After writing only the header, it must be readable
-    assert list(read_trace(path)) == [header]
-
-    writer.write(summary)
-    # After writing the summary too, both must be readable
-    assert list(read_trace(path)) == [header, summary]
-
-    writer.close()
-
-
 # ---------------------------------------------------------------------------
 # Context manager: __enter__ returns writer, __exit__ closes
 # ---------------------------------------------------------------------------
