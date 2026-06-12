@@ -105,6 +105,14 @@ _ = event_record
 _ = summary_record
 _ = system_info_record
 
+# tracefile.py public API — TraceWriter and read_trace are consumed by walker
+# (Task 11) and tests.  TraceWriter.close() is a public method callable outside
+# a context manager (e.g. post-Ctrl-C cleanup in tests).
+from oidtrace.tracefile import TraceWriter, read_trace
+
+_ = TraceWriter.close
+_ = read_trace
+
 # cli entry point — referenced in pyproject.toml [project.scripts], not called
 # directly in Python source.
 # from oidtrace.cli import main
