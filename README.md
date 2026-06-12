@@ -30,10 +30,10 @@ sketches live in git history.
 
 ## Where things stand
 
-**The capture layer is implemented**: workspace packages `oidtrace/` (codec, transport,
-walker, CLI) and `traceformat/` (schema-generated pydantic models + vocabulary), 159
-tests including a net-snmp cross-walk, 98–100% branch coverage, dead-code and codegen
-freshness gates in CI. Design specs live in `docs/superpowers/specs/`; the trace format
+**Status**: the capture layer was implemented end-to-end (validated against a real
+snmpd), then deliberately deleted for a one-shot replay experiment — the refined spec
+and contract-level plan are the surviving artifacts and the input for the rebuild.
+Design specs live in `docs/superpowers/specs/`; the trace format
 (`docs/trace-format.md` + `docs/trace-format.schema.json`) is authoritative and
-validated by experiments in `experiments/`. The executed plan:
+validated by experiments in `experiments/`. The plan to execute:
 `docs/superpowers/plans/2026-06-11-oidtrace.md`. Next: the doctor, then OIDViz.

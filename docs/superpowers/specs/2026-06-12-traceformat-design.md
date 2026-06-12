@@ -1,7 +1,7 @@
 # traceformat Design
 
 Date: 2026-06-12
-Status: approved — implemented (as-built spec; extracted from the OIDTrace design)
+Status: approved (extracted from the OIDTrace design; first implementation deleted for the one-shot replay)
 
 `traceformat` is the shared uv-workspace package holding the **types of the trace
 format**. Every producer and consumer in the suite (oidtrace today; the doctor and

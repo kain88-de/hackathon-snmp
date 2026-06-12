@@ -1,13 +1,13 @@
 # OIDTrace Architecture Design
 
 Date: 2026-06-11
-Status: approved — **implemented 2026-06-12** (`oidtrace/` + `traceformat/` packages;
-plan `docs/superpowers/plans/2026-06-11-oidtrace.md` fully executed)
+Status: approved (first implementation built 2026-06-12, then deliberately deleted for
+a one-shot replay of the refined plan — see the plan's status banner)
 Validation: core ideas proven end-to-end by `experiments/poc_roundtrip.py` (codec,
 quirk-tolerant walk, schema-valid traces); format performance measured by
-`experiments/trace_format_perf.py` — results in `experiments/*-results.md`;
-implementation verified by 159 tests incl. a net-snmp cross-walk, branch coverage
-98–100%, Hypothesis fuzzing of the tolerant decoder, and a vulture dead-code CI gate
+`experiments/trace_format_perf.py` — results in `experiments/*-results.md`. The first
+implementation additionally validated the design against a real localhost snmpd
+(2,811 exchanges, zero violations, values/community provably absent from the trace)
 
 ## Purpose
 
@@ -257,7 +257,7 @@ Runner: pytest with async test functions. `just test` runs layers 1–2 (fast de
 `just test-all` runs everything and **fails hard** if reference tools are missing, so
 skip-if-missing cannot silently become never-runs.
 
-As built, the gates exceed this plan: `just ci` chains ruff strict → pyrefly → a
+The gates (proven in the first pass, required again): `just ci` chains ruff strict → pyrefly → a
 vulture dead-code gate (documented whitelist) → pytest; `just cov` reports branch
 coverage (100% traceformat, 98% oidtrace — remaining misses are defensive branches);
 Hypothesis fuzzes the decoder's never-raises contract; the codec's fault branches are

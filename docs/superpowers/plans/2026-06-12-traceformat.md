@@ -1,27 +1,27 @@
 # traceformat Implementation Plan (contract level)
 
-> **Status: EXECUTED 2026-06-12** — extracted from the OIDTrace plan after the fact so
-> the shared package has standalone docs. Spec:
-> `docs/superpowers/specs/2026-06-12-traceformat-design.md`. This document records the
-> as-built contracts and the open backlog; use it as the reference when extending the
-> package.
+> **Status: READY TO EXECUTE (one-shot replay).** Spec:
+> `docs/superpowers/specs/2026-06-12-traceformat-design.md`. A first implementation was
+> built and deliberately deleted (git history holds it); the contracts and traps below
+> are the distilled input for the rebuild. Build this package BEFORE oidtrace (it is
+> oidtrace's only runtime dependency).
 
 **Goal:** the shared format-types package: schema-generated pydantic models +
 producer vocabulary + serialization helpers, consumed by every suite tool.
 
-## Tasks (all complete)
+## Tasks
 
-- [x] **Scaffold**: workspace member `traceformat/` (pydantic>=2 runtime dep only,
+- [ ] **Scaffold**: workspace member `traceformat/` (pydantic>=2 runtime dep only,
       hatchling, py.typed); same strict toolchain as oidtrace (ruff select list,
       pyrefly with workspace-venv interpreter, pyright strict, pytest); Justfile
       `fmt/lint/types/test/ci/cov` + `gen-types`/`types-fresh`.
-- [x] **Codegen**: `models.py` generated from `docs/trace-format.schema.json`
+- [ ] **Codegen**: `models.py` generated from `docs/trace-format.schema.json`
       (datamodel-code-generator, `--formatters ruff-format`, `--disable-timestamp`);
       generated file excluded from ruff/pyright; `types-fresh` drift gate in ci with
       the temp file **inside the package tree** (ruff config resolution).
-- [x] **Vocab**: `vocab.py` StrEnums — `Violation`, `EndReason`, `EventKind`,
+- [ ] **Vocab**: `vocab.py` StrEnums — `Violation`, `EndReason`, `EventKind`,
       `AttemptError`; test iterates all members asserting wire-string identity.
-- [x] **Union + helpers**: `TraceRecord` union; `dump_record` (compact,
+- [ ] **Union + helpers**: `TraceRecord` union; `dump_record` (compact,
       `exclude_unset` — required-but-nullable `received_at` serializes as `null`,
       unset optional keys absent); `parse_record` via module-level `TypeAdapter`;
       round-trip tests.
