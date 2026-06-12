@@ -20,16 +20,13 @@ from traceformat.vocab import AttemptError, EndReason, EventKind, Violation
 # remove entries as each module that imports them is added.
 
 # Classes
-_ = Violation
 _ = EndReason
 _ = EventKind
 _ = AttemptError
 
-# Violation members
-REQUEST_ID_MISMATCH = Violation.REQUEST_ID_MISMATCH
-OID_NOT_INCREASING = Violation.OID_NOT_INCREASING
+# Violation members still unused by production code (violations.py uses the
+# class directly; these members are not yet referenced elsewhere)
 MISSING_END_OF_MIB = Violation.MISSING_END_OF_MIB
-DUPLICATE_RESPONSE = Violation.DUPLICATE_RESPONSE
 MALFORMED_BER = Violation.MALFORMED_BER
 RESPONSE_FROM_UNEXPECTED_SOURCE = Violation.RESPONSE_FROM_UNEXPECTED_SOURCE
 
@@ -89,6 +86,11 @@ _ = Varbind.vtype
 _ = Varbind.vlen
 _ = Message
 _ = Malformed.error
+
+# violations.check_exchange — consumed by tests and the walker (not yet added).
+from oidtrace.violations import check_exchange
+
+_ = check_exchange
 
 # cli entry point — referenced in pyproject.toml [project.scripts], not called
 # directly in Python source.
