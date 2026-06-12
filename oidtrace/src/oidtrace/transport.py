@@ -59,6 +59,7 @@ class _DatagramEvent:
 
 @dataclass(frozen=True)
 class _ErrorEvent:
+    received_at: float
     error: AttemptError
 
 
@@ -67,15 +68,20 @@ class _ErrorEvent:
 
 
 class _UdpProtocol(asyncio.DatagramProtocol):
-    def __init__(self, queue: asyncio.Queue[_DatagramEvent | _ErrorEvent]) -> None:
+    def __init__(
+        self,
+        queue: asyncio.Queue[_DatagramEvent | _ErrorEvent],
+        rel: Callable[[], float],
+    ) -> None:
         self._queue = queue
+        self._rel = rel
 
     def datagram_received(self, data: bytes, addr: object) -> None:  # noqa: ARG002
-        # Timestamps are set by the receiver to avoid clock skew from queueing delay.
-        # We record at reception time; the Transport will re-stamp with rel().
-        self._queue.put_nowait(_DatagramEvent(received_at=0.0, data=data))
+        # Stamp at arrival time so stray timestamps are honest (trace-format.md § 4.3 rule 3).
+        self._queue.put_nowait(_DatagramEvent(received_at=round(self._rel(), 6), data=data))
 
     def error_received(self, exc: Exception) -> None:
+        received_at = round(self._rel(), 6)
         err_no = getattr(exc, "errno", None)
         if err_no == errno.ECONNREFUSED:
             error = AttemptError.ICMP_PORT_UNREACHABLE
@@ -83,7 +89,7 @@ class _UdpProtocol(asyncio.DatagramProtocol):
             error = AttemptError.ICMP_HOST_UNREACHABLE
         else:
             error = AttemptError.SEND_FAILED
-        self._queue.put_nowait(_ErrorEvent(error=error))
+        self._queue.put_nowait(_ErrorEvent(received_at=received_at, error=error))
 
 
 # ---------------------------------------------------------------------------
@@ -113,7 +119,7 @@ class UdpTransport:
         loop = asyncio.get_running_loop()
         queue: asyncio.Queue[_DatagramEvent | _ErrorEvent] = asyncio.Queue()
         transport, _ = await loop.create_datagram_endpoint(
-            lambda: _UdpProtocol(queue),
+            lambda: _UdpProtocol(queue, rel),
             remote_addr=(host, port),
         )
         return cls(transport, queue, rel)  # type: ignore[arg-type]
@@ -138,23 +144,25 @@ class UdpTransport:
                 continue
 
             if isinstance(event, _ErrorEvent):
+                # Attribution by arrival window (trace-format.md § 4.3): the error is
+                # attributed to whichever attempt's wait it arrived during.
                 attempts.append(Attempt(sent_at=sent_at, error=event.error))
                 continue
 
-            # DatagramEvent — got a response
-            received_at = round(self._rel(), 6)
-            attempts.append(Attempt(sent_at=sent_at, received_at=received_at))
-            response = (received_at, event.data)
+            # DatagramEvent — got a response; use the arrival-stamped timestamp.
+            attempts.append(Attempt(sent_at=sent_at, received_at=event.received_at))
+            response = (event.received_at, event.data)
             break
 
-        # Drain immediately-available datagrams into strays
+        # Drain immediately-available datagrams into strays; timestamps were already
+        # set at arrival time in datagram_received — use them as-is.
         strays: list[tuple[float, bytes]] = []
         if response is not None:
             await asyncio.sleep(0)
             while not self._queue.empty():
                 event = self._queue.get_nowait()
                 if isinstance(event, _DatagramEvent):
-                    strays.append((round(self._rel(), 6), event.data))
+                    strays.append((event.received_at, event.data))
 
         return ExchangeIO(
             attempts=tuple(attempts),

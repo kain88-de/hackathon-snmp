@@ -52,7 +52,7 @@ async def test_drop_all_timeout(emulator_factory) -> None:
 
 
 async def test_duplicate_responses(emulator_factory) -> None:
-    """duplicate_responses, retries=0: one stray present with same bytes as response."""
+    """duplicate_responses, retries=0: one stray present with arrival-honest timestamps."""
     device = EmuDevice.simple(20, quirks=Quirks(duplicate_responses=True))
     async with emulator_factory(device) as (host, port):
         t = await UdpTransport.create(host, port, rel=time.monotonic)
@@ -62,13 +62,18 @@ async def test_duplicate_responses(emulator_factory) -> None:
             t.close()
 
     assert result.response is not None
-    # Give the duplicate a chance to arrive if the OS delivered it slightly late.
-    # The asyncio.sleep(0) in transport.exchange drains queued datagrams, but
-    # network-layer duplicates may lag by one event-loop turn on slower CI machines.
+    # The emulator sends both datagrams back-to-back; asyncio.sleep(0) in exchange()
+    # drains the duplicate into strays reliably for loopback traffic.
     assert len(result.strays) == 1
-    _resp_ts, resp_bytes = result.response
-    _stray_ts, stray_bytes = result.strays[0]
+    resp_at, resp_bytes = result.response
+    stray_at, stray_bytes = result.strays[0]
     assert stray_bytes == resp_bytes
+    # Both datagrams were arrival-stamped in datagram_received; they must be close
+    # in time (sent back-to-back by the emulator on loopback).
+    assert abs(stray_at - resp_at) < 0.05
+    # The stray was stamped at arrival, not at dequeue time — it must not be later
+    # than now (gives a very generous upper-bound; the real test is closeness above).
+    assert stray_at <= time.monotonic()
 
 
 async def test_icmp_port_unreachable() -> None:
