@@ -258,7 +258,7 @@ def test_summary(record_validator: jsonschema.Draft202012Validator) -> None:
         exchanges=1000,
         oids_seen=5000,
         end_reason="completed",
-        violation_counts={"request-id-mismatch": 3, "oid-not-increasing": 1},
+        violation_counts={Violation.REQUEST_ID_MISMATCH: 3, Violation.OID_NOT_INCREASING: 1},
     )
     obj = _valid(record_validator, rec)
     assert obj["type"] == "summary"
