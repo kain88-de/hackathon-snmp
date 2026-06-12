@@ -15,7 +15,7 @@ if TYPE_CHECKING:
 
 from traceformat import TraceRecord, dump_record
 from traceformat.models import Attempt, Malformed, Oid, Request, Settings, StrayResponse
-from traceformat.vocab import Violation
+from traceformat.vocab import EventKind, Violation
 
 from oidtrace.codec import Varbind
 from oidtrace.oid import Oid as OidtraceOid
@@ -189,7 +189,7 @@ def test_exchange_malformed(record_validator: jsonschema.Draft202012Validator) -
         response_error_index=None,
         varbinds=[],
         strays=[],
-        violations=["malformed-ber"],
+        violations=[Violation.MALFORMED_BER],
         malformed=Malformed(error="truncated BER", length=27),
     )
     obj = _valid(record_validator, rec)
@@ -232,7 +232,7 @@ def test_exchange_varbind_value_not_serialized() -> None:
 
 
 def test_event_without_detail(record_validator: jsonschema.Draft202012Validator) -> None:
-    rec = event_record(at=5.123, kind="walk-aborted-by-user")
+    rec = event_record(at=5.123, kind=EventKind.WALK_ABORTED_BY_USER)
     obj = _valid(record_validator, rec)
     assert obj["type"] == "event"
     assert obj["at"] == 5.123
@@ -241,7 +241,9 @@ def test_event_without_detail(record_validator: jsonschema.Draft202012Validator)
 
 
 def test_event_with_detail(record_validator: jsonschema.Draft202012Validator) -> None:
-    rec = event_record(at=3.0, kind="oid-loop-detected", detail={"oid": "1.3.6.1.2.1.1.1.0"})
+    rec = event_record(
+        at=3.0, kind=EventKind.OID_LOOP_DETECTED, detail={"oid": "1.3.6.1.2.1.1.1.0"}
+    )
     obj = _valid(record_validator, rec)
     assert obj["detail"] == {"oid": "1.3.6.1.2.1.1.1.0"}
 

@@ -29,7 +29,7 @@ from traceformat.models import (
 if TYPE_CHECKING:
     from collections.abc import Mapping, Sequence
 
-    from traceformat.vocab import Violation
+    from traceformat.vocab import EventKind, Violation
 
     from oidtrace.codec import Varbind
 
@@ -69,7 +69,7 @@ def exchange_record(
     response_error_index: int | None,
     varbinds: Sequence[Varbind],
     strays: Sequence[StrayResponse],
-    violations: Sequence[Violation | str],
+    violations: Sequence[Violation],
     malformed: Malformed | None,
 ) -> Exchange:
     fields: dict[str, object] = {
@@ -96,7 +96,7 @@ def exchange_record(
     return Exchange.model_validate(fields)
 
 
-def event_record(*, at: float, kind: str, detail: dict[str, object] | None = None) -> Event:
+def event_record(*, at: float, kind: EventKind, detail: dict[str, object] | None = None) -> Event:
     fields: dict[str, object] = {"type": "event", "at": at, "kind": kind}
     if detail is not None:
         fields["detail"] = detail
@@ -109,7 +109,7 @@ def summary_record(
     exchanges: int,
     oids_seen: int,
     end_reason: str,
-    violation_counts: Mapping[Violation | str, int],
+    violation_counts: Mapping[Violation, int],
 ) -> Summary:
     return Summary(
         type="summary",

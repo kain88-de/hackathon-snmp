@@ -26,6 +26,7 @@ class EndReason(StrEnum):
 
 class EventKind(StrEnum):
     OID_LOOP_DETECTED = "oid-loop-detected"
+    WALK_ABORTED_BY_USER = "walk-aborted-by-user"
     TIME_BUDGET_EXCEEDED = "time-budget-exceeded"
 
 
