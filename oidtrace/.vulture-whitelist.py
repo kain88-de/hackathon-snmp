@@ -49,6 +49,14 @@ ICMP_PORT_UNREACHABLE = AttemptError.ICMP_PORT_UNREACHABLE
 ICMP_HOST_UNREACHABLE = AttemptError.ICMP_HOST_UNREACHABLE
 SEND_FAILED = AttemptError.SEND_FAILED
 
+# oid.Oid public API — from_str is the constructor (used at call sites that
+# don't exist yet in this task; in_subtree is the main behavioral method).
+# Both are contract-public names per the plan.
+from oidtrace.oid import Oid
+
+_ = Oid.from_str
+_ = Oid.in_subtree
+
 # cli entry point — referenced in pyproject.toml [project.scripts], not called
 # directly in Python source.
 # from oidtrace.cli import main
