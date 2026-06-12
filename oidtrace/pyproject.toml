@@ -39,6 +39,7 @@ ignore = []
 
 [tool.pyrefly]
 project_includes = ["src", "tests"]
+search_path = ["src", "."]
 python_interpreter = "../.venv/bin/python3"
 
 [tool.pyright]
