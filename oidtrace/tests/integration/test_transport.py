@@ -19,12 +19,9 @@ _RAW = encode_getbulk(1, Oid.from_str("1.3.6"), non_repeaters=0, max_repetitions
 async def test_simple_response(emulator_factory) -> None:
     """EmuDevice.simple(20): response present, exactly one attempt, received_at > sent_at."""
     device = EmuDevice.simple(20)
-    async with emulator_factory(device) as (host, port):
-        t = await UdpTransport.create(host, port, rel=time.monotonic)
-        try:
+    async with emulator_factory(device) as (host, port):  # noqa: SIM117
+        async with await UdpTransport.create(host, port, rel=time.monotonic) as t:
             result = await t.exchange(_RAW, timeout_s=2.0, retries=0)
-        finally:
-            t.close()
 
     assert result.response is not None
     assert len(result.attempts) == 1
@@ -37,12 +34,9 @@ async def test_simple_response(emulator_factory) -> None:
 async def test_drop_all_timeout(emulator_factory) -> None:
     """drop_all + timeout_s=0.1, retries=2: response None, exactly 3 attempts, all unanswered."""
     device = EmuDevice.simple(20, quirks=Quirks(drop_all=True))
-    async with emulator_factory(device) as (host, port):
-        t = await UdpTransport.create(host, port, rel=time.monotonic)
-        try:
+    async with emulator_factory(device) as (host, port):  # noqa: SIM117
+        async with await UdpTransport.create(host, port, rel=time.monotonic) as t:
             result = await t.exchange(_RAW, timeout_s=0.1, retries=2)
-        finally:
-            t.close()
 
     assert result.response is None
     assert len(result.attempts) == 3
@@ -54,12 +48,9 @@ async def test_drop_all_timeout(emulator_factory) -> None:
 async def test_duplicate_responses(emulator_factory) -> None:
     """duplicate_responses, retries=0: one stray present with arrival-honest timestamps."""
     device = EmuDevice.simple(20, quirks=Quirks(duplicate_responses=True))
-    async with emulator_factory(device) as (host, port):
-        t = await UdpTransport.create(host, port, rel=time.monotonic)
-        try:
+    async with emulator_factory(device) as (host, port):  # noqa: SIM117
+        async with await UdpTransport.create(host, port, rel=time.monotonic) as t:
             result = await t.exchange(_RAW, timeout_s=2.0, retries=0)
-        finally:
-            t.close()
 
     assert result.response is not None
     # The emulator sends both datagrams back-to-back; asyncio.sleep(0) in exchange()
@@ -86,11 +77,8 @@ async def test_icmp_port_unreachable() -> None:
     # Allow the OS to reclaim the port before we send to it.
     await asyncio.sleep(0.01)
 
-    t = await UdpTransport.create(host, port, rel=time.monotonic)
-    try:
+    async with await UdpTransport.create(host, port, rel=time.monotonic) as t:
         result = await t.exchange(_RAW, timeout_s=0.3, retries=1)
-    finally:
-        t.close()
 
     assert result.response is None
     errors = [a.error for a in result.attempts if a.error is not None]

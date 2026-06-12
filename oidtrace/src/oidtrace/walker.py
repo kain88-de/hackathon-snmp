@@ -12,6 +12,7 @@ import random
 import time
 import uuid
 from collections import Counter
+from collections.abc import Callable, Sequence
 from dataclasses import dataclass, field
 from datetime import UTC, datetime
 from typing import TYPE_CHECKING
@@ -36,13 +37,13 @@ from oidtrace.transport import UdpTransport
 from oidtrace.violations import check_exchange
 
 if TYPE_CHECKING:
-    from collections.abc import Callable
     from pathlib import Path
 
     from traceformat import TraceRecord
 
     from oidtrace.transport import Transport
 
+RecordSink = Callable[["TraceRecord"], None]
 
 _TAG_END_OF_MIB_VIEW = 0x82
 
@@ -92,7 +93,7 @@ async def walk_with_transport(
     session_id: str | None = None,
     run: int = 1,
     runs_total: int = 1,
-    on_record: Callable[[TraceRecord], None] | None = None,
+    sinks: Sequence[RecordSink] = (),
 ) -> EndReason:
     """Drive the walk loop using *transport* (any Transport-protocol object).
 
@@ -116,11 +117,11 @@ async def walk_with_transport(
     )
 
     with TraceWriter(path) as writer:
+        _sinks: tuple[RecordSink, ...] = (writer.write, *sinks)
 
         def emit(record: TraceRecord) -> None:
-            writer.write(record)
-            if on_record is not None:
-                on_record(record)
+            for sink in _sinks:
+                sink(record)
 
         # Header
         emit(
@@ -339,7 +340,7 @@ async def run_walk(
     session_id: str | None = None,
     run: int = 1,
     runs_total: int = 1,
-    on_record: Callable[[TraceRecord], None] | None = None,
+    sinks: Sequence[RecordSink] = (),
 ) -> EndReason:
     """Walk *host:port*, writing a trace to *path*.  Returns the EndReason."""
     t0 = time.monotonic()
@@ -347,8 +348,7 @@ async def run_walk(
     def rel() -> float:
         return round(time.monotonic() - t0, 6)
 
-    transport = await UdpTransport.create(host, port, rel)
-    try:
+    async with await UdpTransport.create(host, port, rel) as transport:
         return await walk_with_transport(
             transport,
             settings=settings,
@@ -357,7 +357,5 @@ async def run_walk(
             session_id=session_id,
             run=run,
             runs_total=runs_total,
-            on_record=on_record,
+            sinks=sinks,
         )
-    finally:
-        transport.close()

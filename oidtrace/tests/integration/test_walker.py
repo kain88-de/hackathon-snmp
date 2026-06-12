@@ -304,18 +304,18 @@ async def test_on_record_matches_file(
         start_oid=Oid.from_str("1.3.6.1"),
     )
 
-    callback_records: list[Any] = []
+    streamed: list[Any] = []
     async with emulator_factory(device) as (host, port):
         await run_walk(
             host,
             port,
             settings=settings,
             path=path,
-            on_record=callback_records.append,
+            sinks=[streamed.append],
         )
 
     file_records = _records(path)
-    assert len(callback_records) == len(file_records)
+    assert len(streamed) == len(file_records)
     # Types match in order
-    for cb, fr in zip(callback_records, file_records, strict=True):
+    for cb, fr in zip(streamed, file_records, strict=True):
         assert type(cb) is type(fr)

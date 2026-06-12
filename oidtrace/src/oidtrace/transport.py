@@ -124,8 +124,15 @@ class UdpTransport:
         )
         return cls(transport, queue, rel)  # type: ignore[arg-type]
 
+    async def __aenter__(self) -> UdpTransport:
+        return self
+
+    async def __aexit__(self, *_: object) -> None:
+        self.close()
+
     def close(self) -> None:
-        self._transport.close()
+        if not self._transport.is_closing():
+            self._transport.close()
 
     async def exchange(self, raw: bytes, *, timeout_s: float, retries: int) -> ExchangeIO:
         attempts: list[Attempt] = []

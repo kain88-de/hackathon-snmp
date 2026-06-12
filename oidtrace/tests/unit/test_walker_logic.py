@@ -347,10 +347,8 @@ async def test_on_record_callback(tmp_path: Path) -> None:
         start_oid=start,
     )
 
-    callback_records: list[Any] = []
-    await walk_with_transport(
-        transport, settings=settings, path=path, on_record=callback_records.append
-    )
+    streamed: list[Any] = []
+    await walk_with_transport(transport, settings=settings, path=path, sinks=[streamed.append])
 
     file_records = _records(path)
-    assert len(callback_records) == len(file_records)
+    assert len(streamed) == len(file_records)
