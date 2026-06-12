@@ -57,17 +57,22 @@ from oidtrace.oid import Oid
 _ = Oid.from_str
 _ = Oid.in_subtree
 
-# ber.py public API — encode/decode functions are the BER codec contract consumed
-# by codec.py (which doesn't exist yet in this task).  Whitelisted here so the
-# dead-code gate passes at task 3.  Remove entries as codec.py is added.
-from oidtrace.ber import decode_int, decode_oid, encode_int, encode_oid, read_tlv, tlv
+# ber.py decode functions — consumed by codec decode side (Task 5).
+# Whitelisted until codec.py decode is added.
+from oidtrace.ber import decode_int, decode_oid, read_tlv
 
-_ = tlv
-_ = encode_int
-_ = encode_oid
 _ = read_tlv
 _ = decode_int
 _ = decode_oid
+
+# codec.py public API — consumed by walker (Task 11) and emulator (Task 9).
+# Whitelisted until those modules are added.
+from oidtrace.codec import PDU_GETBULK, PDU_RESPONSE, encode_getbulk, encode_response
+
+_ = PDU_GETBULK
+_ = PDU_RESPONSE
+_ = encode_getbulk
+_ = encode_response
 
 # cli entry point — referenced in pyproject.toml [project.scripts], not called
 # directly in Python source.
