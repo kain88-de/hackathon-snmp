@@ -8,6 +8,7 @@ from __future__ import annotations
 
 import gzip
 import json
+import logging
 import time
 from typing import TYPE_CHECKING, Any
 
@@ -24,6 +25,7 @@ if TYPE_CHECKING:
     from collections.abc import Callable
     from pathlib import Path
 
+    import pytest
     from traceformat import TraceRecord
 
 
@@ -421,3 +423,64 @@ async def test_shared_timeline(tmp_path: Path) -> None:
     assert sent_at >= 0.0
     assert summary.at.root >= 0.0
     assert summary.at.root >= sent_at
+
+
+# ---------------------------------------------------------------------------
+# Logging tests
+
+
+async def test_logging_info_start_and_end(tmp_path: Path, caplog: pytest.LogCaptureFixture) -> None:
+    """At INFO level a walk emits start and end log lines."""
+    cursor = Oid.from_str("1.3.6.1.2.1")
+    exchanges = [_eom_exchange(cursor)]
+    transport = FakeTransport(exchanges)
+    path = tmp_path / "trace.gz"
+    settings = WalkSettings(bulk_size=5, timeout_s=1.0, retries=0)
+
+    with caplog.at_level(logging.INFO, logger="oidtrace.walker"), TraceWriter(path) as writer:
+        await walk_with_transport(transport, rel=_rel(), settings=settings, sinks=[writer.write])
+
+    messages = [r.message for r in caplog.records if r.name == "oidtrace.walker"]
+    assert any("walk start" in m for m in messages), f"no start line in {messages}"
+    assert any("walk end" in m for m in messages), f"no end line in {messages}"
+
+
+async def test_logging_debug_exchange(tmp_path: Path, caplog: pytest.LogCaptureFixture) -> None:
+    """At DEBUG level exchange details are logged."""
+    cursor = Oid.from_str("1.3.6.1.2.1")
+    exchanges = [_eom_exchange(cursor)]
+    transport = FakeTransport(exchanges)
+    path = tmp_path / "trace.gz"
+    settings = WalkSettings(bulk_size=5, timeout_s=1.0, retries=0)
+
+    with caplog.at_level(logging.DEBUG, logger="oidtrace.walker"), TraceWriter(path) as writer:
+        await walk_with_transport(transport, rel=_rel(), settings=settings, sinks=[writer.write])
+
+    messages = [r.message for r in caplog.records if r.name == "oidtrace.walker"]
+    assert any("exchange" in m for m in messages), f"no exchange debug line in {messages}"
+
+
+async def test_logging_privacy_no_community(
+    tmp_path: Path, caplog: pytest.LogCaptureFixture
+) -> None:
+    """Community string must never appear in any log record (privacy contract)."""
+    cursor = Oid.from_str("1.3.6.1.2.1")
+    exchanges = [_eom_exchange(cursor)]
+    transport = FakeTransport(exchanges)
+    path = tmp_path / "trace.gz"
+    secret = b"s3cret-community"
+    settings = WalkSettings(
+        bulk_size=5,
+        timeout_s=1.0,
+        retries=0,
+        community=secret,
+    )
+
+    with caplog.at_level(logging.DEBUG), TraceWriter(path) as writer:
+        await walk_with_transport(transport, rel=_rel(), settings=settings, sinks=[writer.write])
+
+    secret_str = secret.decode()
+    for record in caplog.records:
+        assert secret_str not in record.getMessage(), (
+            f"Community string found in log record: {record.getMessage()!r}"
+        )

@@ -4,6 +4,7 @@ from __future__ import annotations
 
 import asyncio
 import io
+import logging
 import sys
 import threading
 from typing import TYPE_CHECKING
@@ -179,3 +180,54 @@ def test_bad_start_oid(tmp_path: Path) -> None:
     assert rc == 2
     assert stderr_buf.getvalue().strip() != ""
     assert list(out_dir.glob("*.oidtrace.jsonl.gz")) == []
+
+
+def test_verbose_debug_no_progress(tmp_path: Path) -> None:
+    """-vv emits DEBUG log lines on stderr and suppresses the \\r progress line."""
+    host, port = _start_emulator(EmuDevice.simple(10))
+    out_dir = tmp_path / "traces"
+
+    stderr_buf = io.StringIO()
+    old_stderr = sys.stderr
+    sys.stderr = stderr_buf
+
+    # Reset logging so basicConfig in main() takes effect fresh.
+    root_logger = logging.getLogger()
+    old_handlers = root_logger.handlers[:]
+    root_logger.handlers.clear()
+    old_level = root_logger.level
+
+    try:
+        rc = main(
+            [
+                "-vv",
+                "walk",
+                host,
+                "--port",
+                str(port),
+                "--out",
+                str(out_dir),
+                "--bulk-size",
+                "5",
+                "--timeout",
+                "2.0",
+                "--retries",
+                "0",
+            ]
+        )
+    finally:
+        sys.stderr = old_stderr
+        # Restore logging state so other tests are not affected.
+        root_logger.handlers.clear()
+        root_logger.handlers.extend(old_handlers)
+        root_logger.setLevel(old_level)
+
+    assert rc == 0
+
+    stderr = stderr_buf.getvalue()
+
+    # Must have DEBUG lines
+    assert "DEBUG" in stderr, f"expected DEBUG lines in stderr, got: {stderr!r}"
+
+    # Must NOT have \r progress line (logs supersede it under -v)
+    assert "\r" not in stderr, f"unexpected \\r progress line under -vv, stderr: {stderr!r}"

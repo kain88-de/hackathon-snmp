@@ -8,6 +8,7 @@ from __future__ import annotations
 
 import asyncio
 import errno
+import logging
 from dataclasses import dataclass
 from typing import TYPE_CHECKING, Protocol
 
@@ -15,6 +16,8 @@ from traceformat.vocab import AttemptError
 
 if TYPE_CHECKING:
     from collections.abc import Callable
+
+logger = logging.getLogger(__name__)
 
 
 # ---------------------------------------------------------------------------
@@ -139,20 +142,23 @@ class UdpTransport:
         response: tuple[float, bytes] | None = None
 
         total = 1 + retries
-        for _ in range(total):
+        for attempt_num in range(total):
             sent_at = round(self._rel(), 6)
             self._transport.sendto(raw)
+            logger.debug("send attempt=%d bytes=%d", attempt_num, len(raw))
 
             try:
                 async with asyncio.timeout(timeout_s):
                     event = await self._queue.get()
             except TimeoutError:
+                logger.debug("timeout attempt=%d timeout_s=%s", attempt_num, timeout_s)
                 attempts.append(Attempt(sent_at=sent_at))
                 continue
 
             if isinstance(event, _ErrorEvent):
                 # Attribution by arrival window (trace-format.md § 4.3): the error is
                 # attributed to whichever attempt's wait it arrived during.
+                logger.debug("icmp-error attempt=%d error=%s", attempt_num, event.error)
                 attempts.append(Attempt(sent_at=sent_at, error=event.error))
                 continue
 
@@ -169,6 +175,9 @@ class UdpTransport:
             while not self._queue.empty():
                 event = self._queue.get_nowait()
                 if isinstance(event, _DatagramEvent):
+                    logger.debug(
+                        "stray received_at=%s bytes=%d", event.received_at, len(event.data)
+                    )
                     strays.append((event.received_at, event.data))
 
         return ExchangeIO(

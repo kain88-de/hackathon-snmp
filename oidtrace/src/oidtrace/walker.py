@@ -13,6 +13,7 @@ sinks list before delegating.
 from __future__ import annotations
 
 import asyncio
+import logging
 import random
 import time
 import uuid
@@ -47,6 +48,8 @@ if TYPE_CHECKING:
     from traceformat import TraceRecord
 
     from oidtrace.transport import Transport
+
+logger = logging.getLogger(__name__)
 
 RecordSink = Callable[["TraceRecord"], None]
 
@@ -144,6 +147,15 @@ async def walk_with_transport(
         )
     )
 
+    logger.info(
+        "walk start bulk_size=%d timeout_s=%s retries=%d start_oid=%s budget=%s",
+        settings.bulk_size,
+        settings.timeout_s,
+        settings.retries,
+        settings.start_oid,
+        settings.time_budget_s,
+    )
+
     cursor = settings.start_oid
     seq = 0
     oids_seen: set[Oid] = set()
@@ -157,6 +169,7 @@ async def walk_with_transport(
             # A zero-exchange trace (header + event + summary) is intentional when the
             # budget is already exceeded before the first exchange.
             if settings.time_budget_s is not None and rel() > settings.time_budget_s:
+                logger.info("walk event: time-budget-exceeded")
                 emit(
                     event_record(
                         at=rel(),
@@ -227,6 +240,26 @@ async def walk_with_transport(
             for v in violations:
                 violation_counts[v] += 1
 
+            # DEBUG per exchange
+            if decoded is not None and not isinstance(decoded, CodecMalformed):
+                logger.debug(
+                    "exchange seq=%d cursor=%s response=%d varbinds violations=%s",
+                    seq,
+                    cursor,
+                    decoded.request_id,
+                    [str(v) for v in violations] or "none",
+                )
+            elif model_malformed is not None:
+                logger.debug(
+                    "exchange seq=%d cursor=%s malformed length=%d violations=%s",
+                    seq,
+                    cursor,
+                    model_malformed.length,
+                    [str(v) for v in violations] or "none",
+                )
+            else:
+                logger.debug("exchange seq=%d cursor=%s no-response", seq, cursor)
+
             # Build exchange record
             req = Request(
                 pdu="getbulk",  # type: ignore[arg-type]
@@ -294,6 +327,7 @@ async def walk_with_transport(
 
             # OID not increasing (detected by check_exchange) -> OID_LOOP
             if Violation.OID_NOT_INCREASING in violations:
+                logger.info("walk event: oid-loop-detected oid=%s", last_oid)
                 emit(
                     event_record(
                         at=rel(),
@@ -311,6 +345,11 @@ async def walk_with_transport(
             cursor = last_oid
 
     except asyncio.CancelledError:
+        logger.info(
+            "walk end end_reason=interrupted exchanges=%d oids_seen=%d",
+            seq,
+            len(oids_seen),
+        )
         emit(
             summary_record(
                 at=rel(),
@@ -323,6 +362,12 @@ async def walk_with_transport(
         raise
 
     assert end_reason is not None
+    logger.info(
+        "walk end end_reason=%s exchanges=%d oids_seen=%d",
+        end_reason,
+        seq,
+        len(oids_seen),
+    )
     emit(
         summary_record(
             at=rel(),

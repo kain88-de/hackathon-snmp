@@ -5,6 +5,7 @@ from __future__ import annotations
 import argparse
 import asyncio
 import contextlib
+import logging
 import os
 import socket
 import sys
@@ -21,19 +22,21 @@ from oidtrace.walker import WalkSettings, run_walk
 if TYPE_CHECKING:
     from traceformat import TraceRecord
 
+logger = logging.getLogger(__name__)
+
 
 def _utc_stamp() -> str:
     return datetime.now(UTC).strftime("%Y%m%dT%H%M%SZ")
 
 
-def _resolve_host(host: str) -> bool:
-    """Return False (and print to stderr) if host cannot be resolved to an IPv4 address."""
+def _resolve_host(host: str) -> str | None:
+    """Return the resolved IPv4 address, or None (and print to stderr) on failure."""
     try:
-        socket.getaddrinfo(host, None, socket.AF_INET)
-        return True
+        infos = socket.getaddrinfo(host, None, socket.AF_INET)
+        return str(infos[0][4][0])
     except socket.gaierror as exc:
         print(f"error: cannot resolve host {host!r}: {exc}", file=sys.stderr)
-        return False
+        return None
 
 
 def _progress_sink(record: TraceRecord) -> None:
@@ -41,8 +44,15 @@ def _progress_sink(record: TraceRecord) -> None:
         print(f"\r{record.seq} exchanges...", end="", file=sys.stderr)
 
 
-def main(argv: list[str] | None = None) -> int:
+def _build_parser() -> argparse.ArgumentParser:
     parser = argparse.ArgumentParser(prog="oidtrace")
+    parser.add_argument(
+        "-v",
+        "--verbose",
+        action="count",
+        default=0,
+        help="Increase verbosity (-v INFO, -vv DEBUG)",
+    )
     sub = parser.add_subparsers(dest="command")
 
     walk_p = sub.add_parser("walk")
@@ -55,8 +65,28 @@ def main(argv: list[str] | None = None) -> int:
     walk_p.add_argument("--retries", type=int, default=2)
     walk_p.add_argument("--start-oid", default="1.3.6.1")
     walk_p.add_argument("--time-budget", type=float, default=None)
+    return parser
 
+
+def _configure_logging(verbosity: int) -> None:
+    """Configure root logger: WARNING / INFO / DEBUG by verbosity count."""
+    log_level = (
+        logging.WARNING if verbosity == 0 else logging.INFO if verbosity == 1 else logging.DEBUG
+    )
+    logging.basicConfig(
+        level=log_level,
+        stream=sys.stderr,
+        format="%(levelname)s %(name)s: %(message)s",
+    )
+
+
+def main(argv: list[str] | None = None) -> int:
+    parser = _build_parser()
     args = parser.parse_args(argv)
+
+    # Configure logging: WARNING (default) / INFO (-v) / DEBUG (-vv)
+    verbosity: int = args.verbose
+    _configure_logging(verbosity)
 
     if args.command != "walk":
         parser.print_help(sys.stderr)
@@ -70,8 +100,10 @@ def main(argv: list[str] | None = None) -> int:
         return 2
 
     # DNS fail-fast (IPv4)
-    if not _resolve_host(args.host):
+    resolved_ip = _resolve_host(args.host)
+    if resolved_ip is None:
         return 2
+    logger.info("resolved %s -> %s", args.host, resolved_ip)
 
     # Build output path
     label = args.label or "walk"
@@ -91,6 +123,9 @@ def main(argv: list[str] | None = None) -> int:
         community=community,
     )
 
+    # Progress sink only at default verbosity (logs supersede it under -v)
+    sinks = [] if verbosity > 0 else [_progress_sink]
+
     # The INTERRUPTED summary is already flushed to the file on Ctrl-C; suppress
     # and fall through so the operator still gets the terminal summary + trace path.
     with contextlib.suppress(KeyboardInterrupt):
@@ -101,11 +136,14 @@ def main(argv: list[str] | None = None) -> int:
                 settings=settings,
                 path=trace_path,
                 label=args.label,
-                sinks=[_progress_sink],
+                sinks=sinks,
             )
         )
 
-    print(file=sys.stderr)  # newline after progress
+    logger.info("trace written to %s", trace_path)
+
+    if verbosity == 0:
+        print(file=sys.stderr)  # newline after \r progress
 
     # Terminal summary
     summary: Summary | None = None
