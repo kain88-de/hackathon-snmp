@@ -17,7 +17,7 @@ def _vb(oid_str: str, tag: int = 0x04) -> Varbind:
     return Varbind(oid=Oid.from_str(oid_str), tag=tag, value=b"x")
 
 
-def _clean(
+def _clean(  # noqa: PLR0913
     *,
     sent_id: int = 1,
     returned_id: int = 1,

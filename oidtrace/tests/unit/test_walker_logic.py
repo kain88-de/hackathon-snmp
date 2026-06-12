@@ -18,7 +18,8 @@ from typing import TYPE_CHECKING
 
 import pytest
 from traceformat import dump_record
-from traceformat.models import Attempt as TfAttempt, Exchange, Pdu, Reltime, Request, Summary
+from traceformat.models import Attempt as TfAttempt
+from traceformat.models import Exchange, Pdu, Reltime, Request, Summary
 from traceformat.vocab import AttemptError, EndReason, EventKind, Violation
 
 from oidtrace.codec import encode_response
@@ -125,7 +126,7 @@ def _validate_all(records: list[TraceRecord], validator: Draft202012Validator) -
 # ---------------------------------------------------------------------------
 
 
-async def _collect(
+async def _collect(  # noqa: PLR0913
     transport: FakeTransport,
     *,
     settings: WalkSettings | None = None,

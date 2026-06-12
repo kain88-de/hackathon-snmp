@@ -20,9 +20,9 @@ from typing import TYPE_CHECKING
 
 import pytest
 
-from tests.support.emulator import EmuDevice
 from oidtrace.tracefile import read_trace
 from oidtrace.walker import WalkSettings, run_walk
+from tests.support.emulator import EmuDevice
 
 if TYPE_CHECKING:
     from pathlib import Path

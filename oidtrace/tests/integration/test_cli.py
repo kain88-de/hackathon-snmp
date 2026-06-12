@@ -10,9 +10,10 @@ import asyncio
 import threading
 from typing import TYPE_CHECKING
 
+from traceformat.models import Header
+
 from oidtrace.cli import main
 from oidtrace.tracefile import read_trace
-from traceformat.models import Header
 from tests.support.emulator import EmuDevice, EmuProtocol, Quirks
 
 if TYPE_CHECKING:
@@ -89,9 +90,7 @@ class EmulatorThread:
         # Signal the asyncio stop event on its own loop
         loop = self._state.get("loop")
         stop_event = self._state.get("stop")
-        if isinstance(loop, asyncio.AbstractEventLoop) and isinstance(
-            stop_event, asyncio.Event
-        ):
+        if isinstance(loop, asyncio.AbstractEventLoop) and isinstance(stop_event, asyncio.Event):
             loop.call_soon_threadsafe(stop_event.set)
         if self._thread is not None:
             self._thread.join(timeout=2.0)

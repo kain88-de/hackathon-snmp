@@ -65,7 +65,8 @@ from oidtrace.records import (
     summary_record,
 )
 from oidtrace.tracefile import TraceWriter
-from oidtrace.transport import Attempt as TransportAttempt, ExchangeIO, Transport, UdpTransport
+from oidtrace.transport import Attempt as TransportAttempt
+from oidtrace.transport import ExchangeIO, Transport, UdpTransport
 from oidtrace.violations import check_exchange
 
 if TYPE_CHECKING:

@@ -13,10 +13,10 @@ from traceformat import dump_record
 from traceformat.models import Exchange, Header, Summary
 from traceformat.vocab import EndReason, EventKind
 
-from tests.support.emulator import EmuDevice, EndOfMib, Quirks
 from oidtrace.oid import Oid
 from oidtrace.tracefile import read_trace
 from oidtrace.walker import WalkSettings, run_walk
+from tests.support.emulator import EmuDevice, EndOfMib, Quirks
 
 if TYPE_CHECKING:
     from pathlib import Path
