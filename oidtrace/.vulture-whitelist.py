@@ -67,12 +67,28 @@ _ = decode_oid
 
 # codec.py public API — consumed by walker (Task 11) and emulator (Task 9).
 # Whitelisted until those modules are added.
-from oidtrace.codec import PDU_GETBULK, PDU_RESPONSE, encode_getbulk, encode_response
+from oidtrace.codec import (
+    EXCEPTION_TAGS,
+    Malformed,
+    Message,
+    PDU_GETBULK,
+    PDU_RESPONSE,
+    Varbind,
+    decode_message,
+    encode_getbulk,
+    encode_response,
+)
 
 _ = PDU_GETBULK
 _ = PDU_RESPONSE
 _ = encode_getbulk
 _ = encode_response
+_ = decode_message
+_ = EXCEPTION_TAGS
+_ = Varbind.vtype
+_ = Varbind.vlen
+_ = Message
+_ = Malformed.error
 
 # cli entry point — referenced in pyproject.toml [project.scripts], not called
 # directly in Python source.
