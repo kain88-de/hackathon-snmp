@@ -4,6 +4,7 @@ from __future__ import annotations
 
 import json
 
+# pyrefly: ignore [untyped-import]
 from jsonschema import Draft202012Validator
 
 import oidtrace

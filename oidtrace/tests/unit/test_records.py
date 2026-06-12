@@ -38,6 +38,7 @@ from oidtrace.records import (
 if TYPE_CHECKING:
     from collections.abc import Mapping
 
+    # pyrefly: ignore [untyped-import]
     from jsonschema import Draft202012Validator
 
 # ---------------------------------------------------------------------------

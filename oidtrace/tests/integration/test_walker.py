@@ -4,10 +4,13 @@ from __future__ import annotations
 
 import asyncio
 import json
+from collections.abc import Callable
+from contextlib import AbstractAsyncContextManager
 from typing import TYPE_CHECKING
 
 import pytest
 from traceformat import dump_record
+from traceformat.models import Exchange, Header, Summary
 from traceformat.vocab import EndReason, EventKind
 
 from tests.support.emulator import EmuDevice, EndOfMib, Quirks
@@ -15,8 +18,11 @@ from tests.support.emulator import EmuDevice, EndOfMib, Quirks
 if TYPE_CHECKING:
     from pathlib import Path
 
+    # pyrefly: ignore [untyped-import]
     from jsonschema import Draft202012Validator
     from traceformat import TraceRecord
+
+_EmuFactory = Callable[..., AbstractAsyncContextManager[tuple[str, int]]]
 
 
 def _validate_all(records: list[TraceRecord], validator: Draft202012Validator) -> None:
@@ -28,7 +34,7 @@ def _validate_all(records: list[TraceRecord], validator: Draft202012Validator) -
 
 @pytest.mark.asyncio
 async def test_clean_50_oid_walk(
-    emulator_factory: object,
+    emulator_factory: _EmuFactory,
     record_validator: Draft202012Validator,
     tmp_path: Path,
 ) -> None:
@@ -38,7 +44,7 @@ async def test_clean_50_oid_walk(
     device = EmuDevice.simple(n_oids=50)
     trace_path = tmp_path / "trace.oidtrace.jsonl.gz"
 
-    async with emulator_factory(device) as (host, port):  # type: ignore[attr-defined]
+    async with emulator_factory(device) as (host, port):
         end_reason = await run_walk(
             host,
             port,
@@ -51,18 +57,18 @@ async def test_clean_50_oid_walk(
     from oidtrace.tracefile import read_trace  # noqa: PLC0415
 
     records = list(read_trace(trace_path))
-    assert records[0].type == "header"  # type: ignore[union-attr]
-    assert records[-1].type == "summary"  # type: ignore[union-attr]
+    assert isinstance(records[0], Header)
+    assert isinstance(records[-1], Summary)
 
     summary = records[-1]
-    assert summary.oids_seen == 50  # type: ignore[union-attr]
-    assert summary.end_reason == str(EndReason.COMPLETED)  # type: ignore[union-attr]
+    assert summary.oids_seen == 50
+    assert summary.end_reason == str(EndReason.COMPLETED)
 
     # Distinct OIDs from exchange varbinds
     seen_oids: set[str] = set()
     for r in records:
-        if r.type == "exchange" and r.response is not None:  # type: ignore[union-attr]
-            for vb in r.response.varbinds:  # type: ignore[union-attr]
+        if isinstance(r, Exchange) and r.response is not None:
+            for vb in r.response.varbinds:
                 seen_oids.add(vb.oid.root)
     assert len(seen_oids) == 50
 
@@ -71,7 +77,7 @@ async def test_clean_50_oid_walk(
 
 @pytest.mark.asyncio
 async def test_fixed_request_id_mismatch_completes(
-    emulator_factory: object,
+    emulator_factory: _EmuFactory,
     record_validator: Draft202012Validator,
     tmp_path: Path,
 ) -> None:
@@ -82,7 +88,7 @@ async def test_fixed_request_id_mismatch_completes(
     device = EmuDevice.simple(n_oids=10, quirks=quirks)
     trace_path = tmp_path / "trace.oidtrace.jsonl.gz"
 
-    async with emulator_factory(device) as (host, port):  # type: ignore[attr-defined]
+    async with emulator_factory(device) as (host, port):
         end_reason = await run_walk(
             host,
             port,
@@ -96,13 +102,13 @@ async def test_fixed_request_id_mismatch_completes(
     from oidtrace.tracefile import read_trace  # noqa: PLC0415
 
     records = list(read_trace(trace_path))
-    exchange_records = [r for r in records if r.type == "exchange"]
+    exchange_records = [r for r in records if isinstance(r, Exchange)]
     assert exchange_records, "Expected at least one exchange"
 
     # Every exchange must have request-id-mismatch
     for exch in exchange_records:
-        assert exch.violations is not None, f"Exchange {exch.seq} has no violations"  # type: ignore[union-attr]
-        assert "request-id-mismatch" in exch.violations, (  # type: ignore[union-attr]
+        assert exch.violations is not None, f"Exchange {exch.seq} has no violations"
+        assert "request-id-mismatch" in exch.violations, (
             f"Exchange {exch.seq} missing request-id-mismatch"
         )
 
@@ -111,7 +117,7 @@ async def test_fixed_request_id_mismatch_completes(
 
 @pytest.mark.asyncio
 async def test_wrap_oid_loop(
-    emulator_factory: object,
+    emulator_factory: _EmuFactory,
     record_validator: Draft202012Validator,
     tmp_path: Path,
 ) -> None:
@@ -122,7 +128,7 @@ async def test_wrap_oid_loop(
     device = EmuDevice.simple(n_oids=5, quirks=quirks)
     trace_path = tmp_path / "trace.oidtrace.jsonl.gz"
 
-    async with emulator_factory(device) as (host, port):  # type: ignore[attr-defined]
+    async with emulator_factory(device) as (host, port):
         end_reason = await run_walk(
             host,
             port,
@@ -136,14 +142,14 @@ async def test_wrap_oid_loop(
 
     records = list(read_trace(trace_path))
     event_records = [r for r in records if r.type == "event"]
-    assert any(e.kind == str(EventKind.OID_LOOP_DETECTED) for e in event_records)  # type: ignore[union-attr]
+    assert any(e.kind == str(EventKind.OID_LOOP_DETECTED) for e in event_records)
 
     _validate_all(records, record_validator)
 
 
 @pytest.mark.asyncio
 async def test_drop_all_unresponsive(
-    emulator_factory: object,
+    emulator_factory: _EmuFactory,
     record_validator: Draft202012Validator,
     tmp_path: Path,
 ) -> None:
@@ -154,7 +160,7 @@ async def test_drop_all_unresponsive(
     device = EmuDevice.simple(quirks=quirks)
     trace_path = tmp_path / "trace.oidtrace.jsonl.gz"
 
-    async with emulator_factory(device) as (host, port):  # type: ignore[attr-defined]
+    async with emulator_factory(device) as (host, port):
         end_reason = await run_walk(
             host,
             port,
@@ -167,22 +173,22 @@ async def test_drop_all_unresponsive(
     from oidtrace.tracefile import read_trace  # noqa: PLC0415
 
     records = list(read_trace(trace_path))
-    exchange_records = [r for r in records if r.type == "exchange"]
+    exchange_records = [r for r in records if isinstance(r, Exchange)]
 
     # Exactly give_up_after=2 exchanges
     assert len(exchange_records) == 2
 
     # Each exchange has retries+1=2 attempts, no response keys
     for exch in exchange_records:
-        assert len(exch.attempts) == 2  # retries=1 → 2 sends  # type: ignore[union-attr]
-        assert exch.response is None  # type: ignore[union-attr]
+        assert len(exch.attempts) == 2  # retries=1 → 2 sends
+        assert exch.response is None
 
     _validate_all(records, record_validator)
 
 
 @pytest.mark.asyncio
 async def test_time_budget_exceeded(
-    emulator_factory: object,
+    emulator_factory: _EmuFactory,
     record_validator: Draft202012Validator,
     tmp_path: Path,
 ) -> None:
@@ -196,7 +202,7 @@ async def test_time_budget_exceeded(
     device = EmuDevice.simple(n_oids=100, quirks=quirks)
     trace_path = tmp_path / "trace.oidtrace.jsonl.gz"
 
-    async with emulator_factory(device) as (host, port):  # type: ignore[attr-defined]
+    async with emulator_factory(device) as (host, port):
         end_reason = await run_walk(
             host,
             port,
@@ -210,14 +216,14 @@ async def test_time_budget_exceeded(
 
     records = list(read_trace(trace_path))
     event_records = [r for r in records if r.type == "event"]
-    assert any(e.kind == str(EventKind.TIME_BUDGET_EXCEEDED) for e in event_records)  # type: ignore[union-attr]
+    assert any(e.kind == str(EventKind.TIME_BUDGET_EXCEEDED) for e in event_records)
 
     _validate_all(records, record_validator)
 
 
 @pytest.mark.asyncio
 async def test_cancellation_interrupted_summary(
-    emulator_factory: object,
+    emulator_factory: _EmuFactory,
     record_validator: Draft202012Validator,
     tmp_path: Path,
 ) -> None:
@@ -232,7 +238,7 @@ async def test_cancellation_interrupted_summary(
     trace_path = tmp_path / "trace.oidtrace.jsonl.gz"
 
     async def run() -> None:
-        async with emulator_factory(device) as (host, port):  # type: ignore[attr-defined]
+        async with emulator_factory(device) as (host, port):
             await run_walk(
                 host,
                 port,
@@ -250,16 +256,16 @@ async def test_cancellation_interrupted_summary(
 
     records = list(read_trace(trace_path))
     assert records, "No records written before cancellation"
-    assert records[0].type == "header"  # type: ignore[union-attr]
-    assert records[-1].type == "summary"  # type: ignore[union-attr]
-    assert records[-1].end_reason == str(EndReason.INTERRUPTED)  # type: ignore[union-attr]
+    assert isinstance(records[0], Header)
+    assert isinstance(records[-1], Summary)
+    assert records[-1].end_reason == str(EndReason.INTERRUPTED)
 
     _validate_all(records, record_validator)
 
 
 @pytest.mark.asyncio
 async def test_appended_sink_receives_same_records(
-    emulator_factory: object,
+    emulator_factory: _EmuFactory,
     record_validator: Draft202012Validator,
     tmp_path: Path,
 ) -> None:
@@ -270,7 +276,7 @@ async def test_appended_sink_receives_same_records(
     trace_path = tmp_path / "trace.oidtrace.jsonl.gz"
 
     sink_records: list[TraceRecord] = []
-    async with emulator_factory(device) as (host, port):  # type: ignore[attr-defined]
+    async with emulator_factory(device) as (host, port):
         await run_walk(
             host,
             port,
@@ -293,7 +299,7 @@ async def test_appended_sink_receives_same_records(
 
 @pytest.mark.asyncio
 async def test_shared_timeline_sent_at_and_summary(
-    emulator_factory: object,
+    emulator_factory: _EmuFactory,
     record_validator: Draft202012Validator,
     tmp_path: Path,
 ) -> None:
@@ -303,7 +309,7 @@ async def test_shared_timeline_sent_at_and_summary(
     device = EmuDevice.simple(n_oids=5)
     trace_path = tmp_path / "trace.oidtrace.jsonl.gz"
 
-    async with emulator_factory(device) as (host, port):  # type: ignore[attr-defined]
+    async with emulator_factory(device) as (host, port):
         await run_walk(
             host,
             port,
@@ -314,12 +320,13 @@ async def test_shared_timeline_sent_at_and_summary(
     from oidtrace.tracefile import read_trace  # noqa: PLC0415
 
     records = list(read_trace(trace_path))
-    exchange_records = [r for r in records if r.type == "exchange"]
+    exchange_records = [r for r in records if isinstance(r, Exchange)]
+    assert isinstance(records[-1], Summary)
     summary = records[-1]
 
     assert exchange_records, "Expected at least one exchange"
-    first_attempt_sent_at = exchange_records[0].attempts[0].sent_at.root  # type: ignore[union-attr]
-    summary_at = summary.at.root  # type: ignore[union-attr]
+    first_attempt_sent_at = exchange_records[0].attempts[0].sent_at.root
+    summary_at = summary.at.root
 
     # Both are relative to the same zero: sent_at must be < summary.at
     assert first_attempt_sent_at >= 0.0

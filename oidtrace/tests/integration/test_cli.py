@@ -86,10 +86,10 @@ class EmulatorThread:
         # Signal the asyncio stop event on its own loop
         loop = self._state.get("loop")
         stop_event = self._state.get("stop")
-        if loop is not None and stop_event is not None:
-            cast_loop = loop  # type: ignore[assignment]
-            cast_stop = stop_event  # type: ignore[assignment]
-            cast_loop.call_soon_threadsafe(cast_stop.set)  # type: ignore[union-attr]
+        if isinstance(loop, asyncio.AbstractEventLoop) and isinstance(
+            stop_event, asyncio.Event
+        ):
+            loop.call_soon_threadsafe(stop_event.set)
         if self._thread is not None:
             self._thread.join(timeout=2.0)
 
@@ -153,13 +153,16 @@ def test_successful_walk_header_label(tmp_path: Path) -> None:
             ]
         )
 
+    from traceformat.models import Header  # noqa: PLC0415
+
     assert ret == 0
     trace_files = list(tmp_path.glob("*.oidtrace.jsonl.gz"))
     assert len(trace_files) == 1
     records = list(read_trace(trace_files[0]))
+    assert isinstance(records[0], Header)
     header = records[0]
-    assert header.type == "header"  # type: ignore[union-attr]
-    assert header.label == "myrun"  # type: ignore[union-attr]
+    assert header.type == "header"
+    assert header.label == "myrun"
 
 
 def test_successful_walk_stdout_summary(tmp_path: Path, capsys: pytest.CaptureFixture[str]) -> None:

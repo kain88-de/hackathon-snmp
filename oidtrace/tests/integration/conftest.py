@@ -3,7 +3,7 @@
 from __future__ import annotations
 
 import asyncio
-from contextlib import asynccontextmanager
+from contextlib import AbstractAsyncContextManager, asynccontextmanager
 from typing import TYPE_CHECKING
 
 import pytest
@@ -11,11 +11,11 @@ import pytest
 from tests.support.emulator import EmuDevice, EmuProtocol, Quirks
 
 if TYPE_CHECKING:
-    from collections.abc import AsyncIterator
+    from collections.abc import AsyncGenerator, Callable
 
 
 @pytest.fixture
-def emulator_factory():  # type: ignore[no-untyped-def]
+def emulator_factory() -> Callable[..., AbstractAsyncContextManager[tuple[str, int]]]:
     """Async-contextmanager fixture that binds a quirk emulator to a loopback UDP port.
 
     Usage::
@@ -29,7 +29,7 @@ def emulator_factory():  # type: ignore[no-untyped-def]
         device: EmuDevice | None = None,
         *,
         quirks: Quirks | None = None,
-    ) -> AsyncIterator[tuple[str, int]]:
+    ) -> AsyncGenerator[tuple[str, int]]:
         if device is None:
             device = EmuDevice.simple(quirks=quirks)
         loop = asyncio.get_event_loop()

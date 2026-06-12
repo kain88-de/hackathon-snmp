@@ -14,6 +14,8 @@ import asyncio
 import os
 import shutil
 import subprocess
+from collections.abc import Callable
+from contextlib import AbstractAsyncContextManager
 from typing import TYPE_CHECKING
 
 import pytest
@@ -22,6 +24,8 @@ from tests.support.emulator import EmuDevice
 
 if TYPE_CHECKING:
     from pathlib import Path
+
+_EmuFactory = Callable[..., AbstractAsyncContextManager[tuple[str, int]]]
 
 pytestmark = pytest.mark.reference_tools
 
@@ -53,7 +57,7 @@ def _require_tool(name: str) -> str:
 
 @pytest.mark.asyncio
 async def test_snmpbulkwalk_crosswalk(
-    emulator_factory: object,
+    emulator_factory: _EmuFactory,
     tmp_path: Path,
 ) -> None:
     """Our OID sequence matches snmpbulkwalk's prefix (trap #13)."""
@@ -65,7 +69,7 @@ async def test_snmpbulkwalk_crosswalk(
     device_size = 50
     trace_path = tmp_path / "crosswalk.oidtrace.jsonl.gz"
 
-    async with emulator_factory(EmuDevice.simple(device_size)) as (host, port):  # type: ignore[attr-defined]
+    async with emulator_factory(EmuDevice.simple(device_size)) as (host, port):
         # Run our walker
         await run_walk(
             host,
@@ -108,8 +112,8 @@ async def test_snmpbulkwalk_crosswalk(
     # Parse our trace: exchange varbinds in order, excluding EndOfMibView
     our_oids: list[str] = []
     for record in read_trace(trace_path):
-        if record.type == "exchange" and record.response is not None:  # type: ignore[union-attr]
-            for vb in record.response.varbinds:  # type: ignore[union-attr]
+        if record.type == "exchange" and record.response is not None:
+            for vb in record.response.varbinds:
                 if vb.vtype != "EndOfMibView":
                     our_oids.append(vb.oid.root)
 

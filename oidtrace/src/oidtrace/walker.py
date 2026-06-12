@@ -142,16 +142,16 @@ class WalkStats:
 
     def observe(self, record: TraceRecord) -> None:
         """Accumulate stats from one record."""
-        if record.type == "exchange":
+        if isinstance(record, tf.Exchange):
             self.exchanges += 1
-            if record.response is not None:  # type: ignore[union-attr]
-                for vb in record.response.varbinds:  # type: ignore[union-attr]
+            if record.response is not None:
+                for vb in record.response.varbinds:
                     # Don't count exception-tag varbinds
                     # We check via vtype string since models.Varbind doesn't carry raw tag
                     if vb.vtype not in ("EndOfMibView", "NoSuchObject", "NoSuchInstance"):
                         self._oids_seen_set.add(str(vb.oid))
-            if record.violations:  # type: ignore[union-attr]
-                for v_str in record.violations:  # type: ignore[union-attr]
+            if record.violations:
+                for v_str in record.violations:
                     try:
                         v = Violation(v_str)
                         self.violation_counts[v] = self.violation_counts.get(v, 0) + 1
@@ -541,8 +541,8 @@ async def walk_with_transport(  # noqa: PLR0913
             async for record in gen:
                 stats.observe(record)
                 emit(record)
-                if record.type == "summary":
-                    end_reason = EndReason(record.end_reason)  # type: ignore[union-attr]
+                if isinstance(record, tf.Summary):
+                    end_reason = EndReason(record.end_reason)
     except asyncio.CancelledError:
         # Emit interrupted summary to sinks synchronously, then re-raise
         at = _now(rel)

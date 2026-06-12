@@ -136,7 +136,7 @@ def main(argv: list[str] | None = None) -> int:
     level = logging.WARNING
     if verbosity == 1:
         level = logging.INFO
-    elif verbosity >= 2:  # noqa: PLR2004
+    elif verbosity >= 2:  # noqa: PLR2004  # verbosity levels: 0=WARNING, 1=INFO, 2+=DEBUG
         level = logging.DEBUG
 
     logging.basicConfig(
@@ -147,7 +147,7 @@ def main(argv: list[str] | None = None) -> int:
     )
 
     # --- Validate --start-oid BEFORE DNS (fail fast on cheap check) ---
-    from oidtrace.oid import Oid  # noqa: PLC0415
+    from oidtrace.oid import Oid  # noqa: PLC0415  # deferred: keep module-level import light
 
     try:
         start_oid = Oid.from_str(args.start_oid)
@@ -178,7 +178,10 @@ def main(argv: list[str] | None = None) -> int:
     log.info("trace path: %s", trace_path)
 
     # --- Build settings ---
-    from oidtrace.walker import WalkSettings, run_walk  # noqa: PLC0415
+    from oidtrace.walker import (  # noqa: PLC0415  # deferred: keep module-level import light
+        WalkSettings,
+        run_walk,
+    )
 
     settings = WalkSettings(
         bulk_size=args.bulk_size,
@@ -222,11 +225,12 @@ def main(argv: list[str] | None = None) -> int:
 
 def _print_summary(trace_path: Path) -> None:
     """Print the Summary record from the trace to stdout."""
-    from oidtrace.tracefile import read_trace  # noqa: PLC0415
+    from traceformat import Summary  # noqa: PLC0415,I001  # deferred: keep module-level import light; isort groups not split here
+    from oidtrace.tracefile import read_trace  # noqa: PLC0415  # deferred: keep module-level import light
 
     summary = None
     for record in read_trace(trace_path):
-        if record.type == "summary":
+        if isinstance(record, Summary):
             summary = record
             break
 
@@ -234,11 +238,11 @@ def _print_summary(trace_path: Path) -> None:
         print("(no summary in trace)", flush=True)
         return
 
-    print(f"end_reason  : {summary.end_reason}", flush=True)  # type: ignore[union-attr]
-    print(f"exchanges   : {summary.exchanges}", flush=True)  # type: ignore[union-attr]
-    print(f"oids_seen   : {summary.oids_seen}", flush=True)  # type: ignore[union-attr]
+    print(f"end_reason  : {summary.end_reason}", flush=True)
+    print(f"exchanges   : {summary.exchanges}", flush=True)
+    print(f"oids_seen   : {summary.oids_seen}", flush=True)
 
-    counts = summary.violation_counts  # type: ignore[union-attr]
+    counts = summary.violation_counts
     if counts:
         print(f"violations  : {counts}", flush=True)
     else:

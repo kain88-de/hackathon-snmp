@@ -6,12 +6,16 @@ Uses a raw asyncio datagram client — no transport module yet.
 from __future__ import annotations
 
 import asyncio
+from collections.abc import Callable
+from contextlib import AbstractAsyncContextManager
 from dataclasses import dataclass
 from typing import override
 
 from oidtrace.codec import Malformed, decode_message, encode_getbulk
 from oidtrace.oid import Oid
 from tests.support.emulator import EmuDevice, Quirks
+
+_EmuFactory = Callable[..., AbstractAsyncContextManager[tuple[str, int]]]
 
 
 @dataclass
@@ -59,7 +63,7 @@ async def _send_getbulk(host: str, port: int, args: _GetBulkArgs) -> bytes:
         transport.close()
 
 
-async def test_getbulk_returns_requested_count(emulator_factory) -> None:  # type: ignore[no-untyped-def]
+async def test_getbulk_returns_requested_count(emulator_factory: _EmuFactory) -> None:
     """GetBulk for N varbinds returns exactly N varbinds and echoes the request id."""
     bulk_size = 5
     rid = 42
@@ -76,7 +80,7 @@ async def test_getbulk_returns_requested_count(emulator_factory) -> None:  # typ
     assert msg.request_id == rid
 
 
-async def test_fixed_request_id_overrides(emulator_factory) -> None:  # type: ignore[no-untyped-def]
+async def test_fixed_request_id_overrides(emulator_factory: _EmuFactory) -> None:
     """fixed_request_id=1 means response carries rid=1 even when we sent rid=12345."""
     quirks = Quirks(fixed_request_id=1)
     start = Oid.from_str("1.3.6.1.2.1.2.2.1")

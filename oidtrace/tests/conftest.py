@@ -6,6 +6,7 @@ import json
 from pathlib import Path
 
 import pytest
+# pyrefly: ignore [untyped-import]
 from jsonschema import Draft202012Validator
 
 

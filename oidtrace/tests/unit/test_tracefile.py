@@ -10,6 +10,7 @@ Contract:
 from __future__ import annotations
 
 import gzip
+from datetime import UTC, datetime
 from typing import TYPE_CHECKING
 
 import pydantic
@@ -48,7 +49,7 @@ def _header() -> Header:
         type="header",
         format_version=1,
         tool="test-tool",
-        started_at="2026-06-12T10:00:00+00:00",  # type: ignore[arg-type]
+        started_at=datetime(2026, 6, 12, 10, 0, 0, tzinfo=UTC),
         session=_SESSION,
         snmp=_SNMP,
         settings=_SETTINGS,
