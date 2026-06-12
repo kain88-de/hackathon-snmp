@@ -4,6 +4,7 @@ from __future__ import annotations
 
 import argparse
 import asyncio
+import contextlib
 import os
 import socket
 import sys
@@ -90,7 +91,9 @@ def main(argv: list[str] | None = None) -> int:
         community=community,
     )
 
-    try:
+    # The INTERRUPTED summary is already flushed to the file on Ctrl-C; suppress
+    # and fall through so the operator still gets the terminal summary + trace path.
+    with contextlib.suppress(KeyboardInterrupt):
         asyncio.run(
             run_walk(
                 args.host,
@@ -101,10 +104,6 @@ def main(argv: list[str] | None = None) -> int:
                 sinks=[_progress_sink],
             )
         )
-    except KeyboardInterrupt:
-        # The INTERRUPTED summary is already flushed to the file; fall through so
-        # the operator still gets the terminal summary and the trace path.
-        pass
 
     print(file=sys.stderr)  # newline after progress
 
