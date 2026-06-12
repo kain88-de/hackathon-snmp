@@ -17,10 +17,10 @@ deadcode:
     uv run vulture src ../traceformat/src .vulture-whitelist.py --min-confidence 60 --exclude "*/models.py" --ignore-names "exc_type,exc_val,exc_tb,addr"
 
 test:
-    uv run pytest -m "not reference_tools"
+    uv run pytest -m "not reference_tools" -q
 
 test-all:
-    REQUIRE_REFERENCE_TOOLS=1 uv run pytest
+    REQUIRE_REFERENCE_TOOLS=1 uv run pytest -q
 
 cov:
     uv run pytest -m "not reference_tools" --cov=oidtrace --cov=traceformat --cov-branch --cov-report=term-missing
