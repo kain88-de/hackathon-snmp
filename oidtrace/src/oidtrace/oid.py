@@ -18,7 +18,7 @@ from dataclasses import dataclass
 
 # Only sequences of ASCII digits separated by dots.  No leading zeros (except
 # the arc "0" itself), no signs, no whitespace, no underscores.
-_ARC_RE = re.compile(r"^(?:0|[1-9]\d*)$")
+_ARC_RE = re.compile(r"^(?:0|[1-9][0-9]*)$")
 
 
 @dataclass(frozen=True, order=True, slots=True)
