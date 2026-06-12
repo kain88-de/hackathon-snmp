@@ -1,0 +1,610 @@
+"""Walker orchestrator for OIDTrace.
+
+The walk core is an async generator (walk_records) that yields a self-sufficient
+stream of TraceRecord objects: Header → Exchanges → Events → Summary.
+
+walk_with_transport wraps the generator as a sink-pumping adapter:
+  - feeds records to all sinks deterministically
+  - catches CancelledError → emits INTERRUPTED summary → re-raises
+  - returns the EndReason from the final Summary
+
+run_walk is the file-producing composition:
+  - opens TraceWriter(path) as a CM
+  - creates ONE shared monotonic clock (trap #11: transport + records must share a zero)
+  - manages the UdpTransport async CM
+  - prepends the writer's write method to caller sinks
+
+Key implementation rules
+------------------------
+- NO CancelledError handling inside walk_records (the async generator must not
+  resume after GeneratorExit / cancellation — that is illegal).
+- Partial consumers MUST close via contextlib.aclosing or explicit aclose().
+- All times: round(rel(), 6) so microsecond precision.
+- One shared rel() clock passed to both UdpTransport.create and the loop.
+- NEVER log varbind values or the community string.
+
+WalkStats oids_seen note
+------------------------
+WalkStats.observe counts OIDs from Exchange records (response.varbinds); this
+may exceed the generator's own in-subtree oids_seen by up to bulk_size on the
+terminal exchange, because the generator stops advancing the cursor as soon as it
+detects termination but has already decoded the full varbind list. This is
+acceptable for interrupted summaries (slightly over-counts vs. exact).
+"""
+
+from __future__ import annotations
+
+import asyncio
+import logging
+import random
+import time
+import uuid
+from collections.abc import AsyncGenerator, Callable, Sequence
+from contextlib import aclosing
+from dataclasses import dataclass, field
+from datetime import UTC, datetime
+from typing import TYPE_CHECKING
+
+import traceformat.models as tf
+from traceformat import TraceRecord
+from traceformat.vocab import EndReason, EventKind, Violation
+
+from oidtrace.codec import (
+    EXCEPTION_TAGS,
+    Malformed,
+    Message,
+    Varbind,
+    decode_message,
+    encode_getbulk,
+)
+from oidtrace.oid import Oid
+from oidtrace.records import (
+    event_record,
+    exchange_record,
+    header_record,
+    summary_record,
+)
+from oidtrace.tracefile import TraceWriter
+from oidtrace.transport import ExchangeIO, UdpTransport
+from oidtrace.violations import check_exchange
+
+if TYPE_CHECKING:
+    from pathlib import Path
+
+log = logging.getLogger(__name__)
+
+# ---------------------------------------------------------------------------
+# Public type alias
+# ---------------------------------------------------------------------------
+
+RecordSink = Callable[[TraceRecord], None]
+
+# ---------------------------------------------------------------------------
+# WalkSettings
+# ---------------------------------------------------------------------------
+
+_DEFAULT_START_OID_STR = "1.3.6.1"
+
+
+@dataclass(frozen=True)
+class WalkSettings:
+    """Configuration for a single walk.
+
+    Attributes:
+        bulk_size: GetBulk max-repetitions (must be >= 1).
+        timeout_s: Per-attempt timeout in seconds.
+        retries: Number of retransmissions after the first send.
+        start_oid: Subtree root OID; walk stays in this subtree.
+        time_budget_s: Optional wall-time budget in seconds; None = unlimited.
+        give_up_after: Consecutive response-less exchanges before UNRESPONSIVE.
+        community: SNMP v2c community string.
+    """
+
+    bulk_size: int = 10
+    timeout_s: float = 2.0
+    retries: int = 2
+    start_oid: Oid = field(default_factory=lambda: Oid.from_str(_DEFAULT_START_OID_STR))
+    time_budget_s: float | None = None
+    give_up_after: int = 3
+    community: bytes = b"public"
+
+    def __post_init__(self) -> None:
+        if self.bulk_size < 1:
+            raise ValueError(f"bulk_size must be >= 1, got {self.bulk_size}")
+
+
+# ---------------------------------------------------------------------------
+# WalkStats
+# ---------------------------------------------------------------------------
+
+
+class WalkStats:
+    """Accumulator for walk statistics derived from emitted records.
+
+    Useful for synthesising an INTERRUPTED summary when a consumer has only
+    seen a prefix of the stream.
+
+    Note on oids_seen: this counter reflects the OIDs present in Exchange
+    response varbinds (excluding exception tags).  It may exceed the
+    generator's own in-subtree oids_seen by up to bulk_size on the terminal
+    exchange — acceptable for interrupted summaries.
+    """
+
+    def __init__(self) -> None:
+        self.exchanges: int = 0
+        self.oids_seen: int = 0
+        self.violation_counts: dict[Violation, int] = {}
+
+    def observe(self, record: TraceRecord) -> None:
+        """Accumulate stats from one record."""
+        if record.type == "exchange":
+            self.exchanges += 1
+            if record.response is not None:  # type: ignore[union-attr]
+                for vb in record.response.varbinds:  # type: ignore[union-attr]
+                    # Don't count exception-tag varbinds
+                    # We check via vtype string since models.Varbind doesn't carry raw tag
+                    if vb.vtype not in ("EndOfMibView", "NoSuchObject", "NoSuchInstance"):
+                        self.oids_seen += 1
+            if record.violations:  # type: ignore[union-attr]
+                for v_str in record.violations:  # type: ignore[union-attr]
+                    try:
+                        v = Violation(v_str)
+                        self.violation_counts[v] = self.violation_counts.get(v, 0) + 1
+                    except ValueError:
+                        pass  # unknown violation string — tolerate
+
+
+# ---------------------------------------------------------------------------
+# Internal helpers
+# ---------------------------------------------------------------------------
+
+_TOOL_NAME = "oidtrace/0.1.0"
+
+
+def _monotonic_rel() -> Callable[[], float]:
+    """Return a closure that gives seconds elapsed since creation (microsecond precision)."""
+    t0 = time.monotonic()
+
+    def rel() -> float:
+        return round(time.monotonic() - t0, 6)
+
+    return rel
+
+
+def _now(rel: Callable[[], float]) -> float:
+    return round(rel(), 6)
+
+
+def _make_settings_model(settings: WalkSettings) -> tf.Settings:
+    fields: dict[str, object] = {
+        "bulk_size": settings.bulk_size,
+        "timeout_s": settings.timeout_s,
+        "retries": settings.retries,
+        "start_oid": tf.Oid(str(settings.start_oid)),
+    }
+    if settings.time_budget_s is not None:
+        fields["time_budget_s"] = settings.time_budget_s
+    return tf.Settings.model_validate(fields)
+
+
+def _transport_attempt_to_model(attempt: object) -> tf.Attempt:
+    """Convert transport.Attempt → models.Attempt.
+
+    Uses model_validate with only the present fields so exclude_unset keeps
+    null values absent from JSON (the Attempt schema forbids null for received_at
+    when error is set, and null error is the default — omit when absent).
+    """
+    from oidtrace.transport import Attempt as TransportAttempt  # noqa: PLC0415
+
+    assert isinstance(attempt, TransportAttempt)
+    fields: dict[str, object] = {
+        "sent_at": tf.Reltime(round(attempt.sent_at, 6)),
+    }
+    if attempt.received_at is not None:
+        fields["received_at"] = tf.Reltime(round(attempt.received_at, 6))
+    else:
+        # Schema requires received_at to be present but null when no response came
+        fields["received_at"] = None
+    if attempt.error is not None:
+        fields["error"] = str(attempt.error)
+    return tf.Attempt.model_validate(fields)
+
+
+# ---------------------------------------------------------------------------
+# walk_records — async generator core
+# ---------------------------------------------------------------------------
+
+
+async def walk_records(  # noqa: PLR0912, PLR0913, PLR0915
+    transport: object,
+    *,
+    rel: Callable[[], float],
+    settings: WalkSettings,
+    label: str | None = None,
+    session_id: str | None = None,
+    run: int = 1,
+    runs_total: int = 1,
+) -> AsyncGenerator[TraceRecord]:
+    """Async generator yielding Header → Exchanges → Events → Summary.
+
+    The generator is self-sufficient: consumers can synthesize an INTERRUPTED
+    summary from the records they consumed via WalkStats.
+
+    Termination semantics:
+    - endOfMibView (0x82) on any varbind → COMPLETED
+    - all varbinds outside start_oid subtree → COMPLETED
+    - empty varbind list → COMPLETED
+    - oid-not-increasing (non-exception varbind) → OID_LOOP_DETECTED event + OID_LOOP
+    - give_up_after consecutive response-less or malformed exchanges → UNRESPONSIVE
+      (valid decoded Message resets the consecutive counter)
+    - time_budget_s exceeded at loop top → TIME_BUDGET_EXCEEDED event + TIME_BUDGET_EXCEEDED
+
+    CancelledError: must NOT be caught here. The generator must not yield after
+    GeneratorExit (illegal per Python async generator contract).
+
+    Args:
+        transport: Object implementing Transport protocol.
+        rel: Shared monotonic clock (seconds since walk start).
+        settings: Walk configuration.
+        label: Optional human label for the Header.
+        session_id: UUID string; a fresh one is generated if None.
+        run: 1-based run index.
+        runs_total: Total runs in the matrix.
+    """
+    if session_id is None:
+        session_id = str(uuid.uuid4())
+
+    started_at = datetime.now(UTC)
+    sid = session_id
+
+    log.info(
+        "walk start session=%s run=%d/%d start_oid=%s bulk=%d",
+        sid,
+        run,
+        runs_total,
+        settings.start_oid,
+        settings.bulk_size,
+    )
+
+    # --- Header ---
+    yield header_record(
+        tool=_TOOL_NAME,
+        started_at=started_at,
+        label=label,
+        session_id=sid,
+        run=run,
+        runs_total=runs_total,
+        snmp_version="2c",
+        settings=_make_settings_model(settings),
+    )
+
+    # --- Loop state ---
+    cursor: Oid = settings.start_oid
+    seq: int = 0
+    consecutive_no_response: int = 0
+    violation_counts: dict[Violation, int] = {}
+    oids_seen: int = 0  # in-subtree only (distinct from WalkStats)
+    end_reason: EndReason | None = None
+
+    # Walk the subtree
+    while end_reason is None:
+        # --- Time budget check (at loop top — zero-exchange trace intentional) ---
+        if settings.time_budget_s is not None and _now(rel) >= settings.time_budget_s:
+            yield event_record(
+                at=_now(rel),
+                kind=EventKind.TIME_BUDGET_EXCEEDED,
+            )
+            log.info("walk time budget exceeded at=%.6f", _now(rel))
+            end_reason = EndReason.TIME_BUDGET_EXCEEDED
+            break
+
+        seq += 1
+        request_id = random.randint(1, 2**31 - 1)
+
+        raw_request = encode_getbulk(
+            request_id,
+            cursor,
+            non_repeaters=0,
+            max_repetitions=settings.bulk_size,
+            community=settings.community,
+        )
+
+        request_model = tf.Request(
+            pdu=tf.Pdu("getbulk"),
+            request_id=request_id,
+            oids=[tf.Oid(str(cursor))],
+            non_repeaters=0,
+            max_repetitions=settings.bulk_size,
+        )
+
+        # THE ONLY I/O
+        assert hasattr(transport, "exchange")
+        exchange_io: ExchangeIO = await transport.exchange(  # type: ignore[union-attr]
+            raw_request,
+            timeout_s=settings.timeout_s,
+            retries=settings.retries,
+        )
+
+        log.debug(
+            "exchange seq=%d request_id=%d response=%s",
+            seq,
+            request_id,
+            "yes" if exchange_io.response is not None else "no",
+        )
+
+        # Convert transport attempts → model attempts
+        model_attempts = [_transport_attempt_to_model(a) for a in exchange_io.attempts]
+
+        # Convert strays → model strays
+        model_strays = [
+            tf.StrayResponse(received_at=tf.Reltime(round(ts, 6))) for ts, _ in exchange_io.strays
+        ]
+
+        # Decode response
+        decoded_msg: object = None
+        malformed_model: tf.Malformed | None = None
+        varbinds_from_response: list[object] = []
+        response_request_id: int | None = None
+        response_error_status: int | None = None
+        response_error_index: int | None = None
+
+        if exchange_io.response is not None:
+            _received_at, raw_response = exchange_io.response
+            msg = decode_message(raw_response)
+            if isinstance(msg, Malformed):
+                malformed_model = tf.Malformed(
+                    error=msg.error,
+                    length=len(msg.raw),
+                )
+                consecutive_no_response += 1
+            else:
+                decoded_msg = msg
+                varbinds_from_response = list(msg.varbinds)
+                response_request_id = msg.request_id
+                response_error_status = msg.f1
+                response_error_index = msg.f2
+                # Valid decoded Message → reset give-up counter
+                consecutive_no_response = 0
+        else:
+            consecutive_no_response += 1
+
+        # Check violations
+        exchange_violations: list[Violation] = []
+        if malformed_model is not None:
+            exchange_violations.append(Violation.MALFORMED_BER)
+        elif decoded_msg is not None and response_request_id is not None:
+            assert isinstance(decoded_msg, Message)
+            typed_varbinds: list[Varbind] = list(varbinds_from_response)  # type: ignore[arg-type]
+            exchange_violations = check_exchange(
+                sent_id=request_id,
+                returned_id=response_request_id,
+                prev_oid=cursor,
+                varbinds=typed_varbinds,
+                response_raw=exchange_io.response[1] if exchange_io.response else b"",
+                strays=[raw for _, raw in exchange_io.strays],
+            )
+
+        # Accumulate violation counts
+        for v in exchange_violations:
+            violation_counts[v] = violation_counts.get(v, 0) + 1
+
+        # Build and yield the Exchange record
+        typed_vbs: list[Varbind] = list(varbinds_from_response)  # type: ignore[arg-type]
+        yield exchange_record(
+            seq=seq,
+            request=request_model,
+            attempts=model_attempts,
+            response_request_id=response_request_id,
+            response_error_status=response_error_status,
+            response_error_index=response_error_index,
+            varbinds=typed_vbs,
+            strays=model_strays,
+            violations=exchange_violations,
+            malformed=malformed_model,
+        )
+
+        # --- Termination decisions (after yielding the exchange) ---
+
+        # Give-up check
+        if consecutive_no_response >= settings.give_up_after:
+            log.info("walk unresponsive after %d consecutive misses", consecutive_no_response)
+            end_reason = EndReason.UNRESPONSIVE
+            break
+
+        # No response → cursor stays, loop continues
+        if exchange_io.response is None or malformed_model is not None:
+            continue
+
+        # Decoded OK — check varbinds for termination
+        vbs: list[Varbind] = list(varbinds_from_response)  # type: ignore[arg-type]
+
+        # Empty varbind list → COMPLETED
+        if not vbs:
+            log.info("walk completed: empty varbind response")
+            end_reason = EndReason.COMPLETED
+            break
+
+        # EndOfMibView on any varbind → COMPLETED
+        if any(vb.tag == 0x82 for vb in vbs):  # noqa: PLR2004
+            log.info("walk completed: EndOfMibView")
+            end_reason = EndReason.COMPLETED
+            break
+
+        # Find the last non-exception varbind (the new cursor candidate)
+        data_vbs = [vb for vb in vbs if vb.tag not in EXCEPTION_TAGS]
+
+        # If all varbinds are exception tags (shouldn't normally happen after EOM check above)
+        if not data_vbs:
+            log.info("walk completed: only exception-tag varbinds")
+            end_reason = EndReason.COMPLETED
+            break
+
+        new_cursor = data_vbs[-1].oid
+
+        # OID not increasing → OID_LOOP
+        if new_cursor <= cursor:
+            yield event_record(
+                at=_now(rel),
+                kind=EventKind.OID_LOOP_DETECTED,
+                detail={"oid": str(new_cursor), "prev_oid": str(cursor)},
+            )
+            log.info("walk oid-loop detected oid=%s prev=%s", new_cursor, cursor)
+            end_reason = EndReason.OID_LOOP
+            break
+
+        # Left subtree → COMPLETED (OID jumped outside start_oid subtree)
+        if not new_cursor.in_subtree(settings.start_oid):
+            log.info("walk completed: left subtree oid=%s", new_cursor)
+            end_reason = EndReason.COMPLETED
+            break
+
+        # Count in-subtree OIDs seen
+        for vb in data_vbs:
+            if vb.oid.in_subtree(settings.start_oid):
+                oids_seen += 1
+
+        cursor = new_cursor
+
+    # --- Summary ---
+    assert end_reason is not None
+    at = _now(rel)
+    log.info("walk end reason=%s at=%.6f exchanges=%d oids_seen=%d", end_reason, at, seq, oids_seen)
+    yield summary_record(
+        at=at,
+        exchanges=seq,
+        oids_seen=oids_seen,
+        end_reason=end_reason,
+        violation_counts=violation_counts,
+    )
+
+
+# ---------------------------------------------------------------------------
+# walk_with_transport — sink-pumping adapter
+# ---------------------------------------------------------------------------
+
+
+async def walk_with_transport(  # noqa: PLR0913
+    transport: object,
+    *,
+    rel: Callable[[], float],
+    settings: WalkSettings,
+    sinks: Sequence[RecordSink],
+    label: str | None = None,
+    session_id: str | None = None,
+    run: int = 1,
+    runs_total: int = 1,
+) -> EndReason:
+    """Pump walk_records into sinks; handle cancellation.
+
+    Catches CancelledError → emits an INTERRUPTED summary to sinks → re-raises.
+    Sinks are called synchronously; sink failures propagate (v1: sinks are trusted).
+
+    Returns the EndReason from the final Summary record.
+
+    Args:
+        transport: Object implementing Transport protocol.
+        rel: Shared monotonic clock.
+        settings: Walk configuration.
+        sinks: Sequence of callables receiving each TraceRecord.
+        label: Optional human label.
+        session_id: UUID string; generated if None.
+        run: 1-based run index.
+        runs_total: Total runs in matrix.
+    """
+    if session_id is None:
+        session_id = str(uuid.uuid4())
+
+    stats = WalkStats()
+    end_reason: EndReason | None = None
+
+    def emit(record: TraceRecord) -> None:
+        for sink in sinks:
+            sink(record)
+
+    try:
+        async with aclosing(
+            walk_records(
+                transport,
+                rel=rel,
+                settings=settings,
+                label=label,
+                session_id=session_id,
+                run=run,
+                runs_total=runs_total,
+            )
+        ) as gen:
+            async for record in gen:
+                stats.observe(record)
+                emit(record)
+                if record.type == "summary":
+                    end_reason = EndReason(record.end_reason)  # type: ignore[union-attr]
+    except asyncio.CancelledError:
+        # Emit interrupted summary to sinks synchronously, then re-raise
+        at = _now(rel)
+        interrupted = summary_record(
+            at=at,
+            exchanges=stats.exchanges,
+            oids_seen=stats.oids_seen,
+            end_reason=EndReason.INTERRUPTED,
+            violation_counts=stats.violation_counts,
+        )
+        emit(interrupted)
+        raise
+
+    assert end_reason is not None
+    return end_reason
+
+
+# ---------------------------------------------------------------------------
+# run_walk — file-producing composition
+# ---------------------------------------------------------------------------
+
+
+async def run_walk(  # noqa: PLR0913
+    host: str,
+    port: int,
+    *,
+    settings: WalkSettings,
+    path: Path,
+    label: str | None = None,
+    session_id: str | None = None,
+    run: int = 1,
+    runs_total: int = 1,
+    sinks: Sequence[RecordSink] = (),
+) -> EndReason:
+    """Full walk: opens trace file, creates transport, runs walk_with_transport.
+
+    ONE shared _monotonic_rel() clock is created here and passed to both
+    UdpTransport.create and walk_with_transport.  This is mandatory (trap #11):
+    two independent clocks would silently desynchronize timestamps.
+
+    TraceWriter CM is outermost; transport async CM is inner.
+    writer.write is prepended as the first sink.
+
+    Args:
+        host: Target hostname or IP.
+        port: Target UDP port.
+        settings: Walk configuration.
+        path: Output trace file path (.oidtrace.jsonl.gz).
+        label: Optional human label.
+        session_id: UUID string; generated if None.
+        run: 1-based run index.
+        runs_total: Total runs in matrix.
+        sinks: Additional record sinks (writer is always first).
+    """
+    # ONE shared clock — this is the key invariant (trap #11)
+    rel = _monotonic_rel()
+
+    with TraceWriter(path) as writer:
+        all_sinks: list[RecordSink] = [writer.write, *sinks]
+        async with await UdpTransport.create(host, port, rel) as transport:
+            return await walk_with_transport(
+                transport,
+                rel=rel,
+                settings=settings,
+                sinks=all_sinks,
+                label=label,
+                session_id=session_id,
+                run=run,
+                runs_total=runs_total,
+            )

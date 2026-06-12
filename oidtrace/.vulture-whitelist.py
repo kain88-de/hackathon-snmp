@@ -115,6 +115,24 @@ from oidtrace.tracefile import TraceWriter, read_trace
 _ = TraceWriter.close
 _ = read_trace
 
+# walker.py public entry point — called by CLI (not yet added) and integration tests;
+# vulture only scans src/ so it can't see the test call sites.
+from oidtrace.walker import (
+    RecordSink,
+    WalkSettings,
+    WalkStats,
+    run_walk,
+    walk_records,
+    walk_with_transport,
+)
+
+_ = run_walk
+_ = walk_records
+_ = walk_with_transport
+_ = WalkSettings
+_ = WalkStats
+_ = RecordSink
+
 # cli entry point — referenced in pyproject.toml [project.scripts], not called
 # directly in Python source.
 # from oidtrace.cli import main
