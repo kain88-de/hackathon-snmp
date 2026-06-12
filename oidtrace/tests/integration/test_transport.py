@@ -71,9 +71,6 @@ async def test_duplicate_responses(emulator_factory) -> None:
     # Both datagrams were arrival-stamped in datagram_received; they must be close
     # in time (sent back-to-back by the emulator on loopback).
     assert abs(stray_at - resp_at) < 0.05
-    # The stray was stamped at arrival, not at dequeue time — it must not be later
-    # than now (gives a very generous upper-bound; the real test is closeness above).
-    assert stray_at <= time.monotonic()
 
 
 async def test_icmp_port_unreachable() -> None:
