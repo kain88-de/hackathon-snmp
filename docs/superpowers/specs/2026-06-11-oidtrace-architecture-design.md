@@ -121,9 +121,9 @@ derive settings) is another driver of the same stack; every probing session emit
 
 - `--label "switch-floor3"` — admin-chosen run label recorded in the header; the only
   device-correlating information in a trace, and the admin typed it themselves.
-- Community string is taken from the `OIDTRACE_COMMUNITY` environment variable
-  (default `public`; interactive prompt post-MVP) — never a CLI argument
-  (shell history on a shared monitoring server).
+- Community string: `--community` CLI flag (default `public`). Decision reversed
+  2026-06-12: the original never-a-CLI-argument rule (shell history) lost to ergonomic
+  parity — `snmpbulkwalk -c public` is the benchmark and admins type it daily.
 - `-v/--verbose` counting flag: stdlib logging to stderr (WARNING → INFO → DEBUG);
   module loggers, handlers are the adjustable sinks; log lines obey trace privacy
   (never values, never the community string). The progress line shows only at default
