@@ -10,7 +10,7 @@ from oidtrace.violations import check_exchange
 # Helpers
 # ---------------------------------------------------------------------------
 
-_EOM_TAG = next(iter(EXCEPTION_TAGS))  # 0x80 — NoSuchObject (an exception tag)
+_EXCEPTION_TAG = next(iter(EXCEPTION_TAGS))  # first tag in EXCEPTION_TAGS set
 
 
 def _vb(oid_str: str, tag: int = 0x04) -> Varbind:
@@ -92,7 +92,7 @@ def test_exception_tag_skipped_no_cursor_advance() -> None:
     # (the last data cursor), making this a clean walk.
     vbs = [
         _vb("1.2.1"),  # data, cursor → 1.2.1
-        _vb("1.1.5", _EOM_TAG),  # exception — skipped, cursor stays 1.2.1
+        _vb("1.1.5", _EXCEPTION_TAG),  # exception — skipped, cursor stays 1.2.1
         _vb("1.3.0"),  # data, 1.3.0 > 1.2.1 → clean
     ]
     result = _clean(prev_oid=Oid.from_str("1.2.0"), varbinds=vbs)
@@ -101,7 +101,7 @@ def test_exception_tag_skipped_no_cursor_advance() -> None:
 
 def test_exception_tag_only_varbinds_no_violation() -> None:
     # All exception tags → no data cursor movement → no OID_NOT_INCREASING
-    vbs = [_vb("1.1.0", _EOM_TAG), _vb("0.9.0", _EOM_TAG)]
+    vbs = [_vb("1.1.0", _EXCEPTION_TAG), _vb("0.9.0", _EXCEPTION_TAG)]
     result = _clean(prev_oid=Oid.from_str("1.2.0"), varbinds=vbs)
     assert Violation.OID_NOT_INCREASING not in result
 

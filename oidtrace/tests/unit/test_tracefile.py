@@ -12,6 +12,8 @@ from __future__ import annotations
 import gzip
 from typing import TYPE_CHECKING
 
+import pydantic
+import pytest
 from traceformat import Header, Summary, dump_record, parse_record
 
 if TYPE_CHECKING:
@@ -303,6 +305,26 @@ def test_empty_writer_yields_nothing(tmp_path: Path) -> None:
         pass
 
     assert list(read_trace(path)) == []
+
+
+# ---------------------------------------------------------------------------
+# read_trace raises on format-invalid complete lines (not silent skip)
+# ---------------------------------------------------------------------------
+
+
+def test_read_trace_raises_on_format_invalid_line(tmp_path: Path) -> None:
+    """A syntactically-valid JSON line that fails schema validation must raise.
+
+    {"type":"summary"} is valid JSON but missing required fields (at, exchanges,
+    oids_seen, end_reason, violation_counts).  read_trace must propagate the
+    pydantic.ValidationError rather than silently skipping the line.
+    """
+    path = tmp_path / "trace.jsonl.gz"
+    invalid_line = '{"type":"summary"}\n'
+    path.write_bytes(gzip.compress(invalid_line.encode("utf-8")))
+
+    with pytest.raises(pydantic.ValidationError):
+        list(read_trace(path))
 
 
 # ---------------------------------------------------------------------------

@@ -62,10 +62,7 @@ def read_trace(path: Path) -> Iterator[TraceRecord]:
     final line (no trailing newline).  Raises on complete lines that fail
     pydantic validation -- that signals a producer bug, not a device quirk.
     """
-    try:
-        f = gzip.open(path, "rt", encoding="utf-8")  # noqa: SIM115
-    except (EOFError, gzip.BadGzipFile):
-        return
+    f = gzip.open(path, "rt", encoding="utf-8")  # noqa: SIM115
     try:
         while True:
             try:

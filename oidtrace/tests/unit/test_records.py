@@ -19,6 +19,7 @@ import json
 from datetime import UTC, datetime
 from typing import TYPE_CHECKING
 
+import pydantic
 import pytest
 from traceformat import dump_record
 from traceformat import models as tf
@@ -302,6 +303,45 @@ def test_varbind_value_never_reaches_serialized_output(
     assert varbind_keys == {"oid", "vtype", "vlen"}
 
     _validate(r, record_validator)
+
+
+# ---------------------------------------------------------------------------
+# exchange_record validates at construction (pydantic, not model_construct)
+# ---------------------------------------------------------------------------
+
+
+def test_exchange_record_negative_seq_raises_validation_error() -> None:
+    """seq < 1 must raise pydantic.ValidationError at construction."""
+    with pytest.raises(pydantic.ValidationError):
+        exchange_record(
+            seq=-5,
+            request=_make_request(),
+            attempts=[_make_attempt()],
+            response_request_id=1,
+            response_error_status=0,
+            response_error_index=0,
+            varbinds=[],
+            strays=[],
+            violations=[],
+            malformed=None,
+        )
+
+
+def test_exchange_record_empty_attempts_raises_validation_error() -> None:
+    """attempts=[] violates min_length=1 and must raise pydantic.ValidationError."""
+    with pytest.raises(pydantic.ValidationError):
+        exchange_record(
+            seq=1,
+            request=_make_request(),
+            attempts=[],
+            response_request_id=None,
+            response_error_status=None,
+            response_error_index=None,
+            varbinds=[],
+            strays=[],
+            violations=[],
+            malformed=None,
+        )
 
 
 # ---------------------------------------------------------------------------

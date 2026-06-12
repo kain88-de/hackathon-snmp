@@ -146,34 +146,24 @@ def exchange_record(  # noqa: PLR0913
             ],
         )
 
-    # Build field sets for conditional keys — exclude_unset semantics require
-    # that optional keys are only included in _fields_set when they carry data.
-    fields_set: set[str] = {"type", "seq", "request", "attempts"}
-    stray_list: list[tf.StrayResponse] | None = None
-    violation_list: list[str] | None = None
-
+    # Build only the present fields — model_validate sets _fields_set to
+    # exactly the supplied keys, so exclude_unset omits absent optional fields.
+    fields: dict[str, object] = {
+        "type": "exchange",
+        "seq": seq,
+        "request": request,
+        "attempts": list(attempts),
+    }
     if response is not None:
-        fields_set.add("response")
+        fields["response"] = response
     if strays:
-        stray_list = list(strays)
-        fields_set.add("stray_responses")
+        fields["stray_responses"] = list(strays)
     if violations:
-        violation_list = [str(v) for v in violations]
-        fields_set.add("violations")
+        fields["violations"] = [str(v) for v in violations]
     if malformed is not None:
-        fields_set.add("malformed")
+        fields["malformed"] = malformed
 
-    return tf.Exchange.model_construct(
-        _fields_set=fields_set,
-        type="exchange",
-        seq=seq,
-        request=request,
-        attempts=list(attempts),
-        response=response,
-        stray_responses=stray_list,
-        violations=violation_list,
-        malformed=malformed,
-    )
+    return tf.Exchange.model_validate(fields)
 
 
 def event_record(
