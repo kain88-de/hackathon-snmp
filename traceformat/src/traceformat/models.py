@@ -2,22 +2,18 @@
 #   filename:  trace-format.schema.json
 
 from __future__ import annotations
-
+from pydantic import AwareDatetime, BaseModel, Field, RootModel, constr
 from enum import Enum
 from typing import Any, Literal
 
-from pydantic import AwareDatetime, BaseModel, Field, RootModel, constr
-
 
 class Oid(RootModel[str]):
-    root: str = Field(..., pattern='^[0-9]+(\\.[0-9]+)*$')
+    root: str = Field(..., pattern="^[0-9]+(\\.[0-9]+)*$")
 
 
 class Reltime(RootModel[float]):
     root: float = Field(
-        ...,
-        description='Seconds since walk start, monotonic clock, microsecond precision',
-        ge=0.0,
+        ..., description="Seconds since walk start, monotonic clock, microsecond precision", ge=0.0
     )
 
 
@@ -25,23 +21,22 @@ class Varbind(BaseModel):
     oid: Oid
     vtype: str = Field(
         ...,
-        description='Known: Integer, OctetString, Null, ObjectIdentifier, IpAddress, Counter32, Gauge32, TimeTicks, Opaque, Counter64, NoSuchObject, NoSuchInstance, EndOfMibView; unknown BER tags as tag:0xNN',
+        description="Known: Integer, OctetString, Null, ObjectIdentifier, IpAddress, Counter32, Gauge32, TimeTicks, Opaque, Counter64, NoSuchObject, NoSuchInstance, EndOfMibView; unknown BER tags as tag:0xNN",
     )
     vlen: int = Field(..., ge=0)
 
 
 class Session(BaseModel):
     id: str = Field(
-        ...,
-        description='Random UUID per walk invocation; shared by all files of a matrix run',
+        ..., description="Random UUID per walk invocation; shared by all files of a matrix run"
     )
     run: int = Field(..., ge=1)
     runs_total: int = Field(..., ge=1)
 
 
 class Version(Enum):
-    field_1 = '1'
-    field_2c = '2c'
+    field_1 = "1"
+    field_2c = "2c"
 
 
 class Snmp(BaseModel):
@@ -49,23 +44,23 @@ class Snmp(BaseModel):
 
 
 class Settings(BaseModel):
-    bulk_size: int = Field(..., description='0 means plain GetNext walk', ge=0)
+    bulk_size: int = Field(..., description="0 means plain GetNext walk", ge=0)
     timeout_s: float = Field(..., gt=0.0)
     retries: int = Field(..., ge=0)
     start_oid: Oid
     time_budget_s: float | None = Field(None, gt=0.0)
     resume_from: Oid | None = Field(
         None,
-        description='Walk cursor continued from a previous run; start_oid remains the subtree bound',
+        description="Walk cursor continued from a previous run; start_oid remains the subtree bound",
     )
 
 
 class Header(BaseModel):
-    type: Literal['header']
+    type: Literal["header"]
     format_version: Literal[1]
     tool: str
     started_at: AwareDatetime = Field(
-        ..., description='ISO 8601 UTC; the only wall-clock time in the file'
+        ..., description="ISO 8601 UTC; the only wall-clock time in the file"
     )
     label: str | None = None
     session: Session
@@ -74,21 +69,21 @@ class Header(BaseModel):
 
 
 class Point(Enum):
-    start = 'start'
-    end = 'end'
+    start = "start"
+    end = "end"
 
 
 class SystemInfo(BaseModel):
-    type: Literal['system_info']
+    type: Literal["system_info"]
     at: Reltime
     point: Point
-    values: dict[constr(pattern=r'^[0-9]+(\.[0-9]+)*$'), str | int]
+    values: dict[constr(pattern=r"^[0-9]+(\.[0-9]+)*$"), str | int]
 
 
 class Pdu(Enum):
-    get = 'get'
-    getnext = 'getnext'
-    getbulk = 'getbulk'
+    get = "get"
+    getnext = "getnext"
+    getbulk = "getbulk"
 
 
 class Request(BaseModel):
@@ -104,13 +99,13 @@ class Attempt(BaseModel):
     received_at: Reltime | None
     error: str | None = Field(
         None,
-        description='Open enum; socket-level error instead of silence. Known: icmp-port-unreachable, icmp-host-unreachable, send-failed. When set, received_at is null.',
+        description="Open enum; socket-level error instead of silence. Known: icmp-port-unreachable, icmp-host-unreachable, send-failed. When set, received_at is null.",
     )
 
 
 class Response(BaseModel):
     request_id: int = Field(
-        ..., description='As returned by the device; compare with request.request_id'
+        ..., description="As returned by the device; compare with request.request_id"
     )
     error_status: int
     error_index: int
@@ -124,15 +119,13 @@ class StrayResponse(BaseModel):
 class Malformed(BaseModel):
     error: str
     length: int | None = Field(
-        None,
-        description='Datagram size in bytes (the bytes themselves are not stored)',
-        ge=0,
+        None, description="Datagram size in bytes (the bytes themselves are not stored)", ge=0
     )
     salvaged: dict[str, Any] | None = None
 
 
 class Exchange(BaseModel):
-    type: Literal['exchange']
+    type: Literal["exchange"]
     seq: int = Field(..., ge=1)
     request: Request
     attempts: list[Attempt] = Field(..., min_length=1)
@@ -143,32 +136,30 @@ class Exchange(BaseModel):
 
 
 class Event(BaseModel):
-    type: Literal['event']
+    type: Literal["event"]
     at: Reltime
     kind: str = Field(
         ...,
-        description='Open enum; known: oid-loop-detected, walk-aborted-by-user, time-budget-exceeded',
+        description="Open enum; known: oid-loop-detected, walk-aborted-by-user, time-budget-exceeded",
     )
     detail: dict[str, Any] | None = None
 
 
 class Summary(BaseModel):
-    type: Literal['summary']
+    type: Literal["summary"]
     at: Reltime
     exchanges: int = Field(..., ge=0)
     oids_seen: int = Field(..., ge=0)
     end_reason: str = Field(
         ...,
-        description='Open enum; known: completed, unresponsive, interrupted, time-budget-exceeded, oid-loop',
+        description="Open enum; known: completed, unresponsive, interrupted, time-budget-exceeded, oid-loop",
     )
     violation_counts: dict[str, int]
 
 
-class OidtraceRecordFormatVersion1(
-    RootModel[Header | SystemInfo | Exchange | Event | Summary]
-):
+class OidtraceRecordFormatVersion1(RootModel[Header | SystemInfo | Exchange | Event | Summary]):
     root: Header | SystemInfo | Exchange | Event | Summary = Field(
         ...,
-        description='Validates one line of an .oidtrace.jsonl.gz file. Authoritative prose spec: docs/trace-format.md. Unknown extra fields are permitted everywhere (readers must ignore them); open enums (violations, event.kind, end_reason, vtype) are deliberately unconstrained strings.',
-        title='OIDTrace record (format version 1)',
+        description="Validates one line of an .oidtrace.jsonl.gz file. Authoritative prose spec: docs/trace-format.md. Unknown extra fields are permitted everywhere (readers must ignore them); open enums (violations, event.kind, end_reason, vtype) are deliberately unconstrained strings.",
+        title="OIDTrace record (format version 1)",
     )

@@ -23,12 +23,14 @@ gen-types:
         --use-union-operator \
         --use-standard-collections \
         --field-constraints \
+        --formatters ruff-format \
         --disable-timestamp
 
 types-fresh:
     #!/usr/bin/env bash
     set -euo pipefail
-    tmp=$(mktemp)
+    tmp=$(mktemp src/traceformat/.models-fresh-XXXXXX.py)
+    trap 'rm -f "$tmp"' EXIT
     uv run datamodel-codegen \
         --input ../docs/trace-format.schema.json \
         --input-file-type jsonschema \
@@ -38,13 +40,13 @@ types-fresh:
         --use-union-operator \
         --use-standard-collections \
         --field-constraints \
+        --formatters ruff-format \
         --disable-timestamp
     if ! diff -u src/traceformat/models.py "$tmp"; then
         rm -f "$tmp"
         echo "models.py is stale; run 'just gen-types'" >&2
         exit 1
     fi
-    rm -f "$tmp"
 
 ci: types-fresh fmt lint types test
 
