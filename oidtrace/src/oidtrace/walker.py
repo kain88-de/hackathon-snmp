@@ -52,6 +52,13 @@ RecordSink = Callable[["TraceRecord"], None]
 
 _TAG_END_OF_MIB_VIEW = 0x82
 
+
+def _monotonic_rel() -> Callable[[], float]:
+    """Return a rel() closure anchored to now."""
+    t0 = time.monotonic()
+    return lambda: round(time.monotonic() - t0, 6)
+
+
 # ---------------------------------------------------------------------------
 # Settings
 
@@ -92,6 +99,7 @@ def _to_model_attempt(a: TransportAttempt) -> ModelAttempt:
 async def walk_with_transport(
     transport: Transport,
     *,
+    rel: Callable[[], float],
     settings: WalkSettings,
     sinks: Sequence[RecordSink],
     label: str | None = None,
@@ -101,15 +109,13 @@ async def walk_with_transport(
 ) -> EndReason:
     """Drive the walk loop using *transport* (any Transport-protocol object).
 
+    *rel* is the shared monotonic clock (anchored to the same t0 used by the
+    transport), so transport timestamps and record timestamps live on one timeline.
+
     Emits every record to all *sinks* in order.  Knows nothing about files —
     file concerns belong in ``run_walk``.  ``asyncio.CancelledError`` emits a
     summary with INTERRUPTED to all sinks and re-raises.
     """
-    t0 = time.monotonic()
-
-    def rel() -> float:
-        return round(time.monotonic() - t0, 6)
-
     sid = session_id or str(uuid.uuid4())
 
     model_settings = Settings(
@@ -147,7 +153,9 @@ async def walk_with_transport(
 
     try:
         while True:
-            # Time-budget check at loop top
+            # Time-budget check at loop top.
+            # A zero-exchange trace (header + event + summary) is intentional when the
+            # budget is already exceeded before the first exchange.
             if settings.time_budget_s is not None and rel() > settings.time_budget_s:
                 emit(
                     event_record(
@@ -344,16 +352,14 @@ async def run_walk(
     sinks: Sequence[RecordSink] = (),
 ) -> EndReason:
     """Walk *host:port*, writing a trace to *path*.  Returns the EndReason."""
-    t0 = time.monotonic()
-
-    def rel() -> float:
-        return round(time.monotonic() - t0, 6)
+    rel = _monotonic_rel()  # single clock shared by transport and records
 
     with TraceWriter(path) as writer:
         all_sinks: Sequence[RecordSink] = (writer.write, *sinks)
         async with await UdpTransport.create(host, port, rel) as transport:
             return await walk_with_transport(
                 transport,
+                rel=rel,
                 settings=settings,
                 sinks=all_sinks,
                 label=label,

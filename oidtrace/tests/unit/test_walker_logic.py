@@ -17,7 +17,7 @@ from oidtrace.codec import encode_response
 from oidtrace.oid import Oid
 from oidtrace.tracefile import TraceWriter, read_trace
 from oidtrace.transport import Attempt, ExchangeIO
-from oidtrace.walker import WalkSettings, walk_with_transport
+from oidtrace.walker import WalkSettings, _monotonic_rel, walk_with_transport
 
 if TYPE_CHECKING:
     from pathlib import Path
@@ -124,7 +124,9 @@ async def test_end_of_mib_view_completed(tmp_path: Path, record_validator: Any) 
     )
 
     with TraceWriter(path) as writer:
-        reason = await walk_with_transport(transport, settings=settings, sinks=[writer.write])
+        reason = await walk_with_transport(
+            transport, rel=_monotonic_rel(), settings=settings, sinks=[writer.write]
+        )
 
     assert reason == EndReason.COMPLETED
 
@@ -158,7 +160,9 @@ async def test_left_subtree_completed(tmp_path: Path, record_validator: Any) -> 
     )
 
     with TraceWriter(path) as writer:
-        reason = await walk_with_transport(transport, settings=settings, sinks=[writer.write])
+        reason = await walk_with_transport(
+            transport, rel=_monotonic_rel(), settings=settings, sinks=[writer.write]
+        )
 
     assert reason == EndReason.COMPLETED
     records = _records(path)
@@ -192,7 +196,9 @@ async def test_oid_not_increasing_oid_loop(tmp_path: Path, record_validator: Any
     )
 
     with TraceWriter(path) as writer:
-        reason = await walk_with_transport(transport, settings=settings, sinks=[writer.write])
+        reason = await walk_with_transport(
+            transport, rel=_monotonic_rel(), settings=settings, sinks=[writer.write]
+        )
 
     assert reason == EndReason.OID_LOOP
 
@@ -242,7 +248,9 @@ async def test_give_up_after_with_recovery(tmp_path: Path, record_validator: Any
     )
 
     with TraceWriter(path) as writer:
-        reason = await walk_with_transport(transport, settings=settings, sinks=[writer.write])
+        reason = await walk_with_transport(
+            transport, rel=_monotonic_rel(), settings=settings, sinks=[writer.write]
+        )
 
     assert reason == EndReason.UNRESPONSIVE
 
@@ -277,7 +285,9 @@ async def test_malformed_response(tmp_path: Path, record_validator: Any) -> None
     )
 
     with TraceWriter(path) as writer:
-        reason = await walk_with_transport(transport, settings=settings, sinks=[writer.write])
+        reason = await walk_with_transport(
+            transport, rel=_monotonic_rel(), settings=settings, sinks=[writer.write]
+        )
 
     assert reason == EndReason.UNRESPONSIVE
 
@@ -323,7 +333,9 @@ async def test_icmp_attempt_error_in_record(tmp_path: Path, record_validator: An
     )
 
     with TraceWriter(path) as writer:
-        reason = await walk_with_transport(transport, settings=settings, sinks=[writer.write])
+        reason = await walk_with_transport(
+            transport, rel=_monotonic_rel(), settings=settings, sinks=[writer.write]
+        )
     assert reason == EndReason.UNRESPONSIVE
 
     records = _records(path)
@@ -356,8 +368,50 @@ async def test_on_record_callback(tmp_path: Path) -> None:
     streamed: list[Any] = []
     with TraceWriter(path) as writer:
         await walk_with_transport(
-            transport, settings=settings, sinks=[writer.write, streamed.append]
+            transport,
+            rel=_monotonic_rel(),
+            settings=settings,
+            sinks=[writer.write, streamed.append],
         )
 
     file_records = _records(path)
     assert len(streamed) == len(file_records)
+
+
+# ---------------------------------------------------------------------------
+# Test: shared timeline — attempt.sent_at and summary.at on the same clock
+
+
+async def test_shared_timeline(tmp_path: Path) -> None:
+    """attempt.sent_at and summary.at must share the same clock zero.
+
+    FakeTransport pre-bakes sent_at=0.0; with a shared rel anchored at 0,
+    the summary (emitted after the exchange) is >= 0, and sent_at >= 0.
+    Both being non-negative with summary >= sent_at confirms they live on
+    the same timeline.
+    """
+    cursor = Oid.from_str("1.3.6.1.2.1")
+    exchanges = [_eom_exchange(cursor, sent_at=0.0, received_at=0.001)]
+    transport = FakeTransport(exchanges)
+    path = tmp_path / "trace.gz"
+    settings = WalkSettings(
+        bulk_size=5,
+        timeout_s=1.0,
+        retries=0,
+        start_oid=Oid.from_str("1.3.6.1"),
+    )
+
+    with TraceWriter(path) as writer:
+        await walk_with_transport(
+            transport, rel=_monotonic_rel(), settings=settings, sinks=[writer.write]
+        )
+
+    records = _records(path)
+    exchange_rec = next(r for r in records if isinstance(r, Exchange))
+    summary = records[-1]
+    assert isinstance(summary, Summary)
+
+    sent_at = exchange_rec.attempts[0].sent_at.root
+    assert sent_at >= 0.0
+    assert summary.at.root >= 0.0
+    assert summary.at.root >= sent_at
