@@ -102,8 +102,9 @@ def main(argv: list[str] | None = None) -> int:
             )
         )
     except KeyboardInterrupt:
-        print(file=sys.stderr)
-        return 0
+        # The INTERRUPTED summary is already flushed to the file; fall through so
+        # the operator still gets the terminal summary and the trace path.
+        pass
 
     print(file=sys.stderr)  # newline after progress
 
