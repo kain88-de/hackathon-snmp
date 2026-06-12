@@ -314,8 +314,10 @@ Schema draft 2020-12): one `oneOf` branch per record type, validating any single
 trace. It encodes the structural rules of this document — including the
 `response`/`malformed` mutual exclusion and the getbulk-requires-repetition-fields rule —
 while leaving open enums and unknown extra fields unconstrained, as § 3 requires. The test
-suite validates every line the trace writer emits against it. If this document and the
-schema disagree, this document wins; fix the schema.
+suite validates every line the trace writer emits against it. Producer/consumer code
+uses pydantic models **generated from this schema** (`traceformat` package,
+datamodel-code-generator; `just gen-types` regenerates, a CI freshness check forbids
+drift). If this document and the schema disagree, this document wins; fix the schema.
 
 ## 9. Versioning
 
