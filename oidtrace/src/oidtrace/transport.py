@@ -252,6 +252,9 @@ class UdpTransport:
                 received_at, error_kind = item[0], item[1]
                 log.debug("send #%d error %s at %.6f", send_idx, error_kind, received_at)
                 attempts.append(Attempt(sent_at=sent_at, error=error_kind))
+                # ICMP error ends this attempt immediately. Errors are consumed in the
+                # attempt-wait during which they ARRIVE (format § 4.3 arrival-window rule);
+                # a single queue.get() per attempt means no cross-attempt deferral.
                 # On error, don't retry further — the port is closed/host unreachable
                 break
 

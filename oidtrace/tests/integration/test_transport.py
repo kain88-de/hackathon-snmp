@@ -83,7 +83,9 @@ async def test_duplicate_responses_creates_stray(emulator_factory) -> None:  # t
     assert stray_bytes == resp_bytes
 
     # Both timestamps are arrival-stamped in callbacks (close together, loopback)
-    assert abs(stray_at - resp_at) < 0.05
+    assert (
+        abs(stray_at - resp_at) < 0.05
+    )  # loopback proximity check; event-time stamping itself is enforced by the protocol-callback implementation, not provable by this bound
 
 
 # ---------------------------------------------------------------------------
