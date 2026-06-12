@@ -12,6 +12,7 @@ import logging
 import time
 from typing import TYPE_CHECKING, Any
 
+from traceformat import dump_record
 from traceformat.models import Event, Exchange, Header, Summary
 from traceformat.vocab import AttemptError, EndReason, Violation
 
@@ -19,7 +20,7 @@ from oidtrace.codec import encode_response
 from oidtrace.oid import Oid
 from oidtrace.tracefile import TraceWriter, read_trace
 from oidtrace.transport import Attempt, ExchangeIO
-from oidtrace.walker import WalkSettings, walk_with_transport
+from oidtrace.walker import WalkSettings, WalkStats, walk_records, walk_with_transport
 
 if TYPE_CHECKING:
     from collections.abc import Callable
@@ -484,3 +485,82 @@ async def test_logging_privacy_no_community(
         assert secret_str not in record.getMessage(), (
             f"Community string found in log record: {record.getMessage()!r}"
         )
+
+
+# ---------------------------------------------------------------------------
+# Test: walk_records — direct async-generator iteration
+
+
+async def test_walk_records_direct_iteration(record_validator: Any) -> None:
+    """Iterate walk_records directly; assert structure and stats-vs-generator consistency."""
+    start = Oid.from_str("1.3.6.1")
+    oid1 = Oid.from_str("1.3.6.1.2.1.1")
+    oid2 = Oid.from_str("1.3.6.1.2.1.2")
+    # Two continuing exchanges, then endOfMibView
+    exchanges = [
+        _response_exchange([(oid1, 0x02, b"\x00\x00\x00\x01")]),
+        _response_exchange([(oid2, 0x02, b"\x00\x00\x00\x02")]),
+        _eom_exchange(oid2),
+    ]
+    transport = FakeTransport(exchanges)
+    settings = WalkSettings(bulk_size=1, timeout_s=1.0, retries=0, start_oid=start)
+
+    records: list[TraceRecord] = []
+    stats = WalkStats()
+    async for record in walk_records(transport, rel=_rel(), settings=settings):
+        records.append(record)
+        stats.observe(record)
+
+    # Header is first, Summary is last
+    assert isinstance(records[0], Header)
+    assert isinstance(records[-1], Summary)
+
+    # Exchange records are between header and summary
+    middle = records[1:-1]
+    assert all(isinstance(r, Exchange) for r in middle)
+    assert len(middle) == 3  # 3 exchanges
+
+    # Summary end_reason
+    summary = records[-1]
+    assert isinstance(summary, Summary)
+    assert summary.end_reason == str(EndReason.COMPLETED)
+
+    # stats-vs-generator consistency for exchange count
+    # (WalkStats.oids_seen may differ from summary.oids_seen — see WalkStats docstring)
+    assert stats.exchanges == summary.exchanges
+
+    # All records valid against schema
+    for r in records:
+        record_validator.validate(json.loads(dump_record(r)))
+
+
+# ---------------------------------------------------------------------------
+# Test: walk_records — early break closes cleanly, no summary yielded
+
+
+async def test_walk_records_early_break() -> None:
+    """Breaking out of walk_records after the first exchange yields no summary."""
+    start = Oid.from_str("1.3.6.1")
+    oid1 = Oid.from_str("1.3.6.1.2.1.1")
+    exchanges_list = [
+        _response_exchange([(oid1, 0x02, b"\x00\x00\x00\x01")]),
+        _eom_exchange(oid1),
+    ]
+    transport = FakeTransport(exchanges_list)
+    settings = WalkSettings(bulk_size=1, timeout_s=1.0, retries=0, start_oid=start)
+
+    collected: list[TraceRecord] = []
+    gen = walk_records(transport, rel=_rel(), settings=settings)
+    async for record in gen:
+        collected.append(record)
+        if isinstance(record, Exchange):
+            break  # stop after the first exchange
+
+    # Generator must close cleanly
+    await gen.aclose()
+
+    # Header was yielded; one exchange was yielded; no Summary
+    assert isinstance(collected[0], Header)
+    assert len(collected) == 2
+    assert isinstance(collected[1], Exchange)
+    assert not any(isinstance(r, Summary) for r in collected)
