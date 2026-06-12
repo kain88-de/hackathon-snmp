@@ -81,10 +81,24 @@ class Transport(Protocol):
 # Internal asyncio Protocol — stamps timestamps in callbacks (event time)
 # ---------------------------------------------------------------------------
 
-# Sentinel type for the queue: distinguishes datagram arrivals from errors.
-_Datagram = tuple[float, bytes]  # (received_at, data)
-_Error = tuple[float, AttemptError]  # (received_at, error_kind)
-_QueueItem = _Datagram | _Error
+
+@dataclass(frozen=True)
+class _DatagramEvent:
+    """A received UDP datagram, timestamped at callback time."""
+
+    received_at: float
+    data: bytes
+
+
+@dataclass(frozen=True)
+class _ErrorEvent:
+    """An ICMP or OS error, timestamped at callback time."""
+
+    received_at: float
+    kind: AttemptError
+
+
+_QueueItem = _DatagramEvent | _ErrorEvent
 
 
 def _icmp_error_kind(exc: Exception) -> AttemptError:
@@ -122,14 +136,14 @@ class _SnmpProtocol(asyncio.DatagramProtocol):
         # Stamp timestamp HERE — event time, in the callback, not at dequeue.
         received_at = self.now()
         log.debug("datagram received len=%d at %.6f", len(data), received_at)
-        self._queue.put_nowait((received_at, data))
+        self._queue.put_nowait(_DatagramEvent(received_at=received_at, data=data))
 
     def error_received(self, exc: Exception) -> None:
         # Stamp timestamp HERE — event time, in the callback, not at dequeue.
         received_at = self.now()
         kind = _icmp_error_kind(exc)
         log.debug("error_received %s at %.6f", kind, received_at)
-        self._queue.put_nowait((received_at, kind))
+        self._queue.put_nowait(_ErrorEvent(received_at=received_at, kind=kind))
 
     def connection_lost(self, exc: Exception | None) -> None:  # pragma: no cover
         pass
@@ -211,10 +225,10 @@ class UdpTransport:
         - Send the byte-identical datagram.
         - Wait up to *timeout_s* for the first queue event.
         - Datagram → record as response, stop.
-        - ICMP error → record error attempt, stop (no further retries).
+        - ICMP error → record error on this attempt, continue to next attempt.
         - Timeout → record unanswered attempt, continue to next retry.
 
-        After a response: yield to the event loop once (``asyncio.sleep(0)``),
+        After the retry loop: yield to the event loop once (``asyncio.sleep(0)``),
         then drain all immediately-available datagrams from the queue into
         *strays*.
 
@@ -240,32 +254,28 @@ class UdpTransport:
                 continue
 
             # Decode the queue item
-            if isinstance(item[1], bytes):
-                # It's a (received_at, data) datagram
-                received_at, data = item[0], item[1]
-                log.debug("send #%d response received_at=%.6f", send_idx, received_at)
-                attempts.append(Attempt(sent_at=sent_at, received_at=received_at))
-                response = (received_at, data)
+            if isinstance(item, _DatagramEvent):
+                log.debug("send #%d response received_at=%.6f", send_idx, item.received_at)
+                attempts.append(Attempt(sent_at=sent_at, received_at=item.received_at))
+                response = (item.received_at, item.data)
                 break
             else:
-                # It's a (received_at, AttemptError) error
-                received_at, error_kind = item[0], item[1]
-                log.debug("send #%d error %s at %.6f", send_idx, error_kind, received_at)
-                attempts.append(Attempt(sent_at=sent_at, error=error_kind))
-                # ICMP error ends this attempt immediately. Errors are consumed in the
-                # attempt-wait during which they ARRIVE (format § 4.3 arrival-window rule);
-                # a single queue.get() per attempt means no cross-attempt deferral.
-                # On error, don't retry further — the port is closed/host unreachable
-                break
+                # _ErrorEvent — ICMP or OS error on this attempt; continue to next attempt
+                assert isinstance(item, _ErrorEvent)
+                log.debug("send #%d error %s at %.6f", send_idx, item.kind, item.received_at)
+                attempts.append(Attempt(sent_at=sent_at, error=item.kind))
+                # Record the error and continue to next attempt (bounded by retries).
+                # Errors are consumed in the attempt-wait window (format § 4.3 arrival-window
+                # rule); a single queue.get() per attempt means no cross-attempt deferral.
 
-        # Drain immediately-available strays
+        # Drain immediately-available strays (unconditional — always runs after the loop)
         await asyncio.sleep(0)
         strays: list[tuple[float, bytes]] = []
         while not protocol.queue.empty():
             item = protocol.queue.get_nowait()
-            if isinstance(item[1], bytes):
-                strays.append((item[0], item[1]))
-                log.debug("stray drained received_at=%.6f", item[0])
+            if isinstance(item, _DatagramEvent):
+                strays.append((item.received_at, item.data))
+                log.debug("stray drained received_at=%.6f", item.received_at)
 
         return ExchangeIO(
             attempts=tuple(attempts),

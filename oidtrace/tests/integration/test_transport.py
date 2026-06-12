@@ -88,10 +88,13 @@ async def test_duplicate_responses_creates_stray(emulator_factory) -> None:  # t
 
 
 # ---------------------------------------------------------------------------
-# 4. Closed local UDP port → ICMP_PORT_UNREACHABLE, no response
+# 4. Closed local UDP port → ICMP error per attempt; retries=1 → 2 attempts
 # ---------------------------------------------------------------------------
 async def test_icmp_port_unreachable() -> None:
-    """Sending to a closed UDP port triggers an ICMP port-unreachable error."""
+    """ICMP error on an attempt continues to the next attempt (bounded by retries).
+
+    With retries=1 (2 total sends), both attempts should carry an ICMP error.
+    """
     # Bind and immediately close a socket to get a free port nothing listens on.
     s = socket.socket(socket.AF_INET, socket.SOCK_DGRAM)
     s.bind(("127.0.0.1", 0))
@@ -101,10 +104,35 @@ async def test_icmp_port_unreachable() -> None:
     async with await UdpTransport.create("127.0.0.1", port, _rel) as t:
         result = await t.exchange(_RAW, timeout_s=1.0, retries=1)
 
-    error_attempts = [a for a in result.attempts if a.error is not None]
-    assert len(error_attempts) >= 1
-    assert error_attempts[0].error == AttemptError.ICMP_PORT_UNREACHABLE
     assert result.response is None
+    assert len(result.attempts) == 2  # 1 initial + 1 retry
+    for attempt in result.attempts:
+        assert attempt.error == AttemptError.ICMP_PORT_UNREACHABLE
+
+
+# ---------------------------------------------------------------------------
+# 5b. Stray drain is unconditional — runs even on no-response path
+# ---------------------------------------------------------------------------
+async def test_stray_drain_no_response_returns_empty_strays(emulator_factory) -> None:  # type: ignore[no-untyped-def]
+    """Stray drain runs unconditionally: no-response path produces strays=().
+
+    This pins that exchange() always performs the drain and returns a strays
+    tuple (even if empty).  The duplicate-responses test (test_duplicate_responses_creates_stray)
+    covers the case where the drain finds and collects a stray after a real response.
+
+    NOTE: A reliable no-response stray *collection* test (inject-and-drain) requires
+    bypassing protocol.send(); we settle for pinning the no-response drain runs cleanly.
+    """
+    quirks = Quirks(drop_all=True)
+    async with (
+        emulator_factory(EmuDevice.simple(quirks=quirks)) as (host, port),
+        await UdpTransport.create(host, port, _rel) as t,
+    ):
+        result = await t.exchange(_RAW, timeout_s=0.1, retries=0)
+
+    assert result.response is None
+    # Drain ran (found nothing) — strays is an empty tuple, not absent
+    assert result.strays == ()
 
 
 # ---------------------------------------------------------------------------
