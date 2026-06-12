@@ -6,7 +6,6 @@ import argparse
 import asyncio
 import contextlib
 import logging
-import os
 import socket
 import sys
 from datetime import UTC, datetime
@@ -46,16 +45,16 @@ def _progress_sink(record: TraceRecord) -> None:
 
 def _build_parser() -> argparse.ArgumentParser:
     parser = argparse.ArgumentParser(prog="oidtrace")
-    parser.add_argument(
+    sub = parser.add_subparsers(dest="command")
+
+    walk_p = sub.add_parser("walk")
+    walk_p.add_argument(
         "-v",
         "--verbose",
         action="count",
         default=0,
         help="Increase verbosity (-v INFO, -vv DEBUG)",
     )
-    sub = parser.add_subparsers(dest="command")
-
-    walk_p = sub.add_parser("walk")
     walk_p.add_argument("host")
     walk_p.add_argument("--port", type=int, default=161)
     walk_p.add_argument("--out", default=".")
@@ -65,6 +64,7 @@ def _build_parser() -> argparse.ArgumentParser:
     walk_p.add_argument("--retries", type=int, default=2)
     walk_p.add_argument("--start-oid", default="1.3.6.1")
     walk_p.add_argument("--time-budget", type=float, default=None)
+    walk_p.add_argument("--community", default="public", help="SNMP community string")
     return parser
 
 
@@ -112,7 +112,7 @@ def main(argv: list[str] | None = None) -> int:
     stamp = _utc_stamp()
     trace_path = out_dir / f"{label}-{stamp}.oidtrace.jsonl.gz"
 
-    community = os.environ.get("OIDTRACE_COMMUNITY", "public").encode()
+    community = args.community.encode()
 
     settings = WalkSettings(
         bulk_size=args.bulk_size,

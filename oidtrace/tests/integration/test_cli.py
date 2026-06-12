@@ -9,7 +9,6 @@ import sys
 import threading
 from typing import TYPE_CHECKING
 
-import pytest
 from traceformat.models import Header, Summary
 
 from oidtrace.cli import main
@@ -55,11 +54,6 @@ def _start_emulator(device: EmuDevice) -> tuple[str, int]:
 
 # ---------------------------------------------------------------------------
 # Fixtures
-
-
-@pytest.fixture(autouse=True)
-def _community(monkeypatch: pytest.MonkeyPatch) -> None:
-    monkeypatch.setenv("OIDTRACE_COMMUNITY", "public")
 
 
 # ---------------------------------------------------------------------------
@@ -200,8 +194,8 @@ def test_verbose_debug_no_progress(tmp_path: Path) -> None:
     try:
         rc = main(
             [
-                "-vv",
                 "walk",
+                "-vv",
                 host,
                 "--port",
                 str(port),
