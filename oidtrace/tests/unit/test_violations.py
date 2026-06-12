@@ -17,18 +17,24 @@ def _vb(oid_str: str, tag: int = 0x04) -> Varbind:
     return Varbind(oid=Oid.from_str(oid_str), tag=tag, value=b"x")
 
 
-def _clean(**overrides: object) -> list[Violation]:
+def _clean(
+    *,
+    sent_id: int = 1,
+    returned_id: int = 1,
+    prev_oid: Oid | None = None,
+    varbinds: list[Varbind] | None = None,
+    response_raw: bytes = b"response",
+    strays: list[bytes] | None = None,
+) -> list[Violation]:
     """Call check_exchange with sane defaults; override specific args."""
-    kwargs: dict[str, object] = {
-        "sent_id": 1,
-        "returned_id": 1,
-        "prev_oid": Oid.from_str("1.2.0"),
-        "varbinds": [_vb("1.3.0")],
-        "response_raw": b"response",
-        "strays": [],
-    }
-    kwargs.update(overrides)
-    return check_exchange(**kwargs)  # type: ignore[arg-type]
+    return check_exchange(
+        sent_id=sent_id,
+        returned_id=returned_id,
+        prev_oid=prev_oid if prev_oid is not None else Oid.from_str("1.2.0"),
+        varbinds=varbinds if varbinds is not None else [_vb("1.3.0")],
+        response_raw=response_raw,
+        strays=strays if strays is not None else [],
+    )
 
 
 # ---------------------------------------------------------------------------

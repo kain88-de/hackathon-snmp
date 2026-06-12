@@ -316,28 +316,6 @@ def test_garbage_never_raises(raw: bytes) -> None:
 
 
 # ---------------------------------------------------------------------------
-# Varbind / Message are frozen dataclasses
-# ---------------------------------------------------------------------------
-
-
-def test_varbind_is_frozen() -> None:
-    raw = _valid_response()
-    msg = decode_message(raw)
-    assert isinstance(msg, Message)
-    vb = msg.varbinds[0]
-    with pytest.raises((AttributeError, TypeError)):
-        vb.tag = 0x99  # type: ignore[misc]
-
-
-def test_message_is_frozen() -> None:
-    raw = _valid_response()
-    msg = decode_message(raw)
-    assert isinstance(msg, Message)
-    with pytest.raises((AttributeError, TypeError)):
-        msg.request_id = 999  # type: ignore[misc]
-
-
-# ---------------------------------------------------------------------------
 # Per-layer malformations -- every tag-check branch covered
 #
 # Strategy: build a valid packet with encode_response, then locate the

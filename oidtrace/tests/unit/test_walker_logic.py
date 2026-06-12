@@ -18,15 +18,18 @@ from typing import TYPE_CHECKING
 
 import pytest
 from traceformat import dump_record
+from traceformat.models import Summary
 from traceformat.vocab import EndReason, EventKind, Violation
 
 from oidtrace.codec import encode_response
 from oidtrace.oid import Oid
 from oidtrace.transport import Attempt, ExchangeIO
+from oidtrace.walker import WalkSettings, WalkStats, walk_records, walk_with_transport
 
 if TYPE_CHECKING:
     from collections.abc import Callable
 
+    # pyrefly: ignore [untyped-import]
     from jsonschema import Draft202012Validator
     from traceformat import TraceRecord
 
@@ -122,27 +125,34 @@ def _validate_all(records: list[TraceRecord], validator: Draft202012Validator) -
 # ---------------------------------------------------------------------------
 
 
-def _default_settings() -> object:
-    """Import WalkSettings with defaults."""
-    from oidtrace.walker import WalkSettings  # noqa: PLC0415
-
-    return WalkSettings()
-
 
 # ---------------------------------------------------------------------------
 # Tests
 # ---------------------------------------------------------------------------
 
 
-async def _collect(transport: FakeTransport, **kw: object) -> list[TraceRecord]:
+async def _collect(
+    transport: FakeTransport,
+    *,
+    settings: WalkSettings | None = None,
+    rel: Callable[[], float] | None = None,
+    label: str | None = None,
+    session_id: str | None = None,
+    run: int = 1,
+    runs_total: int = 1,
+) -> list[TraceRecord]:
     """Run walk_records and collect all yielded records."""
-    from oidtrace.walker import WalkSettings, walk_records  # noqa: PLC0415
-
-    settings = kw.pop("settings", WalkSettings())
-    rel = kw.pop("rel", _make_rel())
     records: list[TraceRecord] = []
     async with aclosing(
-        walk_records(transport, rel=rel, settings=settings, **kw)  # type: ignore[arg-type]
+        walk_records(
+            transport,
+            rel=rel if rel is not None else _make_rel(),
+            settings=settings if settings is not None else WalkSettings(),
+            label=label,
+            session_id=session_id,
+            run=run,
+            runs_total=runs_total,
+        )
     ) as gen:
         async for r in gen:
             records.append(r)
@@ -162,8 +172,8 @@ async def test_record_order_header_first_summary_last(
     )
     records = await _collect(transport)
 
-    assert records[0].type == "header"  # type: ignore[union-attr]
-    assert records[-1].type == "summary"  # type: ignore[union-attr]
+    assert records[0].type == "header"
+    assert records[-1].type == "summary"
     _validate_all(records, record_validator)
 
 
@@ -181,10 +191,10 @@ async def test_summary_stats_match_exchanges(
     records = await _collect(transport)
 
     summary = records[-1]
-    assert summary.type == "summary"  # type: ignore[union-attr]
-    assert summary.exchanges == 2  # type: ignore[union-attr]
-    assert summary.oids_seen == 2  # type: ignore[union-attr]
-    assert summary.end_reason == str(EndReason.COMPLETED)  # type: ignore[union-attr]
+    assert summary.type == "summary"
+    assert summary.exchanges == 2
+    assert summary.oids_seen == 2
+    assert summary.end_reason == str(EndReason.COMPLETED)
     _validate_all(records, record_validator)
 
 
@@ -193,7 +203,6 @@ async def test_early_break_and_aclose_no_summary(
     record_validator: Draft202012Validator,
 ) -> None:
     """Breaking out of the loop (partial consumer) yields no Summary."""
-    from oidtrace.walker import WalkSettings, walk_records  # noqa: PLC0415
 
     transport = FakeTransport(
         responses=[
@@ -207,11 +216,11 @@ async def test_early_break_and_aclose_no_summary(
     async with aclosing(gen):
         async for r in gen:
             records.append(r)
-            if r.type == "exchange":  # type: ignore[union-attr]
+            if r.type == "exchange":
                 break  # stop after first exchange
 
-    assert records[-1].type != "summary"  # type: ignore[union-attr]
-    types = [r.type for r in records]  # type: ignore[union-attr]
+    assert records[-1].type != "summary"
+    types = [r.type for r in records]
     assert "summary" not in types
     _validate_all(records, record_validator)
 
@@ -221,7 +230,6 @@ async def test_explicit_aclose_no_exception(
     record_validator: Draft202012Validator,
 ) -> None:
     """Calling aclose() directly does not raise."""
-    from oidtrace.walker import WalkSettings, walk_records  # noqa: PLC0415
 
     transport = FakeTransport(
         responses=[
@@ -232,7 +240,7 @@ async def test_explicit_aclose_no_exception(
     records: list[TraceRecord] = []
     async for r in gen:
         records.append(r)
-        if r.type == "header":  # type: ignore[union-attr]
+        if r.type == "header":
             break
     await gen.aclose()  # must not raise
     _validate_all(records, record_validator)
@@ -252,8 +260,8 @@ async def test_end_of_mib_view_completed(
     records = await _collect(transport)
 
     summary = records[-1]
-    assert summary.type == "summary"  # type: ignore[union-attr]
-    assert summary.end_reason == str(EndReason.COMPLETED)  # type: ignore[union-attr]
+    assert summary.type == "summary"
+    assert summary.end_reason == str(EndReason.COMPLETED)
     _validate_all(records, record_validator)
 
 
@@ -262,7 +270,6 @@ async def test_left_subtree_oid_completed(
     record_validator: Draft202012Validator,
 ) -> None:
     """Response with OID outside start_oid subtree → COMPLETED."""
-    from oidtrace.walker import WalkSettings  # noqa: PLC0415
 
     outside_oid = Oid.from_str("1.3.6.2.1.1.1.0")  # outside 1.3.6.1 subtree
     transport = FakeTransport(
@@ -273,8 +280,8 @@ async def test_left_subtree_oid_completed(
     records = await _collect(transport, settings=WalkSettings(start_oid=_START_OID))
 
     summary = records[-1]
-    assert summary.type == "summary"  # type: ignore[union-attr]
-    assert summary.end_reason == str(EndReason.COMPLETED)  # type: ignore[union-attr]
+    assert summary.type == "summary"
+    assert summary.end_reason == str(EndReason.COMPLETED)
     _validate_all(records, record_validator)
 
 
@@ -292,14 +299,15 @@ async def test_oid_not_increasing_loop(
     )
     records = await _collect(transport)
 
-    types = [r.type for r in records]  # type: ignore[union-attr]
+    types = [r.type for r in records]
     assert "event" in types
 
-    event = next(r for r in records if r.type == "event")  # type: ignore[union-attr]
-    assert event.kind == str(EventKind.OID_LOOP_DETECTED)  # type: ignore[union-attr]
+    event = next(r for r in records if r.type == "event")
+    assert event.kind == str(EventKind.OID_LOOP_DETECTED)
 
+    assert isinstance(records[-1], Summary)
     summary = records[-1]
-    assert summary.end_reason == str(EndReason.OID_LOOP)  # type: ignore[union-attr]
+    assert summary.end_reason == str(EndReason.OID_LOOP)
     _validate_all(records, record_validator)
 
 
@@ -308,7 +316,6 @@ async def test_give_up_unresponsive(
     record_validator: Draft202012Validator,
 ) -> None:
     """Consecutive no-response exchanges → UNRESPONSIVE after give_up_after."""
-    from oidtrace.walker import WalkSettings  # noqa: PLC0415
 
     settings = WalkSettings(give_up_after=2, timeout_s=0.01, retries=0)
     transport = FakeTransport(
@@ -319,8 +326,9 @@ async def test_give_up_unresponsive(
     )
     records = await _collect(transport, settings=settings)
 
+    assert isinstance(records[-1], Summary)
     summary = records[-1]
-    assert summary.end_reason == str(EndReason.UNRESPONSIVE)  # type: ignore[union-attr]
+    assert summary.end_reason == str(EndReason.UNRESPONSIVE)
     _validate_all(records, record_validator)
 
 
@@ -329,7 +337,6 @@ async def test_give_up_with_recovery_resets_count(
     record_validator: Draft202012Validator,
 ) -> None:
     """A valid response resets the give_up counter; subsequent silence still works."""
-    from oidtrace.walker import WalkSettings  # noqa: PLC0415
 
     settings = WalkSettings(give_up_after=2, timeout_s=0.01, retries=0)
     transport = FakeTransport(
@@ -342,10 +349,11 @@ async def test_give_up_with_recovery_resets_count(
     )
     records = await _collect(transport, settings=settings)
 
+    assert isinstance(records[-1], Summary)
     summary = records[-1]
-    assert summary.end_reason == str(EndReason.UNRESPONSIVE)  # type: ignore[union-attr]
+    assert summary.end_reason == str(EndReason.UNRESPONSIVE)
     # 4 exchanges total
-    assert summary.exchanges == 4  # type: ignore[union-attr]
+    assert summary.exchanges == 4
     _validate_all(records, record_validator)
 
 
@@ -370,9 +378,9 @@ async def test_malformed_response_adds_violation(
 
     exchange_records = [r for r in records if r.type == "exchange"]
     first_exchange = exchange_records[0]
-    assert first_exchange.violations is not None  # type: ignore[union-attr]
-    assert str(Violation.MALFORMED_BER) in first_exchange.violations  # type: ignore[union-attr]
-    assert first_exchange.malformed is not None  # type: ignore[union-attr]
+    assert first_exchange.violations is not None
+    assert str(Violation.MALFORMED_BER) in first_exchange.violations
+    assert first_exchange.malformed is not None
     _validate_all(records, record_validator)
 
 
@@ -381,7 +389,6 @@ async def test_malformed_increments_give_up_count(
     record_validator: Draft202012Validator,
 ) -> None:
     """Malformed responses count toward give_up_after (same as no-response)."""
-    from oidtrace.walker import WalkSettings  # noqa: PLC0415
 
     settings = WalkSettings(give_up_after=2, timeout_s=0.01, retries=0)
     junk = b"\x00" * 5
@@ -401,8 +408,9 @@ async def test_malformed_increments_give_up_count(
     )
     records = await _collect(transport, settings=settings)
 
+    assert isinstance(records[-1], Summary)
     summary = records[-1]
-    assert summary.end_reason == str(EndReason.UNRESPONSIVE)  # type: ignore[union-attr]
+    assert summary.end_reason == str(EndReason.UNRESPONSIVE)
     _validate_all(records, record_validator)
 
 
@@ -427,7 +435,6 @@ async def test_icmp_attempts_appear_in_exchange(
             icmp_exchange,
         ]
     )
-    from oidtrace.walker import WalkSettings  # noqa: PLC0415
 
     settings = WalkSettings(give_up_after=3)
     records = await _collect(transport, settings=settings)
@@ -435,8 +442,8 @@ async def test_icmp_attempts_appear_in_exchange(
     exchange_records = [r for r in records if r.type == "exchange"]
     first = exchange_records[0]
     # Attempt has error set
-    assert first.attempts[0].error is not None  # type: ignore[union-attr]
-    assert first.attempts[0].received_at is None  # type: ignore[union-attr]
+    assert first.attempts[0].error is not None
+    assert first.attempts[0].received_at is None
     _validate_all(records, record_validator)
 
 
@@ -445,7 +452,6 @@ async def test_walk_with_transport_cancellation_emits_interrupted_summary(
     record_validator: Draft202012Validator,
 ) -> None:
     """CancelledError mid-walk → INTERRUPTED summary emitted to sinks, error re-raised."""
-    from oidtrace.walker import WalkSettings, walk_with_transport  # noqa: PLC0415
 
     # Infinite no-response to stall the walk
     class SlowTransport:
@@ -476,8 +482,8 @@ async def test_walk_with_transport_cancellation_emits_interrupted_summary(
     # Last record in sinks must be summary with INTERRUPTED
     assert sinks_received, "No records emitted before cancellation"
     last = sinks_received[-1]
-    assert last.type == "summary"  # type: ignore[union-attr]
-    assert last.end_reason == str(EndReason.INTERRUPTED)  # type: ignore[union-attr]
+    assert last.type == "summary"
+    assert last.end_reason == str(EndReason.INTERRUPTED)
     _validate_all(sinks_received, record_validator)
 
 
@@ -487,7 +493,6 @@ async def test_logging_privacy_no_community_in_logs(
     record_validator: Draft202012Validator,
 ) -> None:
     """Community string must NEVER appear in any log record."""
-    from oidtrace.walker import WalkSettings  # noqa: PLC0415
 
     secret_community = b"s3cret-community"
     settings = WalkSettings(community=secret_community)
@@ -543,7 +548,6 @@ async def test_walkstats_observe_accumulates(
     record_validator: Draft202012Validator,
 ) -> None:
     """WalkStats.observe accumulates exchanges and oid counts."""
-    from oidtrace.walker import WalkSettings, WalkStats, walk_records  # noqa: PLC0415
 
     transport = FakeTransport(
         responses=[
@@ -568,7 +572,6 @@ async def test_time_budget_exceeded(
     record_validator: Draft202012Validator,
 ) -> None:
     """Walk terminates TIME_BUDGET_EXCEEDED when rel() exceeds time_budget_s."""
-    from oidtrace.walker import WalkSettings  # noqa: PLC0415
 
     # Use a clock that jumps far ahead on second call
     calls = [0]
@@ -590,13 +593,14 @@ async def test_time_budget_exceeded(
     )
     records = await _collect(transport, rel=fast_clock, settings=settings)
 
+    assert isinstance(records[-1], Summary)
     summary = records[-1]
-    assert summary.end_reason == str(EndReason.TIME_BUDGET_EXCEEDED)  # type: ignore[union-attr]
+    assert summary.end_reason == str(EndReason.TIME_BUDGET_EXCEEDED)
 
-    types = [r.type for r in records]  # type: ignore[union-attr]
+    types = [r.type for r in records]
     assert "event" in types
-    event = next(r for r in records if r.type == "event")  # type: ignore[union-attr]
-    assert event.kind == str(EventKind.TIME_BUDGET_EXCEEDED)  # type: ignore[union-attr]
+    event = next(r for r in records if r.type == "event")
+    assert event.kind == str(EventKind.TIME_BUDGET_EXCEEDED)
     _validate_all(records, record_validator)
 
 
@@ -605,7 +609,6 @@ async def test_walk_with_transport_returns_end_reason(
     record_validator: Draft202012Validator,
 ) -> None:
     """walk_with_transport returns the EndReason from the final Summary."""
-    from oidtrace.walker import WalkSettings, walk_with_transport  # noqa: PLC0415
 
     transport = FakeTransport(
         responses=[
@@ -641,15 +644,15 @@ async def test_no_data_response_completed(
     transport = FakeTransport(responses=[empty_exchange])
     records = await _collect(transport)
 
+    assert isinstance(records[-1], Summary)
     summary = records[-1]
-    assert summary.end_reason == str(EndReason.COMPLETED)  # type: ignore[union-attr]
+    assert summary.end_reason == str(EndReason.COMPLETED)
     _validate_all(records, record_validator)
 
 
 @pytest.mark.asyncio
 async def test_walk_settings_bulk_size_validation() -> None:
     """WalkSettings with bulk_size=0 raises ValueError."""
-    from oidtrace.walker import WalkSettings  # noqa: PLC0415
 
     with pytest.raises(ValueError, match="bulk_size"):
         WalkSettings(bulk_size=0)
@@ -677,8 +680,8 @@ async def test_duplicate_response_stray_violation(
 
     exchange_records = [r for r in records if r.type == "exchange"]
     first = exchange_records[0]
-    assert first.violations is not None  # type: ignore[union-attr]
-    assert str(Violation.DUPLICATE_RESPONSE) in first.violations  # type: ignore[union-attr]
+    assert first.violations is not None
+    assert str(Violation.DUPLICATE_RESPONSE) in first.violations
     _validate_all(records, record_validator)
 
 
@@ -688,7 +691,6 @@ async def test_walkstats_unknown_violation_string_tolerated() -> None:
     from traceformat.models import Attempt as TfAttempt  # noqa: PLC0415
     from traceformat.models import Exchange, Pdu, Reltime, Request  # noqa: PLC0415
 
-    from oidtrace.walker import WalkStats  # noqa: PLC0415
 
     req = Request(
         pdu=Pdu.getbulk,
@@ -731,8 +733,8 @@ async def test_all_exception_tag_varbinds_completed(
     records = await _collect(transport)
 
     summary = records[-1]
-    assert summary.type == "summary"  # type: ignore[union-attr]
-    assert summary.end_reason == str(EndReason.COMPLETED)  # type: ignore[union-attr]
+    assert summary.type == "summary"
+    assert summary.end_reason == str(EndReason.COMPLETED)
     _validate_all(records, record_validator)
 
 
@@ -741,7 +743,6 @@ async def test_varbind_outside_subtree_not_counted(
     record_validator: Draft202012Validator,
 ) -> None:
     """Varbinds outside start_oid subtree are not counted; only in-subtree ones are."""
-    from oidtrace.walker import WalkSettings  # noqa: PLC0415
 
     # start_oid = 1.3.6.1.2; one varbind inside, next varbind exits subtree
     # We need multiple data varbinds where the cursor (last) is in subtree
@@ -760,9 +761,9 @@ async def test_varbind_outside_subtree_not_counted(
     records = await _collect(transport, settings=WalkSettings(start_oid=start))
 
     summary = records[-1]
-    assert summary.type == "summary"  # type: ignore[union-attr]
-    assert summary.end_reason == str(EndReason.COMPLETED)  # type: ignore[union-attr]
-    assert summary.oids_seen == 2  # type: ignore[union-attr]
+    assert summary.type == "summary"
+    assert summary.end_reason == str(EndReason.COMPLETED)
+    assert summary.oids_seen == 2
     _validate_all(records, record_validator)
 
 
@@ -784,10 +785,10 @@ async def test_oids_seen_counts_distinct_only(
     records = await _collect(transport)
 
     summary = records[-1]
-    assert summary.type == "summary"  # type: ignore[union-attr]
-    assert summary.end_reason == str(EndReason.OID_LOOP)  # type: ignore[union-attr]
+    assert summary.type == "summary"
+    assert summary.end_reason == str(EndReason.OID_LOOP)
     # _OID_A appeared in exchange 1 (counted) and exchange 2 (same OID — duplicate, not counted)
-    assert summary.oids_seen == 1  # type: ignore[union-attr]
+    assert summary.oids_seen == 1
     _validate_all(records, record_validator)
 
 
@@ -808,11 +809,12 @@ async def test_oid_loop_derived_from_check_exchange(
 
     exchange_records = [r for r in records if r.type == "exchange"]
     second_exchange = exchange_records[1]
-    assert second_exchange.violations is not None  # type: ignore[union-attr]
-    assert str(Violation.OID_NOT_INCREASING) in second_exchange.violations  # type: ignore[union-attr]
+    assert second_exchange.violations is not None
+    assert str(Violation.OID_NOT_INCREASING) in second_exchange.violations
 
+    assert isinstance(records[-1], Summary)
     summary = records[-1]
-    assert summary.end_reason == str(EndReason.OID_LOOP)  # type: ignore[union-attr]
+    assert summary.end_reason == str(EndReason.OID_LOOP)
     _validate_all(records, record_validator)
 
 

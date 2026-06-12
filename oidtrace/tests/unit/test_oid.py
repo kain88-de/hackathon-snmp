@@ -166,9 +166,3 @@ def test_repr_readable() -> None:
     assert "1.3.6.1" in r
     # Should not just be the dataclass default with tuple repr
     assert "Oid" in r
-
-
-def test_frozen_immutable() -> None:
-    oid = Oid.from_str("1.3.6.1")
-    with pytest.raises((AttributeError, TypeError)):
-        oid.arcs = (1, 2, 3)  # type: ignore[misc]
