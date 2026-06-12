@@ -170,10 +170,11 @@ crash or Ctrl-C leaves a valid (possibly truncated, still readable) trace.
 
 ### Packaging
 
-Python package managed with uv, following the existing monorepo layout. OIDEmu and
-OIDSense will need the codec and trace-reading code; the trace schema + codec should live
-where all of them can import it (small shared package now, or extracted when OIDEmu grows
-beyond a test fixture).
+Python packages managed with uv in one workspace. A shared `traceformat` package holds
+the format types: pydantic models **generated from** `docs/trace-format.schema.json`
+(datamodel-code-generator; the schema stays authoritative, CI checks freshness) plus the
+producer-side vocabulary StrEnums. `oidtrace` depends on it; OIDViz and the doctor import
+the same models, getting validated round-trips instead of re-tested dict shapes.
 
 ## Trace record schema
 
