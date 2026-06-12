@@ -11,6 +11,7 @@ import asyncio
 import bisect
 from dataclasses import dataclass, field
 from enum import StrEnum
+from typing import override
 
 from oidtrace.codec import Malformed, decode_message, encode_response
 from oidtrace.oid import Oid
@@ -88,18 +89,22 @@ class EmuProtocol(asyncio.DatagramProtocol):
         # Keep references to spawned tasks (RUF006 compliance).
         self._tasks: set[asyncio.Task[None]] = set()
 
+    @override
     def connection_made(self, transport: asyncio.BaseTransport) -> None:
         assert isinstance(transport, asyncio.DatagramTransport)
         self._transport = transport
 
+    @override
     def datagram_received(self, data: bytes, addr: tuple[str | bytes | bytearray, int]) -> None:
         task = asyncio.get_event_loop().create_task(self._handle(data, addr))
         self._tasks.add(task)
         task.add_done_callback(self._tasks.discard)
 
+    @override
     def error_received(self, exc: Exception) -> None:  # pragma: no cover
         pass
 
+    @override
     def connection_lost(self, exc: Exception | None) -> None:  # pragma: no cover
         pass
 

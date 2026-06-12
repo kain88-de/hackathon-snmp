@@ -44,6 +44,7 @@ select = ["E", "F", "W", "I", "N", "UP", "B", "A", "C4", "SIM", "ARG", "RUF", "A
 project_includes = ["src", "tests"]
 search_path = ["src", "."]
 python_interpreter = "../.venv/bin/python3"
+preset = "strict"
 
 [tool.pyright]
 venvPath = ".."

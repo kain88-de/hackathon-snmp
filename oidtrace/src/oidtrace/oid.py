@@ -15,6 +15,7 @@ from __future__ import annotations
 
 import re
 from dataclasses import dataclass
+from typing import override
 
 # Only sequences of ASCII digits separated by dots.  No leading zeros (except
 # the arc "0" itself), no signs, no whitespace, no underscores.
@@ -58,9 +59,11 @@ class Oid:
     # Conversion
     # ------------------------------------------------------------------
 
+    @override
     def __str__(self) -> str:
         return ".".join(str(a) for a in self.arcs)
 
+    @override
     def __repr__(self) -> str:
         return f"Oid({'.'.join(str(a) for a in self.arcs)!r})"
 

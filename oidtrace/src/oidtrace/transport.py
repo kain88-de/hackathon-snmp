@@ -18,7 +18,7 @@ import asyncio
 import errno
 import logging
 from dataclasses import dataclass
-from typing import TYPE_CHECKING, Protocol
+from typing import TYPE_CHECKING, Protocol, override
 
 from traceformat.vocab import AttemptError
 
@@ -128,16 +128,19 @@ class _SnmpProtocol(asyncio.DatagramProtocol):
         """Return the current relative time, rounded to microseconds."""
         return round(self._rel(), 6)
 
+    @override
     def connection_made(self, transport: asyncio.BaseTransport) -> None:
         assert isinstance(transport, asyncio.DatagramTransport)
         self._transport = transport
 
-    def datagram_received(self, data: bytes, addr: object) -> None:  # noqa: ARG002
+    @override
+    def datagram_received(self, data: bytes, addr: object) -> None:
         # Stamp timestamp HERE — event time, in the callback, not at dequeue.
         received_at = self.now()
         log.debug("datagram received len=%d at %.6f", len(data), received_at)
         self._queue.put_nowait(_DatagramEvent(received_at=received_at, data=data))
 
+    @override
     def error_received(self, exc: Exception) -> None:
         # Stamp timestamp HERE — event time, in the callback, not at dequeue.
         received_at = self.now()
@@ -145,6 +148,7 @@ class _SnmpProtocol(asyncio.DatagramProtocol):
         log.debug("error_received %s at %.6f", kind, received_at)
         self._queue.put_nowait(_ErrorEvent(received_at=received_at, kind=kind))
 
+    @override
     def connection_lost(self, exc: Exception | None) -> None:  # pragma: no cover
         pass
 

@@ -7,6 +7,7 @@ from __future__ import annotations
 
 import asyncio
 from dataclasses import dataclass
+from typing import override
 
 from oidtrace.codec import Malformed, decode_message, encode_getbulk
 from oidtrace.oid import Oid
@@ -32,15 +33,18 @@ async def _send_getbulk(host: str, port: int, args: _GetBulkArgs) -> bytes:
         def __init__(self) -> None:
             self._transport: asyncio.DatagramTransport | None = None
 
+        @override
         def connection_made(self, transport: asyncio.BaseTransport) -> None:
             assert isinstance(transport, asyncio.DatagramTransport)
             self._transport = transport
             transport.sendto(raw)
 
-        def datagram_received(self, data: bytes, addr: object) -> None:  # noqa: ARG002
+        @override
+        def datagram_received(self, data: bytes, addr: object) -> None:
             if not received.done():
                 received.set_result(data)
 
+        @override
         def error_received(self, exc: Exception) -> None:  # pragma: no cover
             if not received.done():
                 received.set_exception(exc)
