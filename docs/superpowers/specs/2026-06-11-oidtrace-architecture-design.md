@@ -174,11 +174,11 @@ crash or Ctrl-C leaves a valid (possibly truncated, still readable) trace.
 
 ### Packaging
 
-Python packages managed with uv in one workspace. A shared `traceformat` package holds
-the format types: pydantic models **generated from** `docs/trace-format.schema.json`
-(datamodel-code-generator; the schema stays authoritative, CI checks freshness) plus the
-producer-side vocabulary StrEnums. `oidtrace` depends on it; OIDViz and the doctor import
-the same models, getting validated round-trips instead of re-tested dict shapes.
+Python packages managed with uv in one workspace. The shared `traceformat` package
+(own spec: `2026-06-12-traceformat-design.md`) holds the format types — schema-generated
+pydantic models plus the producer vocabulary; `oidtrace` depends on it, OIDViz and the
+doctor import the same models, getting validated round-trips instead of re-tested dict
+shapes.
 
 ## Trace record schema
 
