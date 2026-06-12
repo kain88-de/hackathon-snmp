@@ -15,7 +15,7 @@ from traceformat.vocab import AttemptError, EndReason, Violation
 
 from oidtrace.codec import encode_response
 from oidtrace.oid import Oid
-from oidtrace.tracefile import read_trace
+from oidtrace.tracefile import TraceWriter, read_trace
 from oidtrace.transport import Attempt, ExchangeIO
 from oidtrace.walker import WalkSettings, walk_with_transport
 
@@ -123,7 +123,8 @@ async def test_end_of_mib_view_completed(tmp_path: Path, record_validator: Any) 
         start_oid=Oid.from_str("1.3.6.1"),
     )
 
-    reason = await walk_with_transport(transport, settings=settings, path=path)
+    with TraceWriter(path) as writer:
+        reason = await walk_with_transport(transport, settings=settings, sinks=[writer.write])
 
     assert reason == EndReason.COMPLETED
 
@@ -156,7 +157,8 @@ async def test_left_subtree_completed(tmp_path: Path, record_validator: Any) -> 
         start_oid=start,
     )
 
-    reason = await walk_with_transport(transport, settings=settings, path=path)
+    with TraceWriter(path) as writer:
+        reason = await walk_with_transport(transport, settings=settings, sinks=[writer.write])
 
     assert reason == EndReason.COMPLETED
     records = _records(path)
@@ -189,7 +191,8 @@ async def test_oid_not_increasing_oid_loop(tmp_path: Path, record_validator: Any
         start_oid=start,
     )
 
-    reason = await walk_with_transport(transport, settings=settings, path=path)
+    with TraceWriter(path) as writer:
+        reason = await walk_with_transport(transport, settings=settings, sinks=[writer.write])
 
     assert reason == EndReason.OID_LOOP
 
@@ -238,7 +241,8 @@ async def test_give_up_after_with_recovery(tmp_path: Path, record_validator: Any
         give_up_after=3,
     )
 
-    reason = await walk_with_transport(transport, settings=settings, path=path)
+    with TraceWriter(path) as writer:
+        reason = await walk_with_transport(transport, settings=settings, sinks=[writer.write])
 
     assert reason == EndReason.UNRESPONSIVE
 
@@ -272,7 +276,8 @@ async def test_malformed_response(tmp_path: Path, record_validator: Any) -> None
         give_up_after=3,
     )
 
-    reason = await walk_with_transport(transport, settings=settings, path=path)
+    with TraceWriter(path) as writer:
+        reason = await walk_with_transport(transport, settings=settings, sinks=[writer.write])
 
     assert reason == EndReason.UNRESPONSIVE
 
@@ -317,7 +322,8 @@ async def test_icmp_attempt_error_in_record(tmp_path: Path, record_validator: An
         give_up_after=3,
     )
 
-    reason = await walk_with_transport(transport, settings=settings, path=path)
+    with TraceWriter(path) as writer:
+        reason = await walk_with_transport(transport, settings=settings, sinks=[writer.write])
     assert reason == EndReason.UNRESPONSIVE
 
     records = _records(path)
@@ -334,7 +340,7 @@ async def test_icmp_attempt_error_in_record(tmp_path: Path, record_validator: An
 
 
 async def test_on_record_callback(tmp_path: Path) -> None:
-    """on_record receives exactly the same records as written to the file."""
+    """The streamed sink receives exactly the same records as written to the file."""
     start = Oid.from_str("1.3.6.1")
     oid = Oid.from_str("1.3.6.1.2.1.1")
     exchanges = [_response_exchange([(oid, 0x82, b"")])]
@@ -348,7 +354,10 @@ async def test_on_record_callback(tmp_path: Path) -> None:
     )
 
     streamed: list[Any] = []
-    await walk_with_transport(transport, settings=settings, path=path, sinks=[streamed.append])
+    with TraceWriter(path) as writer:
+        await walk_with_transport(
+            transport, settings=settings, sinks=[writer.write, streamed.append]
+        )
 
     file_records = _records(path)
     assert len(streamed) == len(file_records)
