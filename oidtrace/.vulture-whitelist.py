@@ -135,8 +135,9 @@ _ = RecordSink
 
 # cli entry point — referenced in pyproject.toml [project.scripts], not called
 # directly in Python source.
-# from oidtrace.cli import main
-# _ = main  # uncomment once oidtrace/cli.py exists
+from oidtrace.cli import main
+
+_ = main
 
 # transport.py public API — Transport protocol and UdpTransport are consumed by
 # integration tests and will be consumed by walker (Task 11).
