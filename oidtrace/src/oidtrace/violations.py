@@ -9,8 +9,9 @@ from __future__ import annotations
 
 from typing import TYPE_CHECKING
 
+from traceformat.vocab import Violation
+
 from oidtrace.codec import EXCEPTION_TAGS
-from oidtrace.vocab import Violation
 
 if TYPE_CHECKING:
     from collections.abc import Sequence

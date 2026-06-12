@@ -1,13 +1,20 @@
-"""Tests for oidtrace.records — schema-validated record builders."""
+"""Tests for oidtrace.records — record builders returning traceformat models.
+
+Builders return pydantic models; we still validate their serialized form against
+the JSON schema (belt and braces against codegen gaps).
+"""
 
 from __future__ import annotations
 
 import base64
 import json
-from typing import TYPE_CHECKING
+from typing import TYPE_CHECKING, Any
 
 if TYPE_CHECKING:
     import jsonschema
+
+from traceformat import TraceRecord, dump_record
+from traceformat.vocab import Violation
 
 from oidtrace.codec import Varbind
 from oidtrace.oid import Oid
@@ -18,16 +25,20 @@ from oidtrace.records import (
     summary_record,
     system_info_record,
 )
-from oidtrace.vocab import Violation
 
 # ---------------------------------------------------------------------------
 # Helpers
 
 
-def _valid(validator: jsonschema.Draft202012Validator, record: dict) -> None:
-    """Assert record validates against the schema; pretty-print errors if not."""
-    errors = list(validator.iter_errors(record))
+def _valid(validator: jsonschema.Draft202012Validator, record: TraceRecord) -> dict[str, Any]:
+    """Assert the record's serialized form validates against the schema.
+
+    Returns the decoded JSON object for further field assertions.
+    """
+    obj: dict[str, Any] = json.loads(dump_record(record))
+    errors = list(validator.iter_errors(obj))
     assert not errors, "\n".join(e.message for e in errors)
+    return obj
 
 
 # ---------------------------------------------------------------------------
@@ -50,10 +61,10 @@ def test_header_minimal(record_validator: jsonschema.Draft202012Validator) -> No
             "start_oid": "1.3.6.1",
         },
     )
-    _valid(record_validator, rec)
-    assert rec["type"] == "header"
-    assert rec["format_version"] == 1
-    assert "label" not in rec  # omitted when None
+    obj = _valid(record_validator, rec)
+    assert obj["type"] == "header"
+    assert obj["format_version"] == 1
+    assert "label" not in obj  # omitted when None
 
 
 def test_header_with_label(record_validator: jsonschema.Draft202012Validator) -> None:
@@ -72,9 +83,9 @@ def test_header_with_label(record_validator: jsonschema.Draft202012Validator) ->
             "start_oid": "1.3.6.1",
         },
     )
-    _valid(record_validator, rec)
-    assert rec["label"] == "switch-floor3"
-    assert rec["session"] == {
+    obj = _valid(record_validator, rec)
+    assert obj["label"] == "switch-floor3"
+    assert obj["session"] == {
         "id": "5e1f3a9c-6a86-4a0b-9b6e-2f6d6a9c1d42",
         "run": 2,
         "runs_total": 5,
@@ -85,7 +96,7 @@ def test_header_with_label(record_validator: jsonschema.Draft202012Validator) ->
 # exchange_record
 
 
-def _make_request() -> dict:
+def _make_request() -> dict[str, Any]:
     return {
         "pdu": "getnext",
         "request_id": 42,
@@ -93,8 +104,8 @@ def _make_request() -> dict:
     }
 
 
-def _make_attempt(received_at: float | None = 1.5, error: str | None = None) -> dict:
-    a: dict = {"sent_at": 1.0, "received_at": received_at}
+def _make_attempt(received_at: float | None = 1.5, error: str | None = None) -> dict[str, Any]:
+    a: dict[str, Any] = {"sent_at": 1.0, "received_at": received_at}
     if error is not None:
         a["error"] = error
         a["received_at"] = None
@@ -115,16 +126,16 @@ def test_exchange_with_response_and_strays_and_violations(
         violations=[Violation.REQUEST_ID_MISMATCH],
         malformed=None,
     )
-    _valid(record_validator, rec)
-    assert rec["type"] == "exchange"
-    assert rec["seq"] == 1
-    assert "response" in rec
-    assert rec["response"]["varbinds"] == [
+    obj = _valid(record_validator, rec)
+    assert obj["type"] == "exchange"
+    assert obj["seq"] == 1
+    assert "response" in obj
+    assert obj["response"]["varbinds"] == [
         {"oid": "1.3.6.1.2.1.1.1.0", "vtype": "OctetString", "vlen": 9}
     ]
-    assert rec["stray_responses"] == [{"received_at": 1.55}]
-    assert rec["violations"] == ["request-id-mismatch"]
-    assert "malformed" not in rec
+    assert obj["stray_responses"] == [{"received_at": 1.55}]
+    assert obj["violations"] == ["request-id-mismatch"]
+    assert "malformed" not in obj
 
 
 def test_exchange_attempt_with_icmp_error(
@@ -140,13 +151,13 @@ def test_exchange_attempt_with_icmp_error(
         violations=[],
         malformed=None,
     )
-    _valid(record_validator, rec)
-    assert rec["attempts"][0]["error"] == "icmp-port-unreachable"
-    assert rec["attempts"][0]["received_at"] is None
-    assert "response" not in rec
-    assert "stray_responses" not in rec
-    assert "violations" not in rec
-    assert "malformed" not in rec
+    obj = _valid(record_validator, rec)
+    assert obj["attempts"][0]["error"] == "icmp-port-unreachable"
+    assert obj["attempts"][0]["received_at"] is None
+    assert "response" not in obj
+    assert "stray_responses" not in obj
+    assert "violations" not in obj
+    assert "malformed" not in obj
 
 
 def test_exchange_no_response(record_validator: jsonschema.Draft202012Validator) -> None:
@@ -161,9 +172,11 @@ def test_exchange_no_response(record_validator: jsonschema.Draft202012Validator)
         violations=[],
         malformed=None,
     )
-    _valid(record_validator, rec)
-    assert "response" not in rec
-    assert "malformed" not in rec
+    obj = _valid(record_validator, rec)
+    assert "response" not in obj
+    assert "malformed" not in obj
+    # required-but-nullable received_at must survive serialization as null
+    assert obj["attempts"][0]["received_at"] is None
 
 
 def test_exchange_malformed(record_validator: jsonschema.Draft202012Validator) -> None:
@@ -177,9 +190,9 @@ def test_exchange_malformed(record_validator: jsonschema.Draft202012Validator) -
         violations=["malformed-ber"],
         malformed={"error": "truncated BER", "length": 27},
     )
-    _valid(record_validator, rec)
-    assert rec["malformed"] == {"error": "truncated BER", "length": 27}
-    assert "response" not in rec
+    obj = _valid(record_validator, rec)
+    assert obj["malformed"] == {"error": "truncated BER", "length": 27}
+    assert "response" not in obj
 
 
 # ---------------------------------------------------------------------------
@@ -199,12 +212,13 @@ def test_exchange_varbind_value_not_serialized() -> None:
         violations=[],
         malformed=None,
     )
-    serialized = json.dumps(rec)
+    serialized = dump_record(rec)
     assert "SECRET-VALUE" not in serialized
     assert base64.b64encode(secret).decode() not in serialized
     assert secret.hex() not in serialized
     # varbind dict must be exactly oid/vtype/vlen — no value field
-    vb_dict = rec["response"]["varbinds"][0]
+    obj: dict[str, Any] = json.loads(serialized)
+    vb_dict = obj["response"]["varbinds"][0]
     assert set(vb_dict.keys()) == {"oid", "vtype", "vlen"}
     assert vb_dict == {"oid": "1.3.6.1.2.1.1.1.0", "vtype": "OctetString", "vlen": 12}
 
@@ -215,17 +229,17 @@ def test_exchange_varbind_value_not_serialized() -> None:
 
 def test_event_without_detail(record_validator: jsonschema.Draft202012Validator) -> None:
     rec = event_record(at=5.123, kind="walk-aborted-by-user")
-    _valid(record_validator, rec)
-    assert rec["type"] == "event"
-    assert rec["at"] == 5.123
-    assert rec["kind"] == "walk-aborted-by-user"
-    assert "detail" not in rec
+    obj = _valid(record_validator, rec)
+    assert obj["type"] == "event"
+    assert obj["at"] == 5.123
+    assert obj["kind"] == "walk-aborted-by-user"
+    assert "detail" not in obj
 
 
 def test_event_with_detail(record_validator: jsonschema.Draft202012Validator) -> None:
     rec = event_record(at=3.0, kind="oid-loop-detected", detail={"oid": "1.3.6.1.2.1.1.1.0"})
-    _valid(record_validator, rec)
-    assert rec["detail"] == {"oid": "1.3.6.1.2.1.1.1.0"}
+    obj = _valid(record_validator, rec)
+    assert obj["detail"] == {"oid": "1.3.6.1.2.1.1.1.0"}
 
 
 # ---------------------------------------------------------------------------
@@ -240,10 +254,10 @@ def test_summary(record_validator: jsonschema.Draft202012Validator) -> None:
         end_reason="completed",
         violation_counts={"request-id-mismatch": 3, "oid-not-increasing": 1},
     )
-    _valid(record_validator, rec)
-    assert rec["type"] == "summary"
-    assert rec["end_reason"] == "completed"
-    assert rec["violation_counts"] == {"request-id-mismatch": 3, "oid-not-increasing": 1}
+    obj = _valid(record_validator, rec)
+    assert obj["type"] == "summary"
+    assert obj["end_reason"] == "completed"
+    assert obj["violation_counts"] == {"request-id-mismatch": 3, "oid-not-increasing": 1}
 
 
 def test_summary_empty_violations(record_validator: jsonschema.Draft202012Validator) -> None:
@@ -271,9 +285,9 @@ def test_system_info(record_validator: jsonschema.Draft202012Validator) -> None:
             "1.3.6.1.2.1.1.3.0": 492711442,
         },
     )
-    _valid(record_validator, rec)
-    assert rec["type"] == "system_info"
-    assert rec["point"] == "start"
+    obj = _valid(record_validator, rec)
+    assert obj["type"] == "system_info"
+    assert obj["point"] == "start"
 
 
 def test_system_info_end(record_validator: jsonschema.Draft202012Validator) -> None:
@@ -282,5 +296,5 @@ def test_system_info_end(record_validator: jsonschema.Draft202012Validator) -> N
         point="end",
         values={"1.3.6.1.2.1.1.3.0": 123456},
     )
-    _valid(record_validator, rec)
-    assert rec["point"] == "end"
+    obj = _valid(record_validator, rec)
+    assert obj["point"] == "end"

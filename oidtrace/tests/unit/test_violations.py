@@ -1,9 +1,10 @@
 """Tests for oidtrace.violations.check_exchange — pure checks over decoded exchanges."""
 
+from traceformat.vocab import Violation
+
 from oidtrace.codec import EXCEPTION_TAGS, Varbind
 from oidtrace.oid import Oid
 from oidtrace.violations import check_exchange
-from oidtrace.vocab import Violation
 
 # Helpers
 _OID = Oid.from_str
