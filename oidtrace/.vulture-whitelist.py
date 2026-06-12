@@ -76,6 +76,8 @@ from oidtrace.codec import (
 _ = PDU_GETBULK
 _ = PDU_RESPONSE
 _ = encode_getbulk
+# encode_response and decode_message are consumed by tests/support/emulator.py;
+# vulture only scans src/, so they stay whitelisted here until the walker uses them.
 _ = encode_response
 _ = decode_message
 _ = EXCEPTION_TAGS
