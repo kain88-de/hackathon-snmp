@@ -65,7 +65,7 @@ from oidtrace.records import (
     summary_record,
 )
 from oidtrace.tracefile import TraceWriter
-from oidtrace.transport import ExchangeIO, Transport, UdpTransport
+from oidtrace.transport import Attempt as TransportAttempt, ExchangeIO, Transport, UdpTransport
 from oidtrace.violations import check_exchange
 
 if TYPE_CHECKING:
@@ -192,16 +192,13 @@ def _make_settings_model(settings: WalkSettings) -> tf.Settings:
     return tf.Settings.model_validate(fields)
 
 
-def _transport_attempt_to_model(attempt: object) -> tf.Attempt:
+def _transport_attempt_to_model(attempt: TransportAttempt) -> tf.Attempt:
     """Convert transport.Attempt → models.Attempt.
 
     Uses model_validate with only the present fields so exclude_unset keeps
     null values absent from JSON (the Attempt schema forbids null for received_at
     when error is set, and null error is the default — omit when absent).
     """
-    from oidtrace.transport import Attempt as TransportAttempt  # noqa: PLC0415
-
-    assert isinstance(attempt, TransportAttempt)
     fields: dict[str, object] = {
         "sent_at": tf.Reltime(round(attempt.sent_at, 6)),
     }

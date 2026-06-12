@@ -18,8 +18,8 @@ from typing import TYPE_CHECKING
 
 import pytest
 from traceformat import dump_record
-from traceformat.models import Summary
-from traceformat.vocab import EndReason, EventKind, Violation
+from traceformat.models import Attempt as TfAttempt, Exchange, Pdu, Reltime, Request, Summary
+from traceformat.vocab import AttemptError, EndReason, EventKind, Violation
 
 from oidtrace.codec import encode_response
 from oidtrace.oid import Oid
@@ -412,10 +412,6 @@ async def test_icmp_attempts_appear_in_exchange(
     record_validator: Draft202012Validator,
 ) -> None:
     """ICMP error attempts are reflected in exchange attempt list."""
-    from traceformat.vocab import AttemptError  # noqa: PLC0415
-
-    from oidtrace.transport import Attempt  # noqa: PLC0415
-
     icmp_exchange = ExchangeIO(
         attempts=(Attempt(sent_at=0.001, error=AttemptError.ICMP_PORT_UNREACHABLE),),
         response=None,
@@ -681,10 +677,6 @@ async def test_duplicate_response_stray_violation(
 @pytest.mark.asyncio
 async def test_walkstats_unknown_violation_string_tolerated() -> None:
     """WalkStats.observe tolerates an unrecognised violation string without raising."""
-    from traceformat.models import Attempt as TfAttempt  # noqa: PLC0415
-    from traceformat.models import Exchange, Pdu, Reltime, Request  # noqa: PLC0415
-
-
     req = Request(
         pdu=Pdu.getbulk,
         request_id=42,

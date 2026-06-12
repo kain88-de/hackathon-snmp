@@ -21,6 +21,8 @@ from typing import TYPE_CHECKING
 import pytest
 
 from tests.support.emulator import EmuDevice
+from oidtrace.tracefile import read_trace
+from oidtrace.walker import WalkSettings, run_walk
 
 if TYPE_CHECKING:
     from pathlib import Path
@@ -61,9 +63,6 @@ async def test_snmpbulkwalk_crosswalk(
     tmp_path: Path,
 ) -> None:
     """Our OID sequence matches snmpbulkwalk's prefix (trap #13)."""
-    from oidtrace.tracefile import read_trace  # noqa: PLC0415
-    from oidtrace.walker import WalkSettings, run_walk  # noqa: PLC0415
-
     snmpbulkwalk = _require_tool("snmpbulkwalk")
 
     device_size = 50

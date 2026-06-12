@@ -23,12 +23,13 @@ import socket
 import sys
 from datetime import UTC, datetime
 from pathlib import Path
-from typing import TYPE_CHECKING, cast
+from typing import cast
 
-if TYPE_CHECKING:
-    from traceformat import TraceRecord
+from traceformat import Summary, TraceRecord
 
-    from oidtrace.walker import RecordSink
+from oidtrace.oid import Oid
+from oidtrace.tracefile import read_trace
+from oidtrace.walker import RecordSink, WalkSettings, run_walk
 
 log = logging.getLogger(__name__)
 
@@ -144,8 +145,6 @@ def main(argv: list[str] | None = None) -> int:
         force=True,
     )
 
-    from oidtrace.oid import Oid  # noqa: PLC0415  # deferred: keep module-level import light
-
     try:
         start_oid = Oid.from_str(args.start_oid)
     except ValueError as exc:
@@ -171,11 +170,6 @@ def main(argv: list[str] | None = None) -> int:
     trace_path = out_dir / f"{prefix}-{timestamp}.oidtrace.jsonl.gz"
 
     log.info("trace path: %s", trace_path)
-
-    from oidtrace.walker import (  # noqa: PLC0415  # deferred: keep module-level import light
-        WalkSettings,
-        run_walk,
-    )
 
     settings = WalkSettings(
         bulk_size=args.bulk_size,
@@ -216,9 +210,6 @@ def main(argv: list[str] | None = None) -> int:
 
 def _print_summary(trace_path: Path) -> None:
     """Print the Summary record from the trace to stdout."""
-    from traceformat import Summary  # noqa: PLC0415,I001  # deferred: keep module-level import light; isort groups not split here
-    from oidtrace.tracefile import read_trace  # noqa: PLC0415  # deferred: keep module-level import light
-
     summary = None
     for record in read_trace(trace_path):
         if isinstance(record, Summary):

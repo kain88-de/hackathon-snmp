@@ -10,6 +10,11 @@ import asyncio
 import threading
 from typing import TYPE_CHECKING
 
+from oidtrace.cli import main
+from oidtrace.tracefile import read_trace
+from traceformat.models import Header
+from tests.support.emulator import EmuDevice, EmuProtocol, Quirks
+
 if TYPE_CHECKING:
     from pathlib import Path
 
@@ -29,8 +34,6 @@ def _run_emulator_on_thread(
     quirks: object = None,
 ) -> None:
     """Start an asyncio loop on a daemon thread, bind the emulator, set port_ready."""
-    from tests.support.emulator import EmuDevice, EmuProtocol, Quirks  # noqa: PLC0415
-
     loop = asyncio.new_event_loop()
 
     async def _serve() -> None:
@@ -101,8 +104,6 @@ class EmulatorThread:
 
 def test_successful_walk_exit_0_and_trace_file(tmp_path: Path) -> None:
     """Successful walk: exit 0, exactly one trace file, stdout has end_reason + exchanges."""
-    from oidtrace.cli import main  # noqa: PLC0415
-
     with EmulatorThread() as (host, port):
         ret = main(
             [
@@ -130,9 +131,6 @@ def test_successful_walk_exit_0_and_trace_file(tmp_path: Path) -> None:
 
 def test_successful_walk_header_label(tmp_path: Path) -> None:
     """--label is recorded in the trace header."""
-    from oidtrace.cli import main  # noqa: PLC0415
-    from oidtrace.tracefile import read_trace  # noqa: PLC0415
-
     with EmulatorThread() as (host, port):
         ret = main(
             [
@@ -153,8 +151,6 @@ def test_successful_walk_header_label(tmp_path: Path) -> None:
             ]
         )
 
-    from traceformat.models import Header  # noqa: PLC0415
-
     assert ret == 0
     trace_files = list(tmp_path.glob("*.oidtrace.jsonl.gz"))
     assert len(trace_files) == 1
@@ -167,8 +163,6 @@ def test_successful_walk_header_label(tmp_path: Path) -> None:
 
 def test_successful_walk_stdout_summary(tmp_path: Path, capsys: pytest.CaptureFixture[str]) -> None:
     """Terminal summary on stdout: end_reason and 'exchanges' appear."""
-    from oidtrace.cli import main  # noqa: PLC0415
-
     with EmulatorThread() as (host, port):
         ret = main(
             [
@@ -198,8 +192,6 @@ def test_successful_walk_stderr_progress(
     tmp_path: Path, capsys: pytest.CaptureFixture[str]
 ) -> None:
     """At default verbosity (no -v), stderr has \\r progress lines."""
-    from oidtrace.cli import main  # noqa: PLC0415
-
     with EmulatorThread() as (host, port):
         ret = main(
             [
@@ -227,8 +219,6 @@ def test_verbose_vv_debug_lines_no_progress(
     tmp_path: Path, capsys: pytest.CaptureFixture[str]
 ) -> None:
     """walk -vv: DEBUG lines on stderr, NO \\r progress."""
-    from oidtrace.cli import main  # noqa: PLC0415
-
     with EmulatorThread() as (host, port):
         ret = main(
             [
@@ -258,8 +248,6 @@ def test_unresolvable_host_exit_2_no_file(
     tmp_path: Path, capsys: pytest.CaptureFixture[str]
 ) -> None:
     """Unresolvable host → exit 2, stderr mentions resolve, no trace file."""
-    from oidtrace.cli import main  # noqa: PLC0415
-
     ret = main(
         [
             "walk",
@@ -280,8 +268,6 @@ def test_unresolvable_host_exit_2_no_file(
 
 def test_bad_start_oid_exit_2_no_file(tmp_path: Path, capsys: pytest.CaptureFixture[str]) -> None:
     """Bad --start-oid '1.3.x' → exit 2, no trace file."""
-    from oidtrace.cli import main  # noqa: PLC0415
-
     ret = main(
         [
             "walk",
@@ -302,8 +288,6 @@ def test_bad_start_oid_exit_2_no_file(tmp_path: Path, capsys: pytest.CaptureFixt
 
 def test_trace_filename_uses_label(tmp_path: Path) -> None:
     """Trace filename is <label>-<timestamp>.oidtrace.jsonl.gz when --label is given."""
-    from oidtrace.cli import main  # noqa: PLC0415
-
     with EmulatorThread() as (host, port):
         main(
             [
@@ -331,8 +315,6 @@ def test_trace_filename_uses_label(tmp_path: Path) -> None:
 
 def test_trace_filename_fallback_walk(tmp_path: Path) -> None:
     """Without --label, trace filename starts with 'walk-'."""
-    from oidtrace.cli import main  # noqa: PLC0415
-
     with EmulatorThread() as (host, port):
         main(
             [
@@ -359,8 +341,6 @@ def test_trace_filename_fallback_walk(tmp_path: Path) -> None:
 
 def test_out_dir_created(tmp_path: Path) -> None:
     """--out dir is created if it does not exist."""
-    from oidtrace.cli import main  # noqa: PLC0415
-
     out_dir = tmp_path / "nested" / "subdir"
     assert not out_dir.exists()
 
@@ -394,9 +374,6 @@ def test_violation_counts_in_summary(tmp_path: Path, capsys: pytest.CaptureFixtu
     The terminal summary printed to stdout must mention 'request-id-mismatch'
     and its non-zero count.
     """
-    from oidtrace.cli import main  # noqa: PLC0415
-    from tests.support.emulator import Quirks  # noqa: PLC0415
-
     quirks = Quirks(fixed_request_id=1)
     with EmulatorThread(quirks=quirks) as (host, port):
         ret = main(
@@ -428,8 +405,6 @@ def test_verbose_v_info_lines_no_progress_no_debug(
     tmp_path: Path, capsys: pytest.CaptureFixture[str]
 ) -> None:
     """walk -v: INFO lines on stderr, no \\r progress, no DEBUG lines."""
-    from oidtrace.cli import main  # noqa: PLC0415
-
     with EmulatorThread() as (host, port):
         ret = main(
             [
@@ -459,8 +434,6 @@ def test_verbose_v_info_lines_no_progress_no_debug(
 
 def test_no_subcommand_returns_2(capsys: pytest.CaptureFixture[str]) -> None:
     """Calling main() with no subcommand prints help to stderr and returns 2."""
-    from oidtrace.cli import main  # noqa: PLC0415
-
     ret = main([])
     assert ret == 2
     err = capsys.readouterr().err

@@ -14,6 +14,9 @@ from traceformat.models import Exchange, Header, Summary
 from traceformat.vocab import EndReason, EventKind
 
 from tests.support.emulator import EmuDevice, EndOfMib, Quirks
+from oidtrace.oid import Oid
+from oidtrace.tracefile import read_trace
+from oidtrace.walker import WalkSettings, run_walk
 
 if TYPE_CHECKING:
     from pathlib import Path
@@ -39,7 +42,6 @@ async def test_clean_50_oid_walk(
     tmp_path: Path,
 ) -> None:
     """Clean 50-OID walk: header first, summary last, oids_seen==50."""
-    from oidtrace.walker import WalkSettings, run_walk  # noqa: PLC0415
 
     device = EmuDevice.simple(n_oids=50)
     trace_path = tmp_path / "trace.oidtrace.jsonl.gz"
@@ -53,8 +55,6 @@ async def test_clean_50_oid_walk(
         )
 
     assert end_reason == EndReason.COMPLETED
-
-    from oidtrace.tracefile import read_trace  # noqa: PLC0415
 
     records = list(read_trace(trace_path))
     assert isinstance(records[0], Header)
@@ -82,7 +82,6 @@ async def test_fixed_request_id_mismatch_completes(
     tmp_path: Path,
 ) -> None:
     """fixed_request_id=1 on emulator → every exchange gets request-id-mismatch violation."""
-    from oidtrace.walker import WalkSettings, run_walk  # noqa: PLC0415
 
     quirks = Quirks(fixed_request_id=1)
     device = EmuDevice.simple(n_oids=10, quirks=quirks)
@@ -97,8 +96,6 @@ async def test_fixed_request_id_mismatch_completes(
         )
 
     assert end_reason == EndReason.COMPLETED
-
-    from oidtrace.tracefile import read_trace  # noqa: PLC0415
 
     records = list(read_trace(trace_path))
     exchange_records = [r for r in records if isinstance(r, Exchange)]
@@ -121,7 +118,6 @@ async def test_wrap_oid_loop(
     tmp_path: Path,
 ) -> None:
     """Emulator with WRAP end-of-mib → OID_LOOP + event."""
-    from oidtrace.walker import WalkSettings, run_walk  # noqa: PLC0415
 
     quirks = Quirks(end_of_mib=EndOfMib.WRAP)
     device = EmuDevice.simple(n_oids=5, quirks=quirks)
@@ -137,8 +133,6 @@ async def test_wrap_oid_loop(
 
     assert end_reason == EndReason.OID_LOOP
 
-    from oidtrace.tracefile import read_trace  # noqa: PLC0415
-
     records = list(read_trace(trace_path))
     event_records = [r for r in records if r.type == "event"]
     assert any(e.kind == str(EventKind.OID_LOOP_DETECTED) for e in event_records)
@@ -153,7 +147,6 @@ async def test_drop_all_unresponsive(
     tmp_path: Path,
 ) -> None:
     """drop_all emulator → UNRESPONSIVE after give_up_after exchanges."""
-    from oidtrace.walker import WalkSettings, run_walk  # noqa: PLC0415
 
     quirks = Quirks(drop_all=True)
     device = EmuDevice.simple(quirks=quirks)
@@ -168,8 +161,6 @@ async def test_drop_all_unresponsive(
         )
 
     assert end_reason == EndReason.UNRESPONSIVE
-
-    from oidtrace.tracefile import read_trace  # noqa: PLC0415
 
     records = list(read_trace(trace_path))
     exchange_records = [r for r in records if isinstance(r, Exchange)]
@@ -192,8 +183,6 @@ async def test_time_budget_exceeded(
 ) -> None:
     """Slow emulator + budget → TIME_BUDGET_EXCEEDED + event."""
     # 50ms delay per OID under the ifTable prefix, 0.1s budget → exceeds quickly
-    from oidtrace.oid import Oid  # noqa: PLC0415
-    from oidtrace.walker import WalkSettings, run_walk  # noqa: PLC0415
 
     slow_prefix = Oid.from_str("1.3.6.1.2.1.2.2.1")  # ifTable (all emulator OIDs are here)
     quirks = Quirks(slow_prefix=slow_prefix, per_oid_delay_s=0.05)
@@ -210,8 +199,6 @@ async def test_time_budget_exceeded(
 
     assert end_reason == EndReason.TIME_BUDGET_EXCEEDED
 
-    from oidtrace.tracefile import read_trace  # noqa: PLC0415
-
     records = list(read_trace(trace_path))
     event_records = [r for r in records if r.type == "event"]
     assert any(e.kind == str(EventKind.TIME_BUDGET_EXCEEDED) for e in event_records)
@@ -227,8 +214,6 @@ async def test_cancellation_interrupted_summary(
 ) -> None:
     """Cancelling mid-walk → file ends with INTERRUPTED summary."""
     # Slow emulator so the walk doesn't finish before cancel
-    from oidtrace.oid import Oid  # noqa: PLC0415
-    from oidtrace.walker import WalkSettings, run_walk  # noqa: PLC0415
 
     slow_prefix = Oid.from_str("1.3.6.1.2.1.2.2.1")  # ifTable prefix
     quirks = Quirks(slow_prefix=slow_prefix, per_oid_delay_s=0.05)
@@ -250,8 +235,6 @@ async def test_cancellation_interrupted_summary(
     with pytest.raises(asyncio.CancelledError):
         await task
 
-    from oidtrace.tracefile import read_trace  # noqa: PLC0415
-
     records = list(read_trace(trace_path))
     assert records, "No records written before cancellation"
     assert isinstance(records[0], Header)
@@ -268,7 +251,6 @@ async def test_appended_sink_receives_same_records(
     tmp_path: Path,
 ) -> None:
     """An appended sink receives exactly the records written in order."""
-    from oidtrace.walker import WalkSettings, run_walk  # noqa: PLC0415
 
     device = EmuDevice.simple(n_oids=20)
     trace_path = tmp_path / "trace.oidtrace.jsonl.gz"
@@ -282,8 +264,6 @@ async def test_appended_sink_receives_same_records(
             path=trace_path,
             sinks=[sink_records.append],
         )
-
-    from oidtrace.tracefile import read_trace  # noqa: PLC0415
 
     file_records = list(read_trace(trace_path))
     assert len(sink_records) == len(file_records)
@@ -301,7 +281,6 @@ async def test_shared_timeline_sent_at_and_summary(
     tmp_path: Path,
 ) -> None:
     """attempt.sent_at and summary.at use the same zero (shared clock, trap #11)."""
-    from oidtrace.walker import WalkSettings, run_walk  # noqa: PLC0415
 
     device = EmuDevice.simple(n_oids=5)
     trace_path = tmp_path / "trace.oidtrace.jsonl.gz"
@@ -313,8 +292,6 @@ async def test_shared_timeline_sent_at_and_summary(
             settings=WalkSettings(bulk_size=5),
             path=trace_path,
         )
-
-    from oidtrace.tracefile import read_trace  # noqa: PLC0415
 
     records = list(read_trace(trace_path))
     exchange_records = [r for r in records if isinstance(r, Exchange)]
