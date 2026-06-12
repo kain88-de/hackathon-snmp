@@ -31,7 +31,7 @@ sketches live in git history.
 ## Where things stand
 
 **The capture layer is implemented**: workspace packages `oidtrace/` (codec, transport,
-walker, CLI) and `traceformat/` (schema-generated pydantic models + vocabulary), 141
+walker, CLI) and `traceformat/` (schema-generated pydantic models + vocabulary), 159
 tests including a net-snmp cross-walk, 98–100% branch coverage, dead-code and codegen
 freshness gates in CI. Design specs live in `docs/superpowers/specs/`; the trace format
 (`docs/trace-format.md` + `docs/trace-format.schema.json`) is authoritative and
