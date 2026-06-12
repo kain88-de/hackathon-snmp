@@ -13,6 +13,7 @@ from hypothesis import given, settings
 from hypothesis import strategies as st
 
 from oidtrace.ber import read_tlv
+from oidtrace.ber import tlv as ber_tlv
 from oidtrace.codec import (
     EXCEPTION_TAGS,
     Malformed,
@@ -468,6 +469,103 @@ def test_malformed_oid_tag_wrong_in_varbind() -> None:
     result = decode_message(bytes(raw))
     assert isinstance(result, Malformed)
     assert "oid" in result.error.lower()
+
+
+# ---------------------------------------------------------------------------
+# Tolerant-decode leniencies (deliberate; "misbehavior is data")
+# ---------------------------------------------------------------------------
+
+
+def test_trailing_junk_after_outer_sequence_is_accepted() -> None:
+    """Trailing bytes after the outer SEQUENCE TLV are silently ignored.
+
+    decode_message reads exactly the outer SEQUENCE (read_tlv discards
+    next_i), so extra bytes appended to the datagram do not cause Malformed.
+    This is deliberate: on UDP, any framing junk beyond the SEQUENCE is
+    irrelevant and we prefer not to discard an otherwise valid message.
+    """
+    raw = _valid_response()
+    result = decode_message(raw + b"\xff\xff\xff")
+    assert isinstance(result, Message)
+
+
+def _build_junk_inside_pdu() -> bytes:
+    """Return a valid response re-encoded with extra bytes inside the PDU TLV.
+
+    We reconstruct the packet from scratch so there are no magic offsets:
+    parse the valid encoding, then reassemble the PDU body with b'\\xff\\xff'
+    appended after the varbind-list TLV, updating all lengths via ber.tlv.
+    """
+    raw = _valid_response()
+    # Peel outer SEQUENCE
+    outer_tag, outer_body, _ = read_tlv(raw, 0)
+    assert outer_tag == 0x30
+    # Peel version, community, PDU
+    _, ver_body, ver_end = read_tlv(outer_body, 0)
+    _, comm_body, comm_end = read_tlv(outer_body, ver_end)
+    pdu_tag, pdu_body, _ = read_tlv(outer_body, comm_end)
+    # Peel PDU fields
+    j = 0
+    _, rid_body, j = read_tlv(pdu_body, j)
+    _, f1_body, j = read_tlv(pdu_body, j)
+    _, f2_body, j = read_tlv(pdu_body, j)
+    _, vblist_body, _ = read_tlv(pdu_body, j)
+    # Rebuild PDU body: same fields + junk after varbind list
+    new_pdu_body = (
+        ber_tlv(0x02, rid_body)
+        + ber_tlv(0x02, f1_body)
+        + ber_tlv(0x02, f2_body)
+        + ber_tlv(0x30, vblist_body)
+        + b"\xff\xff"
+    )
+    new_outer_body = (
+        ber_tlv(0x02, ver_body) + ber_tlv(0x04, comm_body) + ber_tlv(pdu_tag, new_pdu_body)
+    )
+    return ber_tlv(0x30, new_outer_body)
+
+
+def test_junk_inside_pdu_after_varbind_list_is_accepted() -> None:
+    """Extra bytes inside the PDU TLV payload after the varbind-list are ignored.
+
+    decode_message reads the varbind-list with read_tlv (discarding next_j),
+    so any trailing bytes inside the PDU body are silently dropped.  This is
+    deliberate: strict length enforcement would reject otherwise valid
+    responses from devices that pad their PDU bodies.
+    """
+    result = decode_message(_build_junk_inside_pdu())
+    assert isinstance(result, Message)
+
+
+def _rebuild_with_pdu_tag(new_tag: int) -> bytes:
+    """Return a valid response re-encoded with the PDU context tag replaced."""
+    raw = _valid_response()
+    outer_tag, outer_body, _ = read_tlv(raw, 0)
+    assert outer_tag == 0x30
+    _, ver_body, ver_end = read_tlv(outer_body, 0)
+    _, comm_body, comm_end = read_tlv(outer_body, ver_end)
+    _, pdu_body, _ = read_tlv(outer_body, comm_end)
+    new_outer_body = ber_tlv(0x02, ver_body) + ber_tlv(0x04, comm_body) + ber_tlv(new_tag, pdu_body)
+    return ber_tlv(0x30, new_outer_body)
+
+
+def test_pdu_tag_0xbf_context_constructed_31_is_accepted() -> None:
+    """PDU tag 0xBF (context-constructed, type-number 31) is within 0xA0-0xBF -> Message.
+
+    The check is (pdu_tag & 0xE0) == 0xA0, which accepts any tag in the
+    range 0xA0-0xBF.  0xBF is the upper boundary and must be accepted.
+    """
+    result = decode_message(_rebuild_with_pdu_tag(0xBF))
+    assert isinstance(result, Message)
+
+
+def test_pdu_tag_0xc0_private_class_is_malformed() -> None:
+    """PDU tag 0xC0 (private-constructed) is outside 0xA0-0xBF -> Malformed.
+
+    0xC0 sets the class bits to 11 (private), which fails the context-class
+    check (0xC0 & 0xE0 == 0xC0, not 0xA0).
+    """
+    result = decode_message(_rebuild_with_pdu_tag(0xC0))
+    assert isinstance(result, Malformed)
 
 
 # ---------------------------------------------------------------------------
