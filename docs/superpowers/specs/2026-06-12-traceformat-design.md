@@ -18,8 +18,9 @@ re-tested dict shapes at each consumer.
 ## Codegen pipeline
 
 - `just gen-types` runs `datamodel-code-generator` over the schema
-  (pydantic_v2 output, union operator, standard collections, field constraints,
-  `--formatters ruff-format`, `--disable-timestamp` for reproducibility).
+  (pydantic_v2 output, standard collections, field constraints, `--use-default-kwarg`
+  (pyright needs keyword defaults), `--formatters ruff-format`, `--disable-timestamp`
+  for reproducibility; `--use-union-operator` is redundant — target 3.13 already emits `X | None`).
 - `just types-fresh` (in `just ci`) regenerates to a temp file and diffs against the
   committed models — schema drift fails CI. **The temp file must live inside the
   package tree**: ruff-format resolves line-length from the nearest pyproject, so a
