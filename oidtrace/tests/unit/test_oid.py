@@ -124,8 +124,8 @@ def test_in_subtree_parent_not_in_child() -> None:
         "01",  # leading zero
         "1.03",  # leading zero in arc
         "1.3.",  # trailing dot
-            "1.3٤.6",  # unicode digit (Arabic-Indic 4) must be rejected
-],
+        "1.3٤.6",  # unicode digit (Arabic-Indic 4) must be rejected
+    ],
 )
 def test_from_str_bad_inputs(bad: str) -> None:
     with pytest.raises(ValueError):
