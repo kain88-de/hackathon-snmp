@@ -30,7 +30,10 @@ sketches live in git history.
 
 ## Where things stand
 
-Design specs live in `docs/superpowers/specs/`; the trace format
+**The capture layer is implemented**: workspace packages `oidtrace/` (codec, transport,
+walker, CLI) and `traceformat/` (schema-generated pydantic models + vocabulary), 141
+tests including a net-snmp cross-walk, 98–100% branch coverage, dead-code and codegen
+freshness gates in CI. Design specs live in `docs/superpowers/specs/`; the trace format
 (`docs/trace-format.md` + `docs/trace-format.schema.json`) is authoritative and
-validated by experiments in `experiments/`. Implementation plan for the capture layer:
-`docs/superpowers/plans/2026-06-11-oidtrace.md`.
+validated by experiments in `experiments/`. The executed plan:
+`docs/superpowers/plans/2026-06-11-oidtrace.md`. Next: the doctor, then OIDViz.

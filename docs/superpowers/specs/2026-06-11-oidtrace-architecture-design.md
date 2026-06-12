@@ -1,10 +1,13 @@
 # OIDTrace Architecture Design
 
 Date: 2026-06-11
-Status: approved
+Status: approved — **implemented 2026-06-12** (`oidtrace/` + `traceformat/` packages;
+plan `docs/superpowers/plans/2026-06-11-oidtrace.md` fully executed)
 Validation: core ideas proven end-to-end by `experiments/poc_roundtrip.py` (codec,
 quirk-tolerant walk, schema-valid traces); format performance measured by
-`experiments/trace_format_perf.py` — results in `experiments/*-results.md`
+`experiments/trace_format_perf.py` — results in `experiments/*-results.md`;
+implementation verified by 141 tests incl. a net-snmp cross-walk, branch coverage
+98–100%, and Hypothesis fuzzing of the tolerant decoder
 
 ## Purpose
 
@@ -242,6 +245,12 @@ Three layers, ordered fast-to-slow:
 Runner: pytest with async test functions. `just test` runs layers 1–2 (fast default);
 `just test-all` runs everything and **fails hard** if reference tools are missing, so
 skip-if-missing cannot silently become never-runs.
+
+As built, the gates exceed this plan: `just ci` chains ruff strict → pyrefly → a
+vulture dead-code gate (documented whitelist) → pytest; `just cov` reports branch
+coverage (100% traceformat, 98% oidtrace — remaining misses are defensive branches);
+Hypothesis fuzzes the decoder's never-raises contract; the codec's fault branches are
+individually exercised by per-layer crafted malformations.
 
 ### Quirk emulator = seed of OIDEmu
 
