@@ -1,0 +1,28 @@
+default: ci
+
+fmt:
+    uv run ruff format src tests
+
+lint:
+    uv run ruff format --check src tests
+    uv run ruff check src tests
+
+types:
+    uv run pyrefly check
+
+types-pyright:
+    uv run pyright src tests
+
+deadcode:
+    uv run vulture src ../traceformat/src .vulture-whitelist.py --min-confidence 60 --exclude "*/models.py" --ignore-names "exc_type,exc_val,exc_tb,addr"
+
+test:
+    uv run pytest -m "not reference_tools"
+
+test-all:
+    REQUIRE_REFERENCE_TOOLS=1 uv run pytest
+
+cov:
+    uv run pytest -m "not reference_tools" --cov=oidtrace --cov=traceformat --cov-branch --cov-report=term-missing
+
+ci: lint types deadcode test
