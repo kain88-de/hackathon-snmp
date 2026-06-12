@@ -1,17 +1,16 @@
 """Record builders for OIDTrace trace files.
 
 Builders construct and return validated ``traceformat`` model instances.
-Varbind values are never serialized — the "no values" promise is enforced at
+Varbind values are never serialized -- the "no values" promise is enforced at
 this boundary (only oid/vtype/vlen cross into the record).
 
-The nested-dict parameters (``request``, ``attempts``, ``settings``, ...) are
-validated at construction time by pydantic; conditional keys stay *unset*
-(omitted from the serialized record) by not being passed at all.
+Conditional keys stay *unset* (omitted from the serialized record) by not
+being passed at all.
 """
 
 from __future__ import annotations
 
-from typing import TYPE_CHECKING, Any
+from typing import TYPE_CHECKING
 
 from traceformat.models import (
     Attempt,
@@ -21,16 +20,16 @@ from traceformat.models import (
     Malformed,
     Request,
     Response,
-    Session,
     Settings,
-    Snmp,
     StrayResponse,
     Summary,
     SystemInfo,
 )
 
 if TYPE_CHECKING:
-    from collections.abc import Sequence
+    from collections.abc import Mapping, Sequence
+
+    from traceformat.vocab import Violation
 
     from oidtrace.codec import Varbind
 
@@ -44,64 +43,64 @@ def header_record(
     run: int,
     runs_total: int,
     snmp_version: str,
-    settings: dict[str, Any],
+    settings: Settings,
 ) -> Header:
-    optional: dict[str, Any] = {}
+    fields: dict[str, object] = {
+        "type": "header",
+        "format_version": 1,
+        "tool": tool,
+        "started_at": started_at,
+        "session": {"id": session_id, "run": run, "runs_total": runs_total},
+        "snmp": {"version": snmp_version},
+        "settings": settings.model_dump(exclude_unset=True),
+    }
     if label is not None:
-        optional["label"] = label
-    return Header(
-        type="header",
-        format_version=1,
-        tool=tool,
-        started_at=started_at,  # pyright: ignore[reportArgumentType]
-        session=Session(id=session_id, run=run, runs_total=runs_total),
-        snmp=Snmp.model_validate({"version": snmp_version}),
-        settings=Settings.model_validate(settings),
-        **optional,
-    )
+        fields["label"] = label
+    return Header.model_validate(fields)
 
 
 def exchange_record(
     *,
     seq: int,
-    request: dict[str, Any],
-    attempts: list[dict[str, Any]],
-    response_fields: dict[str, Any] | None,
+    request: Request,
+    attempts: Sequence[Attempt],
+    response_request_id: int | None,
+    response_error_status: int | None,
+    response_error_index: int | None,
     varbinds: Sequence[Varbind],
-    strays: list[dict[str, Any]],
-    violations: list[str],
-    malformed: dict[str, Any] | None,
+    strays: Sequence[StrayResponse],
+    violations: Sequence[Violation | str],
+    malformed: Malformed | None,
 ) -> Exchange:
-    optional: dict[str, Any] = {}
-    if response_fields is not None:
-        optional["response"] = Response.model_validate(
-            {
-                **response_fields,
-                "varbinds": [
-                    {"oid": str(v.oid), "vtype": v.vtype, "vlen": v.vlen} for v in varbinds
-                ],
-            }
-        )
+    fields: dict[str, object] = {
+        "type": "exchange",
+        "seq": seq,
+        "request": request.model_dump(exclude_unset=True),
+        "attempts": [a.model_dump(exclude_unset=True) for a in attempts],
+    }
+    if response_request_id is not None:
+        fields["response"] = Response(
+            request_id=response_request_id,
+            error_status=response_error_status or 0,
+            error_index=response_error_index or 0,
+            varbinds=[  # type: ignore[list-item]
+                {"oid": str(v.oid), "vtype": v.vtype, "vlen": v.vlen} for v in varbinds
+            ],
+        ).model_dump()
     if strays:
-        optional["stray_responses"] = [StrayResponse.model_validate(s) for s in strays]
+        fields["stray_responses"] = [s.model_dump(exclude_unset=True) for s in strays]
     if violations:
-        optional["violations"] = violations
+        fields["violations"] = [str(v) for v in violations]
     if malformed is not None:
-        optional["malformed"] = Malformed.model_validate(malformed)
-    return Exchange(
-        type="exchange",
-        seq=seq,
-        request=Request.model_validate(request),
-        attempts=[Attempt.model_validate(a) for a in attempts],
-        **optional,
-    )
+        fields["malformed"] = malformed.model_dump(exclude_unset=True)
+    return Exchange.model_validate(fields)
 
 
-def event_record(*, at: float, kind: str, detail: dict[str, Any] | None = None) -> Event:
-    optional: dict[str, Any] = {}
+def event_record(*, at: float, kind: str, detail: dict[str, object] | None = None) -> Event:
+    fields: dict[str, object] = {"type": "event", "at": at, "kind": kind}
     if detail is not None:
-        optional["detail"] = detail
-    return Event(type="event", at=at, kind=kind, **optional)  # pyright: ignore[reportArgumentType]
+        fields["detail"] = detail
+    return Event.model_validate(fields)
 
 
 def summary_record(
@@ -110,7 +109,7 @@ def summary_record(
     exchanges: int,
     oids_seen: int,
     end_reason: str,
-    violation_counts: dict[str, int],
+    violation_counts: Mapping[Violation | str, int],
 ) -> Summary:
     return Summary(
         type="summary",
@@ -118,7 +117,7 @@ def summary_record(
         exchanges=exchanges,
         oids_seen=oids_seen,
         end_reason=end_reason,
-        violation_counts=violation_counts,
+        violation_counts={str(k): v for k, v in violation_counts.items()},
     )
 
 

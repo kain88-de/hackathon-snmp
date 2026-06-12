@@ -14,10 +14,11 @@ if TYPE_CHECKING:
     import jsonschema
 
 from traceformat import TraceRecord, dump_record
+from traceformat.models import Attempt, Malformed, Oid, Request, Settings, StrayResponse
 from traceformat.vocab import Violation
 
 from oidtrace.codec import Varbind
-from oidtrace.oid import Oid
+from oidtrace.oid import Oid as OidtraceOid
 from oidtrace.records import (
     event_record,
     exchange_record,
@@ -41,6 +42,25 @@ def _valid(validator: jsonschema.Draft202012Validator, record: TraceRecord) -> d
     return obj
 
 
+def _make_settings() -> Settings:
+    return Settings(
+        bulk_size=10,
+        timeout_s=2.0,
+        retries=2,
+        start_oid=Oid("1.3.6.1"),
+    )
+
+
+def _make_request() -> Request:
+    return Request(pdu="getnext", request_id=42, oids=[Oid("1.3.6.1.2.1.1.1")])  # type: ignore[arg-type]
+
+
+def _make_attempt(received_at: float | None = 1.5, error: str | None = None) -> Attempt:
+    if error is not None:
+        return Attempt(sent_at=1.0, received_at=received_at, error=error)  # type: ignore[arg-type]
+    return Attempt(sent_at=1.0, received_at=received_at)  # type: ignore[arg-type]
+
+
 # ---------------------------------------------------------------------------
 # header_record
 
@@ -54,12 +74,7 @@ def test_header_minimal(record_validator: jsonschema.Draft202012Validator) -> No
         run=1,
         runs_total=1,
         snmp_version="2c",
-        settings={
-            "bulk_size": 10,
-            "timeout_s": 2.0,
-            "retries": 2,
-            "start_oid": "1.3.6.1",
-        },
+        settings=_make_settings(),
     )
     obj = _valid(record_validator, rec)
     assert obj["type"] == "header"
@@ -76,12 +91,7 @@ def test_header_with_label(record_validator: jsonschema.Draft202012Validator) ->
         run=2,
         runs_total=5,
         snmp_version="2c",
-        settings={
-            "bulk_size": 10,
-            "timeout_s": 2.0,
-            "retries": 2,
-            "start_oid": "1.3.6.1",
-        },
+        settings=_make_settings(),
     )
     obj = _valid(record_validator, rec)
     assert obj["label"] == "switch-floor3"
@@ -96,33 +106,19 @@ def test_header_with_label(record_validator: jsonschema.Draft202012Validator) ->
 # exchange_record
 
 
-def _make_request() -> dict[str, Any]:
-    return {
-        "pdu": "getnext",
-        "request_id": 42,
-        "oids": ["1.3.6.1.2.1.1.1"],
-    }
-
-
-def _make_attempt(received_at: float | None = 1.5, error: str | None = None) -> dict[str, Any]:
-    a: dict[str, Any] = {"sent_at": 1.0, "received_at": received_at}
-    if error is not None:
-        a["error"] = error
-        a["received_at"] = None
-    return a
-
-
 def test_exchange_with_response_and_strays_and_violations(
     record_validator: jsonschema.Draft202012Validator,
 ) -> None:
-    vb = Varbind(oid=Oid.from_str("1.3.6.1.2.1.1.1.0"), tag=0x04, value=b"SomeValue")
+    vb = Varbind(oid=OidtraceOid.from_str("1.3.6.1.2.1.1.1.0"), tag=0x04, value=b"SomeValue")
     rec = exchange_record(
         seq=1,
         request=_make_request(),
         attempts=[_make_attempt(received_at=1.5), _make_attempt(received_at=None)],
-        response_fields={"request_id": 42, "error_status": 0, "error_index": 0},
+        response_request_id=42,
+        response_error_status=0,
+        response_error_index=0,
         varbinds=[vb],
-        strays=[{"received_at": 1.55}],
+        strays=[StrayResponse(received_at=1.55)],  # type: ignore[arg-type]
         violations=[Violation.REQUEST_ID_MISMATCH],
         malformed=None,
     )
@@ -145,7 +141,9 @@ def test_exchange_attempt_with_icmp_error(
         seq=2,
         request=_make_request(),
         attempts=[_make_attempt(received_at=None, error="icmp-port-unreachable")],
-        response_fields=None,
+        response_request_id=None,
+        response_error_status=None,
+        response_error_index=None,
         varbinds=[],
         strays=[],
         violations=[],
@@ -166,7 +164,9 @@ def test_exchange_no_response(record_validator: jsonschema.Draft202012Validator)
         seq=3,
         request=_make_request(),
         attempts=[_make_attempt(received_at=None)],
-        response_fields=None,
+        response_request_id=None,
+        response_error_status=None,
+        response_error_index=None,
         varbinds=[],
         strays=[],
         violations=[],
@@ -184,11 +184,13 @@ def test_exchange_malformed(record_validator: jsonschema.Draft202012Validator) -
         seq=4,
         request=_make_request(),
         attempts=[_make_attempt()],
-        response_fields=None,
+        response_request_id=None,
+        response_error_status=None,
+        response_error_index=None,
         varbinds=[],
         strays=[],
         violations=["malformed-ber"],
-        malformed={"error": "truncated BER", "length": 27},
+        malformed=Malformed(error="truncated BER", length=27),
     )
     obj = _valid(record_validator, rec)
     assert obj["malformed"] == {"error": "truncated BER", "length": 27}
@@ -201,12 +203,14 @@ def test_exchange_malformed(record_validator: jsonschema.Draft202012Validator) -
 
 def test_exchange_varbind_value_not_serialized() -> None:
     secret = b"SECRET-VALUE"
-    vb = Varbind(oid=Oid.from_str("1.3.6.1.2.1.1.1.0"), tag=0x04, value=secret)
+    vb = Varbind(oid=OidtraceOid.from_str("1.3.6.1.2.1.1.1.0"), tag=0x04, value=secret)
     rec = exchange_record(
         seq=1,
         request=_make_request(),
         attempts=[_make_attempt()],
-        response_fields={"request_id": 1, "error_status": 0, "error_index": 0},
+        response_request_id=1,
+        response_error_status=0,
+        response_error_index=0,
         varbinds=[vb],
         strays=[],
         violations=[],
