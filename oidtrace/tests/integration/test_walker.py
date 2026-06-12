@@ -243,7 +243,7 @@ async def test_cancellation_interrupted_summary(
     task = asyncio.create_task(run())
     await asyncio.sleep(0.1)  # let it start
     task.cancel()
-    with pytest.raises((asyncio.CancelledError, BaseException)):
+    with pytest.raises(asyncio.CancelledError):
         await task
 
     from oidtrace.tracefile import read_trace  # noqa: PLC0415

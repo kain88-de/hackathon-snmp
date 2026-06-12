@@ -65,7 +65,7 @@ from oidtrace.records import (
     summary_record,
 )
 from oidtrace.tracefile import TraceWriter
-from oidtrace.transport import ExchangeIO, UdpTransport
+from oidtrace.transport import ExchangeIO, Transport, UdpTransport
 from oidtrace.violations import check_exchange
 
 if TYPE_CHECKING:
@@ -216,7 +216,7 @@ def _transport_attempt_to_model(attempt: object) -> tf.Attempt:
 
 
 async def walk_records(  # noqa: PLR0912, PLR0913, PLR0915
-    transport: object,
+    transport: Transport,
     *,
     rel: Callable[[], float],
     settings: WalkSettings,
@@ -318,8 +318,7 @@ async def walk_records(  # noqa: PLR0912, PLR0913, PLR0915
         )
 
         # THE ONLY I/O
-        assert hasattr(transport, "exchange")
-        exchange_io: ExchangeIO = await transport.exchange(  # type: ignore[union-attr]
+        exchange_io: ExchangeIO = await transport.exchange(
             raw_request,
             timeout_s=settings.timeout_s,
             retries=settings.retries,
@@ -341,9 +340,9 @@ async def walk_records(  # noqa: PLR0912, PLR0913, PLR0915
         ]
 
         # Decode response
-        decoded_msg: object = None
+        decoded_msg: Message | None = None
         malformed_model: tf.Malformed | None = None
-        varbinds_from_response: list[object] = []
+        varbinds_from_response: list[Varbind] = []
         response_request_id: int | None = None
         response_error_status: int | None = None
         response_error_index: int | None = None
@@ -374,7 +373,7 @@ async def walk_records(  # noqa: PLR0912, PLR0913, PLR0915
             exchange_violations.append(Violation.MALFORMED_BER)
         elif decoded_msg is not None and response_request_id is not None:
             assert isinstance(decoded_msg, Message)
-            typed_varbinds: list[Varbind] = list(varbinds_from_response)  # type: ignore[arg-type]
+            typed_varbinds: list[Varbind] = list(varbinds_from_response)
             exchange_violations = check_exchange(
                 sent_id=request_id,
                 returned_id=response_request_id,
@@ -389,7 +388,7 @@ async def walk_records(  # noqa: PLR0912, PLR0913, PLR0915
             violation_counts[v] = violation_counts.get(v, 0) + 1
 
         # Build and yield the Exchange record
-        typed_vbs: list[Varbind] = list(varbinds_from_response)  # type: ignore[arg-type]
+        typed_vbs: list[Varbind] = list(varbinds_from_response)
         yield exchange_record(
             seq=seq,
             request=request_model,
@@ -416,7 +415,7 @@ async def walk_records(  # noqa: PLR0912, PLR0913, PLR0915
             continue
 
         # Decoded OK — check varbinds for termination
-        vbs: list[Varbind] = list(varbinds_from_response)  # type: ignore[arg-type]
+        vbs: list[Varbind] = list(varbinds_from_response)
 
         # Empty varbind list → COMPLETED
         if not vbs:
@@ -484,7 +483,7 @@ async def walk_records(  # noqa: PLR0912, PLR0913, PLR0915
 
 
 async def walk_with_transport(  # noqa: PLR0913
-    transport: object,
+    transport: Transport,
     *,
     rel: Callable[[], float],
     settings: WalkSettings,

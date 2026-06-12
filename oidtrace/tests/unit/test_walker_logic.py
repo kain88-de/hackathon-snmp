@@ -470,7 +470,7 @@ async def test_walk_with_transport_cancellation_emits_interrupted_summary(
     task = asyncio.create_task(run())
     await asyncio.sleep(0.01)  # let it start
     task.cancel()
-    with pytest.raises((asyncio.CancelledError, BaseException)):
+    with pytest.raises(asyncio.CancelledError):
         await task
 
     # Last record in sinks must be summary with INTERRUPTED
