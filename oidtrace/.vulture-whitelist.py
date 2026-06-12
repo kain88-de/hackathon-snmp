@@ -19,10 +19,11 @@ from traceformat.vocab import AttemptError, EndReason, EventKind, Violation
 # scaffold.  Whitelisted here so the dead-code gate passes at task 1;
 # remove entries as each module that imports them is added.
 
-# Classes
-_ = EndReason
-_ = EventKind
+# AttemptError — class and members not yet used in production code (walker is Task 11).
 _ = AttemptError
+ICMP_PORT_UNREACHABLE = AttemptError.ICMP_PORT_UNREACHABLE
+ICMP_HOST_UNREACHABLE = AttemptError.ICMP_HOST_UNREACHABLE
+SEND_FAILED = AttemptError.SEND_FAILED
 
 # Violation members still unused by production code (violations.py uses the
 # class directly; these members are not yet referenced elsewhere)
@@ -30,21 +31,17 @@ MISSING_END_OF_MIB = Violation.MISSING_END_OF_MIB
 MALFORMED_BER = Violation.MALFORMED_BER
 RESPONSE_FROM_UNEXPECTED_SOURCE = Violation.RESPONSE_FROM_UNEXPECTED_SOURCE
 
-# EndReason members
+# EndReason members — enum class used by records.py; individual members whitelisted
+# until the walker adds them as call-site values.
 COMPLETED = EndReason.COMPLETED
 UNRESPONSIVE = EndReason.UNRESPONSIVE
 INTERRUPTED = EndReason.INTERRUPTED
 TIME_BUDGET_EXCEEDED = EndReason.TIME_BUDGET_EXCEEDED
 OID_LOOP = EndReason.OID_LOOP
 
-# EventKind members
+# EventKind members — enum class used by records.py; individual members whitelisted.
 OID_LOOP_DETECTED = EventKind.OID_LOOP_DETECTED
 WALK_ABORTED_BY_USER = EventKind.WALK_ABORTED_BY_USER
-
-# AttemptError members
-ICMP_PORT_UNREACHABLE = AttemptError.ICMP_PORT_UNREACHABLE
-ICMP_HOST_UNREACHABLE = AttemptError.ICMP_HOST_UNREACHABLE
-SEND_FAILED = AttemptError.SEND_FAILED
 
 # oid.Oid public API — from_str is the constructor (used at call sites that
 # don't exist yet in this task; in_subtree is the main behavioral method).
@@ -91,6 +88,22 @@ _ = Malformed.error
 from oidtrace.violations import check_exchange
 
 _ = check_exchange
+
+# records.py public builders — consumed by the walker (Task 11).
+# Whitelisted until walker.py is added.
+from oidtrace.records import (
+    event_record,
+    exchange_record,
+    header_record,
+    summary_record,
+    system_info_record,
+)
+
+_ = header_record
+_ = exchange_record
+_ = event_record
+_ = summary_record
+_ = system_info_record
 
 # cli entry point — referenced in pyproject.toml [project.scripts], not called
 # directly in Python source.
