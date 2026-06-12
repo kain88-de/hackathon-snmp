@@ -1,0 +1,22 @@
+default: ci
+
+fmt:
+    uv run ruff format src tests
+
+lint:
+    uv run ruff format --check src tests
+    uv run ruff check src tests
+
+types:
+    uv run pyrefly check
+
+types-pyright:
+    uv run pyright src tests
+
+test:
+    uv run pytest
+
+cov:
+    uv run pytest --cov=traceformat --cov-branch --cov-report=term-missing
+
+ci: fmt lint types test
