@@ -48,9 +48,9 @@ class Settings(BaseModel):
     timeout_s: float = Field(..., gt=0.0)
     retries: int = Field(..., ge=0)
     start_oid: Oid
-    time_budget_s: float | None = Field(None, gt=0.0)
+    time_budget_s: float | None = Field(default=None, gt=0.0)
     resume_from: Oid | None = Field(
-        None,
+        default=None,
         description="Walk cursor continued from a previous run; start_oid remains the subtree bound",
     )
 
@@ -90,15 +90,15 @@ class Request(BaseModel):
     pdu: Pdu
     request_id: int
     oids: list[Oid] = Field(..., min_length=1)
-    non_repeaters: int | None = Field(None, ge=0)
-    max_repetitions: int | None = Field(None, ge=0)
+    non_repeaters: int | None = Field(default=None, ge=0)
+    max_repetitions: int | None = Field(default=None, ge=0)
 
 
 class Attempt(BaseModel):
     sent_at: Reltime
     received_at: Reltime | None
     error: str | None = Field(
-        None,
+        default=None,
         description="Open enum; socket-level error instead of silence. Known: icmp-port-unreachable, icmp-host-unreachable, send-failed. When set, received_at is null.",
     )
 
@@ -119,7 +119,9 @@ class StrayResponse(BaseModel):
 class Malformed(BaseModel):
     error: str
     length: int | None = Field(
-        None, description="Datagram size in bytes (the bytes themselves are not stored)", ge=0
+        default=None,
+        description="Datagram size in bytes (the bytes themselves are not stored)",
+        ge=0,
     )
     salvaged: dict[str, Any] | None = None
 

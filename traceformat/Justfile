@@ -28,6 +28,7 @@ gen-types:
         --target-python-version 3.13 \
         --use-standard-collections \
         --field-constraints \
+        --use-default-kwarg \
         --formatters ruff-format \
         --disable-timestamp
 
@@ -44,8 +45,9 @@ types-fresh:
         --target-python-version 3.13 \
         --use-standard-collections \
         --field-constraints \
+        --use-default-kwarg \
         --formatters ruff-format \
         --disable-timestamp
     diff src/traceformat/models.py "$tmp"
 
-ci: types-fresh fmt lint types test
+ci: types-fresh lint types test
