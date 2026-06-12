@@ -124,16 +124,21 @@ class WalkStats:
     Useful for synthesising an INTERRUPTED summary when a consumer has only
     seen a prefix of the stream.
 
-    Note on oids_seen: this counter reflects the OIDs present in Exchange
-    response varbinds (excluding exception tags).  It may exceed the
+    Note on oids_seen: this counter reflects the count of DISTINCT OIDs present
+    in Exchange response varbinds (excluding exception tags).  It may exceed the
     generator's own in-subtree oids_seen by up to bulk_size on the terminal
     exchange — acceptable for interrupted summaries.
     """
 
     def __init__(self) -> None:
         self.exchanges: int = 0
-        self.oids_seen: int = 0
+        self._oids_seen_set: set[str] = set()
         self.violation_counts: dict[Violation, int] = {}
+
+    @property
+    def oids_seen(self) -> int:
+        """Count of distinct OIDs seen across all observed exchanges."""
+        return len(self._oids_seen_set)
 
     def observe(self, record: TraceRecord) -> None:
         """Accumulate stats from one record."""
@@ -144,7 +149,7 @@ class WalkStats:
                     # Don't count exception-tag varbinds
                     # We check via vtype string since models.Varbind doesn't carry raw tag
                     if vb.vtype not in ("EndOfMibView", "NoSuchObject", "NoSuchInstance"):
-                        self.oids_seen += 1
+                        self._oids_seen_set.add(str(vb.oid))
             if record.violations:  # type: ignore[union-attr]
                 for v_str in record.violations:  # type: ignore[union-attr]
                     try:
@@ -283,7 +288,7 @@ async def walk_records(  # noqa: PLR0912, PLR0913, PLR0915
     seq: int = 0
     consecutive_no_response: int = 0
     violation_counts: dict[Violation, int] = {}
-    oids_seen: int = 0  # in-subtree only (distinct from WalkStats)
+    oids_seen_set: set[Oid] = set()  # distinct in-subtree OIDs
     end_reason: EndReason | None = None
 
     # Walk the subtree
@@ -440,8 +445,8 @@ async def walk_records(  # noqa: PLR0912, PLR0913, PLR0915
 
         new_cursor = data_vbs[-1].oid
 
-        # OID not increasing → OID_LOOP
-        if new_cursor <= cursor:
+        # OID not increasing → OID_LOOP (derived from check_exchange, the single source of truth)
+        if Violation.OID_NOT_INCREASING in exchange_violations:
             yield event_record(
                 at=_now(rel),
                 kind=EventKind.OID_LOOP_DETECTED,
@@ -457,16 +462,17 @@ async def walk_records(  # noqa: PLR0912, PLR0913, PLR0915
             end_reason = EndReason.COMPLETED
             break
 
-        # Count in-subtree OIDs seen
+        # Count distinct in-subtree OIDs seen
         for vb in data_vbs:
             if vb.oid.in_subtree(settings.start_oid):
-                oids_seen += 1
+                oids_seen_set.add(vb.oid)
 
         cursor = new_cursor
 
     # --- Summary ---
     assert end_reason is not None
     at = _now(rel)
+    oids_seen = len(oids_seen_set)
     log.info("walk end reason=%s at=%.6f exchanges=%d oids_seen=%d", end_reason, at, seq, oids_seen)
     yield summary_record(
         at=at,

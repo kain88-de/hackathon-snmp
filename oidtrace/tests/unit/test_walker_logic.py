@@ -764,3 +764,75 @@ async def test_varbind_outside_subtree_not_counted(
     assert summary.end_reason == str(EndReason.COMPLETED)  # type: ignore[union-attr]
     assert summary.oids_seen == 2  # type: ignore[union-attr]
     _validate_all(records, record_validator)
+
+
+@pytest.mark.asyncio
+async def test_oids_seen_counts_distinct_only(
+    record_validator: Draft202012Validator,
+) -> None:
+    """oids_seen counts distinct OIDs — a repeated OID in two exchanges is counted once."""
+    # Two exchanges where the second returns the same OID as the first.
+    # Because the second response has a duplicate (non-increasing), the walk
+    # terminates with OID_LOOP after the second exchange.  The shared OID
+    # should be counted only once in oids_seen.
+    transport = FakeTransport(
+        responses=[
+            _response_exchange([_OID_A]),  # exchange 1: cursor advances to _OID_A
+            _response_exchange([_OID_A]),  # exchange 2: non-increasing → OID_LOOP
+        ]
+    )
+    records = await _collect(transport)
+
+    summary = records[-1]
+    assert summary.type == "summary"  # type: ignore[union-attr]
+    assert summary.end_reason == str(EndReason.OID_LOOP)  # type: ignore[union-attr]
+    # _OID_A appeared in exchange 1 (counted) and exchange 2 (same OID — duplicate, not counted)
+    assert summary.oids_seen == 1  # type: ignore[union-attr]
+    _validate_all(records, record_validator)
+
+
+@pytest.mark.asyncio
+async def test_oid_loop_derived_from_check_exchange(
+    record_validator: Draft202012Validator,
+) -> None:
+    """OID_LOOP termination is driven by check_exchange OID_NOT_INCREASING violation."""
+    # Same as test_oid_not_increasing_loop but asserts the exchange carries the violation,
+    # confirming the loop detection is check_exchange's responsibility, not a walker recomputation.
+    transport = FakeTransport(
+        responses=[
+            _response_exchange([_OID_B]),
+            _response_exchange([_OID_A]),  # non-increasing: _OID_A < _OID_B
+        ]
+    )
+    records = await _collect(transport)
+
+    exchange_records = [r for r in records if r.type == "exchange"]
+    second_exchange = exchange_records[1]
+    assert second_exchange.violations is not None  # type: ignore[union-attr]
+    assert str(Violation.OID_NOT_INCREASING) in second_exchange.violations  # type: ignore[union-attr]
+
+    summary = records[-1]
+    assert summary.end_reason == str(EndReason.OID_LOOP)  # type: ignore[union-attr]
+    _validate_all(records, record_validator)
+
+
+@pytest.mark.asyncio
+async def test_logging_debug_exchange(
+    caplog: pytest.LogCaptureFixture,
+    record_validator: Draft202012Validator,
+) -> None:
+    """A per-exchange DEBUG record is emitted mentioning seq or exchange."""
+    transport = FakeTransport(
+        responses=[
+            _response_exchange([_OID_A]),
+            _eom_exchange(_OID_A),
+        ]
+    )
+    with caplog.at_level(logging.DEBUG, logger="oidtrace.walker"):
+        records = await _collect(transport)
+
+    debug_msgs = [r.getMessage() for r in caplog.records if r.levelno == logging.DEBUG]
+    assert any("seq" in m.lower() or "exchange" in m.lower() for m in debug_msgs), (
+        f"Expected DEBUG exchange log, got: {debug_msgs}"
+    )
+    _validate_all(records, record_validator)
