@@ -57,6 +57,18 @@ from oidtrace.oid import Oid
 _ = Oid.from_str
 _ = Oid.in_subtree
 
+# ber.py public API — encode/decode functions are the BER codec contract consumed
+# by codec.py (which doesn't exist yet in this task).  Whitelisted here so the
+# dead-code gate passes at task 3.  Remove entries as codec.py is added.
+from oidtrace.ber import decode_int, decode_oid, encode_int, encode_oid, read_tlv, tlv
+
+_ = tlv
+_ = encode_int
+_ = encode_oid
+_ = read_tlv
+_ = decode_int
+_ = decode_oid
+
 # cli entry point — referenced in pyproject.toml [project.scripts], not called
 # directly in Python source.
 # from oidtrace.cli import main
