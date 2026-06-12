@@ -1,0 +1,49 @@
+fmt:
+    uv run ruff format src tests
+
+lint:
+    uv run ruff check src tests
+
+types:
+    uv run pyrefly check
+
+types-pyright:
+    uv run pyright src tests
+
+test:
+    uv run pytest -q
+
+gen-types:
+    uv run datamodel-codegen \
+        --input ../docs/trace-format.schema.json \
+        --input-file-type jsonschema \
+        --output src/traceformat/models.py \
+        --output-model-type pydantic_v2.BaseModel \
+        --target-python-version 3.13 \
+        --use-union-operator \
+        --use-standard-collections \
+        --field-constraints \
+        --disable-timestamp
+
+types-fresh:
+    #!/usr/bin/env bash
+    set -euo pipefail
+    tmp=$(mktemp)
+    uv run datamodel-codegen \
+        --input ../docs/trace-format.schema.json \
+        --input-file-type jsonschema \
+        --output "$tmp" \
+        --output-model-type pydantic_v2.BaseModel \
+        --target-python-version 3.13 \
+        --use-union-operator \
+        --use-standard-collections \
+        --field-constraints \
+        --disable-timestamp
+    if ! diff -u src/traceformat/models.py "$tmp"; then
+        rm -f "$tmp"
+        echo "models.py is stale; run 'just gen-types'" >&2
+        exit 1
+    fi
+    rm -f "$tmp"
+
+ci: types-fresh fmt lint types test

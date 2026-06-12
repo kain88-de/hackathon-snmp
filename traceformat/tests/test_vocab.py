@@ -1,4 +1,4 @@
-"""Tests for oidtrace.vocab — StrEnum vocabularies."""
+"""Tests for traceformat.vocab — StrEnum vocabularies."""
 
 from __future__ import annotations
 
@@ -6,7 +6,7 @@ import json
 
 import pytest
 
-from oidtrace.vocab import AttemptError, EndReason, EventKind, Violation
+from traceformat.vocab import AttemptError, EndReason, EventKind, Violation
 
 _ALL_MEMBERS = [*Violation, *EndReason, *EventKind, *AttemptError]
 
