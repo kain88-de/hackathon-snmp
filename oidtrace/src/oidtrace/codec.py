@@ -28,7 +28,7 @@ _TAG_PDU_MIN = 0xA0  # context-constructed PDU class mask
 # ---------------------------------------------------------------------------
 # Tag name registry (§ 5 of trace-format.md)
 
-TAG_NAMES: dict[int, str] = {
+_TAG_NAMES: dict[int, str] = {
     0x02: "Integer",
     0x04: "OctetString",
     0x05: "Null",
@@ -61,7 +61,7 @@ class Varbind:
 
     @property
     def vtype(self) -> str:
-        return TAG_NAMES.get(self.tag, f"tag:0x{self.tag:02x}")
+        return _TAG_NAMES.get(self.tag, f"tag:0x{self.tag:02x}")
 
     @property
     def vlen(self) -> int:

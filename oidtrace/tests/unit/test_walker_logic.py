@@ -8,6 +8,7 @@ from __future__ import annotations
 
 import gzip
 import json
+import time
 from typing import TYPE_CHECKING, Any
 
 from traceformat.models import Event, Exchange, Header, Summary
@@ -17,12 +18,19 @@ from oidtrace.codec import encode_response
 from oidtrace.oid import Oid
 from oidtrace.tracefile import TraceWriter, read_trace
 from oidtrace.transport import Attempt, ExchangeIO
-from oidtrace.walker import WalkSettings, _monotonic_rel, walk_with_transport
+from oidtrace.walker import WalkSettings, walk_with_transport
 
 if TYPE_CHECKING:
+    from collections.abc import Callable
     from pathlib import Path
 
     from traceformat import TraceRecord
+
+
+def _rel() -> Callable[[], float]:
+    """A monotonic rel() clock for the walker (public-API equivalent of run_walk's)."""
+    t0 = time.monotonic()
+    return lambda: round(time.monotonic() - t0, 6)
 
 
 # ---------------------------------------------------------------------------
@@ -125,7 +133,7 @@ async def test_end_of_mib_view_completed(tmp_path: Path, record_validator: Any) 
 
     with TraceWriter(path) as writer:
         reason = await walk_with_transport(
-            transport, rel=_monotonic_rel(), settings=settings, sinks=[writer.write]
+            transport, rel=_rel(), settings=settings, sinks=[writer.write]
         )
 
     assert reason == EndReason.COMPLETED
@@ -161,7 +169,7 @@ async def test_left_subtree_completed(tmp_path: Path, record_validator: Any) -> 
 
     with TraceWriter(path) as writer:
         reason = await walk_with_transport(
-            transport, rel=_monotonic_rel(), settings=settings, sinks=[writer.write]
+            transport, rel=_rel(), settings=settings, sinks=[writer.write]
         )
 
     assert reason == EndReason.COMPLETED
@@ -197,7 +205,7 @@ async def test_oid_not_increasing_oid_loop(tmp_path: Path, record_validator: Any
 
     with TraceWriter(path) as writer:
         reason = await walk_with_transport(
-            transport, rel=_monotonic_rel(), settings=settings, sinks=[writer.write]
+            transport, rel=_rel(), settings=settings, sinks=[writer.write]
         )
 
     assert reason == EndReason.OID_LOOP
@@ -249,7 +257,7 @@ async def test_give_up_after_with_recovery(tmp_path: Path, record_validator: Any
 
     with TraceWriter(path) as writer:
         reason = await walk_with_transport(
-            transport, rel=_monotonic_rel(), settings=settings, sinks=[writer.write]
+            transport, rel=_rel(), settings=settings, sinks=[writer.write]
         )
 
     assert reason == EndReason.UNRESPONSIVE
@@ -286,7 +294,7 @@ async def test_malformed_response(tmp_path: Path, record_validator: Any) -> None
 
     with TraceWriter(path) as writer:
         reason = await walk_with_transport(
-            transport, rel=_monotonic_rel(), settings=settings, sinks=[writer.write]
+            transport, rel=_rel(), settings=settings, sinks=[writer.write]
         )
 
     assert reason == EndReason.UNRESPONSIVE
@@ -334,7 +342,7 @@ async def test_icmp_attempt_error_in_record(tmp_path: Path, record_validator: An
 
     with TraceWriter(path) as writer:
         reason = await walk_with_transport(
-            transport, rel=_monotonic_rel(), settings=settings, sinks=[writer.write]
+            transport, rel=_rel(), settings=settings, sinks=[writer.write]
         )
     assert reason == EndReason.UNRESPONSIVE
 
@@ -369,7 +377,7 @@ async def test_on_record_callback(tmp_path: Path) -> None:
     with TraceWriter(path) as writer:
         await walk_with_transport(
             transport,
-            rel=_monotonic_rel(),
+            rel=_rel(),
             settings=settings,
             sinks=[writer.write, streamed.append],
         )
@@ -402,9 +410,7 @@ async def test_shared_timeline(tmp_path: Path) -> None:
     )
 
     with TraceWriter(path) as writer:
-        await walk_with_transport(
-            transport, rel=_monotonic_rel(), settings=settings, sinks=[writer.write]
-        )
+        await walk_with_transport(transport, rel=_rel(), settings=settings, sinks=[writer.write])
 
     records = _records(path)
     exchange_rec = next(r for r in records if isinstance(r, Exchange))
