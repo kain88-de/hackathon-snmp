@@ -47,3 +47,6 @@ types-fresh:
     rm -f "$tmp"
 
 ci: types-fresh fmt lint types test
+
+cov:
+    uv run pytest --cov=traceformat --cov-branch --cov-report=term-missing -q

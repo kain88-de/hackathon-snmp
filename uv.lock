@@ -809,6 +809,7 @@ dev = [
     { name = "pyrefly" },
     { name = "pyright" },
     { name = "pytest" },
+    { name = "pytest-cov" },
     { name = "ruff" },
 ]
 
@@ -821,6 +822,7 @@ dev = [
     { name = "pyrefly", specifier = ">=1.0" },
     { name = "pyright", specifier = ">=1.1" },
     { name = "pytest", specifier = ">=8" },
+    { name = "pytest-cov", specifier = ">=7.1.0" },
     { name = "ruff", specifier = ">=0.9" },
 ]
 

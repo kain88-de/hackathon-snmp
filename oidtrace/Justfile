@@ -19,4 +19,7 @@ test:
 test-all:
     REQUIRE_REFERENCE_TOOLS=1 uv run pytest -q
 
+cov:
+    uv run pytest -m "not reference_tools" --cov=oidtrace --cov=traceformat --cov-branch --cov-report=term-missing -q
+
 ci: fmt lint types deadcode test
