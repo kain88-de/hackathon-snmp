@@ -119,3 +119,26 @@ _ = read_trace
 # directly in Python source.
 # from oidtrace.cli import main
 # _ = main  # uncomment once oidtrace/cli.py exists
+
+# transport.py public API — Transport protocol and UdpTransport are consumed by
+# integration tests and will be consumed by walker (Task 11).
+# _SnmpProtocol callback methods (connection_made, datagram_received,
+# error_received, connection_lost) are called by asyncio internals, not by
+# Python source directly.
+from oidtrace.transport import ExchangeIO, Transport, UdpTransport
+
+_ = Transport
+_ = Transport.exchange
+_ = UdpTransport.create
+_ = UdpTransport.exchange
+_ = ExchangeIO
+
+# _SnmpProtocol asyncio callback methods — called by asyncio internals
+# (event loop), not by Python source directly.  These are the standard
+# DatagramProtocol interface mandated by asyncio.
+from oidtrace.transport import _SnmpProtocol  # noqa: PLC2701
+
+_ = _SnmpProtocol.connection_made
+_ = _SnmpProtocol.datagram_received
+_ = _SnmpProtocol.error_received
+_ = _SnmpProtocol.connection_lost
