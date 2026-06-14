@@ -1,0 +1,306 @@
+<!DOCTYPE html>
+<html lang="en">
+<head>
+<meta charset="UTF-8">
+<meta name="viewport" content="width=device-width, initial-scale=1.0">
+<title>OIDviz · Exchange Detail</title>
+<style>
+*, *::before, *::after { box-sizing: border-box; margin: 0; padding: 0; }
+:root {
+  --bg: #f1f5f9; --surface: #fff; --border: #e2e8f0;
+  --primary: #3b82f6; --primary-dim: #eff6ff;
+  --ok: #16a34a; --ok-dim: #dcfce7;
+  --warn: #d97706; --warn-dim: #fef3c7;
+  --err: #dc2626; --err-dim: #fee2e2;
+  --text: #0f172a; --muted: #64748b;
+  --mono: ui-monospace, 'Cascadia Code', Menlo, monospace;
+}
+body { display: flex; flex-direction: row; height: 100vh; overflow: hidden; color: var(--text); font-family: system-ui, sans-serif; font-size: 14px; }
+
+/* ── Sidebar ── */
+.sidebar { width: 210px; flex-shrink: 0; background: var(--surface); border-right: 1px solid var(--border); display: flex; flex-direction: column; overflow-y: auto; }
+.sb-brand { padding: 14px 16px 12px; font-size: 18px; font-weight: 800; letter-spacing: -0.5px; border-bottom: 1px solid var(--border); flex-shrink: 0; }
+.sb-brand span { color: var(--primary); }
+.sb-section { padding: 12px 16px; border-bottom: 1px solid var(--border); }
+.sb-label { font-size: 10px; font-weight: 600; text-transform: uppercase; letter-spacing: 0.6px; color: var(--muted); margin-bottom: 8px; }
+.sb-device-name { font-size: 13px; font-weight: 600; margin-bottom: 6px; word-break: break-all; }
+.sb-meta { display: grid; grid-template-columns: auto 1fr; gap: 3px 8px; }
+.sb-meta dt { font-size: 11px; color: var(--muted); padding-top: 1px; }
+.sb-meta dd { font-size: 11px; font-family: var(--mono); word-break: break-all; }
+.sb-nav a { display: block; padding: 5px 8px; border-radius: 5px; text-decoration: none; font-size: 13px; color: var(--muted); margin-bottom: 2px; transition: background .1s, color .1s; }
+.sb-nav a:hover { background: var(--bg); color: var(--text); }
+.sb-nav a.active { background: var(--primary-dim); color: var(--primary); font-weight: 500; }
+.sb-setting { display: flex; justify-content: space-between; align-items: center; font-size: 12px; margin-bottom: 6px; }
+.sb-setting label { color: var(--muted); }
+.sb-setting-row { display: flex; align-items: center; gap: 4px; }
+.sb-setting input[type=number] { width: 50px; padding: 2px 5px; border: 1px solid var(--border); border-radius: 4px; font-size: 12px; font-family: var(--mono); text-align: right; }
+
+/* ── Main ── */
+.main-area { flex: 1; overflow-y: auto; overflow-x: hidden; background: var(--bg); }
+.page { max-width: 760px; margin: 24px auto; padding: 0 20px; display: flex; flex-direction: column; gap: 16px; }
+.nav-row { display: flex; align-items: center; gap: 8px; }
+.nav-row button { border: 1px solid var(--border); background: var(--surface); padding: 4px 12px; border-radius: 4px; font-size: 12px; cursor: pointer; color: var(--muted); transition: all .1s; }
+.nav-row button:hover { border-color: var(--primary); color: var(--primary); }
+.nav-row .seq-label { font-family: var(--mono); font-size: 13px; font-weight: 600; padding: 0 8px; }
+.exch-header { background: var(--surface); border: 1px solid var(--border); border-radius: 8px; padding: 16px 20px; }
+.exch-title { display: flex; align-items: center; gap: 10px; margin-bottom: 12px; }
+.exch-num { font-size: 18px; font-weight: 700; }
+.chip { font-size: 10px; font-weight: 600; padding: 2px 8px; border-radius: 10px; text-transform: uppercase; letter-spacing: 0.4px; }
+.chip-ok { background: var(--ok-dim); color: var(--ok); }
+.chip-warn { background: var(--warn-dim); color: var(--warn); }
+.chip-err { background: var(--err-dim); color: var(--err); }
+.meta-row { display: flex; gap: 24px; font-size: 12px; color: var(--muted); flex-wrap: wrap; }
+.meta-val { color: var(--text); font-family: var(--mono); font-weight: 500; }
+.attempts-section { background: var(--surface); border: 1px solid var(--border); border-radius: 8px; padding: 16px 20px; }
+.section-title { font-size: 11px; font-weight: 600; text-transform: uppercase; letter-spacing: 0.5px; color: var(--muted); margin-bottom: 14px; }
+.timeline { position: relative; margin: 0 0 8px; }
+.tl-axis { height: 1px; background: var(--border); position: relative; margin: 24px 0 8px; }
+.tl-tick { position: absolute; top: -14px; font-size: 9px; color: var(--muted); font-family: var(--mono); transform: translateX(-50%); }
+.tl-tick-line { position: absolute; top: 0; width: 1px; height: 8px; background: var(--border); transform: translateX(-50%); }
+.att-lane { display: flex; align-items: center; gap: 10px; margin-bottom: 8px; }
+.att-num { width: 20px; font-size: 10px; color: var(--muted); text-align: right; flex-shrink: 0; }
+.att-track { flex: 1; height: 20px; position: relative; }
+.att-bar-vis { position: absolute; top: 4px; height: 12px; border-radius: 3px; display: flex; align-items: center; justify-content: center; font-size: 9px; color: #fff; font-weight: 600; white-space: nowrap; overflow: hidden; }
+.att-info { font-size: 11px; color: var(--muted); white-space: nowrap; }
+.two-col { display: grid; grid-template-columns: 1fr 1fr; gap: 12px; }
+.panel { background: var(--surface); border: 1px solid var(--border); border-radius: 8px; padding: 16px 20px; }
+.oid-row { display: flex; align-items: flex-start; gap: 8px; padding: 4px 0; border-bottom: 1px solid #f1f5f9; font-size: 12px; }
+.oid-row:last-child { border-bottom: none; }
+.oid-mono { font-family: var(--mono); font-size: 11px; color: var(--muted); word-break: break-all; flex: 1; }
+.oid-name { font-size: 11px; color: var(--text); font-weight: 500; white-space: nowrap; }
+.vtype-badge { font-size: 9px; padding: 1px 5px; border-radius: 3px; background: var(--border); color: var(--muted); white-space: nowrap; font-family: var(--mono); }
+.violation-box { background: var(--warn-dim); border: 1px solid #fcd34d; border-radius: 6px; padding: 10px 14px; font-size: 13px; }
+.violation-name { font-family: var(--mono); font-weight: 600; color: var(--warn); }
+.violation-desc { font-size: 12px; color: #92400e; margin-top: 4px; }
+</style>
+</head>
+<body>
+
+<aside class="sidebar">
+  <div class="sb-brand">OID<span>viz</span></div>
+
+  <div class="sb-section">
+    <div class="sb-label">Device</div>
+    <div class="sb-device-name">router-core-1<span style="font-weight:400;color:var(--muted)">.example.net</span></div>
+    <dl class="sb-meta">
+      <dt>Uptime</dt>   <dd>247d 13h 2m</dd>
+      <dt>Location</dt> <dd>DC-2 Rack 14B</dd>
+      <dt>Contact</dt>  <dd>noc@example.net</dd>
+      <dt>Vendor</dt>   <dd>Cisco</dd>
+    </dl>
+  </div>
+
+  <div class="sb-section">
+    <div class="sb-label">Views</div>
+    <nav class="sb-nav">
+      <a href="01-verdict.html">Verdict</a>
+      <a href="02-waterfall.html">Waterfall</a>
+      <a href="03-subtree.html">Subtree</a>
+      <a href="04-detail.html" class="active">Exchange Detail</a>
+    </nav>
+  </div>
+
+  <div class="sb-section">
+    <div class="sb-label">Settings</div>
+    <div class="sb-setting">
+      <label>Slow &gt;</label>
+      <div class="sb-setting-row">
+        <input type="number" id="sb-slow-ms" value="2" min="0.1" step="0.5" oninput="Settings.setSlowMs(+this.value)">
+        <span style="color:var(--muted)">ms</span>
+      </div>
+    </div>
+  </div>
+</aside>
+
+<div class="main-area">
+<div class="page">
+  <div class="nav-row">
+    <button onclick="prev()">← Prev</button>
+    <span class="seq-label" id="seq-label"></span>
+    <button onclick="next()">Next →</button>
+    <span style="font-size:12px;color:var(--muted);margin-left:8px">of 2976 exchanges</span>
+  </div>
+  <div id="content"></div>
+</div>
+</div>
+
+<script>
+const Settings = {
+  _key: 'oidviz',
+  _defaults: { slowMs: 2 },
+  get() {
+    try { return { ...this._defaults, ...JSON.parse(localStorage.getItem(this._key) || '{}') }; }
+    catch { return { ...this._defaults }; }
+  },
+  setSlowMs(v) {
+    if (isNaN(v) || v <= 0) return;
+    const s = this.get(); s.slowMs = v;
+    localStorage.setItem(this._key, JSON.stringify(s));
+  }
+};
+document.getElementById('sb-slow-ms').value = Settings.get().slowMs;
+
+const OID_NAMES = {
+  "1.3.6.1.2.1.4.21.1.1":            "ipRouteDest",
+  "1.3.6.1.2.1.4.21.1.7":            "ipRouteNextHop",
+  "1.3.6.1.2.1.4.21.1.11":           "ipRouteMask",
+  "1.3.6.1.2.1.2.2.1.1":             "ifIndex",
+  "1.3.6.1.2.1.2.2.1.2":             "ifDescr",
+  "1.3.6.1.2.1.2.2.1.5":             "ifSpeed",
+  "1.3.6.1.2.1.2.2.1.10":            "ifInOctets",
+  "1.3.6.1.2.1.2.2.1.16":            "ifOutOctets",
+  "1.3.6.1.2.1.1.1.0":               "sysDescr",
+  "1.3.6.1.4.1.9.9.109.1.1.1.1.3":   "cpmCPUTotal5min",
+};
+
+const EXAMPLES = [
+  {
+    seq:42, sentAt:61.441, rtt:0.312, violation:null,
+    attempts:[{sentAt:61.441,rtt:0.312,error:null}],
+    request:{pdu:"getbulk",request_id:441829103,oids:["1.3.6.1.2.1.2.2.1.5.1"]},
+    response:{request_id:441829103,varbinds:[
+      {oid:"1.3.6.1.2.1.2.2.1.5.1",vtype:"Gauge32",vlen:4},
+      {oid:"1.3.6.1.2.1.2.2.1.5.2",vtype:"Gauge32",vlen:4},
+      {oid:"1.3.6.1.2.1.2.2.1.10.1",vtype:"Counter32",vlen:4},
+      {oid:"1.3.6.1.2.1.2.2.1.10.2",vtype:"Counter32",vlen:4},
+      {oid:"1.3.6.1.2.1.2.2.1.16.1",vtype:"Counter32",vlen:4},
+      {oid:"1.3.6.1.2.1.2.2.1.16.2",vtype:"Counter32",vlen:4},
+    ]}
+  },
+  {
+    seq:183, sentAt:281.12, rtt:2.891, violation:"request-id-mismatch",
+    attempts:[{sentAt:281.12,rtt:2.891,error:null}],
+    request:{pdu:"getbulk",request_id:782340112,oids:["1.3.6.1.2.1.4.21.1.1.10.0.0.0"]},
+    response:{request_id:999999999,varbinds:[
+      {oid:"1.3.6.1.2.1.4.21.1.1.10.0.0.0",vtype:"IpAddress",vlen:4},
+      {oid:"1.3.6.1.2.1.4.21.1.1.10.0.0.128",vtype:"IpAddress",vlen:4},
+      {oid:"1.3.6.1.2.1.4.21.1.7.10.0.0.0",vtype:"IpAddress",vlen:4},
+      {oid:"1.3.6.1.2.1.4.21.1.7.10.0.0.128",vtype:"IpAddress",vlen:4},
+      {oid:"1.3.6.1.2.1.4.21.1.11.10.0.0.0",vtype:"IpAddress",vlen:4},
+    ]}
+  },
+  {
+    seq:640, sentAt:1024.55, rtt:2.0+0.441, violation:null,
+    attempts:[
+      {sentAt:1024.55,rtt:2.0,error:"timeout"},
+      {sentAt:1026.85,rtt:0.441,error:null}
+    ],
+    request:{pdu:"getbulk",request_id:330109872,oids:["1.3.6.1.4.1.9.9.109.1.1.1.1.3.1"]},
+    response:{request_id:330109872,varbinds:[
+      {oid:"1.3.6.1.4.1.9.9.109.1.1.1.1.3.1",vtype:"Gauge32",vlen:4},
+      {oid:"1.3.6.1.4.1.9.9.109.1.1.1.1.3.2",vtype:"Gauge32",vlen:4},
+      {oid:"1.3.6.1.4.1.9.9.109.1.1.1.1.4.1",vtype:"Gauge32",vlen:4},
+    ]}
+  },
+];
+
+let idx=0;
+
+function oidName(oid) {
+  if (OID_NAMES[oid]) return OID_NAMES[oid];
+  for (const [prefix,name] of Object.entries(OID_NAMES)) {
+    if (oid.startsWith(prefix+".")||oid===prefix) return name+".*";
+  }
+  return null;
+}
+
+function renderExchange(e) {
+  const totalRtt=e.attempts.reduce((s,a)=>s+a.rtt,0);
+  const chip=e.violation
+    ?`<span class="chip chip-warn">${e.violation}</span>`
+    :e.attempts.some(a=>a.error)
+    ?`<span class="chip chip-err">${e.attempts.find(a=>a.error).error} + retry</span>`
+    :`<span class="chip chip-ok">ok</span>`;
+
+  const totalT=e.attempts[e.attempts.length-1].sentAt+e.attempts[e.attempts.length-1].rtt-e.attempts[0].sentAt;
+  const trackW=400, scale=totalT>0?(trackW-20)/totalT:1, t0=e.attempts[0].sentAt;
+
+  const lanes=e.attempts.map((a,i)=>{
+    const left=(a.sentAt-t0)*scale, width=Math.max(6,a.rtt*scale);
+    const color=a.error?"#ef4444":"#3b82f6";
+    const label=a.rtt>=0.1?`${a.rtt.toFixed(2)}ms`:"";
+    return `<div class="att-lane">
+      <span class="att-num">${i+1}</span>
+      <div class="att-track">
+        <div class="att-bar-vis" style="left:${left}px;width:${width}px;background:${color}"><span>${label}</span></div>
+      </div>
+      <span class="att-info">${a.error?"⚠ "+a.error+" · ":""}${a.rtt.toFixed(3)} ms</span>
+    </div>`;
+  }).join("");
+
+  const ticks=[];
+  const tickStep=totalT>5?2:totalT>2?1:0.5;
+  for (let t=0;t<=totalT+tickStep;t+=tickStep) {
+    const x=t*scale; if (x>trackW) break;
+    ticks.push(`<span class="tl-tick" style="left:${x}px">${t.toFixed(1)}ms</span><span class="tl-tick-line" style="left:${x}px"></span>`);
+  }
+
+  const reqOids=e.request.oids.map(o=>{
+    const n=oidName(o);
+    return `<div class="oid-row"><div class="oid-mono">${o}</div>${n?`<span class="oid-name">${n}</span>`:""}</div>`;
+  }).join("");
+
+  const respVbs=e.response.varbinds.map(vb=>{
+    const n=oidName(vb.oid);
+    return `<div class="oid-row">
+      <div style="flex:1">${n?`<div class="oid-name" style="margin-bottom:2px">${n}</div>`:""}<div class="oid-mono">${vb.oid}</div></div>
+      <span class="vtype-badge">${vb.vtype}</span>
+    </div>`;
+  }).join("");
+
+  const reqIdMatch=e.response.request_id===e.request.request_id;
+  const ridHtml=`<span style="font-family:var(--mono);font-size:11px">${e.request.request_id}</span>`;
+  const respRidHtml=reqIdMatch
+    ?`<span style="font-family:var(--mono);font-size:11px;color:var(--ok)">✓ ${e.response.request_id}</span>`
+    :`<span style="font-family:var(--mono);font-size:11px;color:var(--err)">✗ ${e.response.request_id} (expected ${e.request.request_id})</span>`;
+
+  return `
+    <div class="exch-header">
+      <div class="exch-title"><span class="exch-num">Exchange #${e.seq}</span>${chip}</div>
+      <div class="meta-row">
+        <span>Sent at <span class="meta-val">${e.sentAt.toFixed(3)} ms</span></span>
+        <span>Total RTT <span class="meta-val">${totalRtt.toFixed(3)} ms</span></span>
+        <span>Attempts <span class="meta-val">${e.attempts.length}</span></span>
+        <span>Varbinds <span class="meta-val">${e.response.varbinds.length}</span></span>
+      </div>
+    </div>
+    ${e.violation?`<div class="violation-box">
+      <div class="violation-name">${e.violation}</div>
+      <div class="violation-desc">${
+        e.violation==="request-id-mismatch"
+          ?"The response request_id ("+e.response.request_id+") does not match the sent request_id ("+e.request.request_id+"). The device may have returned a stale or out-of-order response."
+          :"OIDs in the response did not strictly increase, indicating the device may have an agent bug or loop."
+      }</div>
+    </div>`:""}
+    <div class="attempts-section">
+      <div class="section-title">Attempt timing</div>
+      <div class="timeline"><div class="tl-axis">${ticks.join("")}</div>${lanes}</div>
+    </div>
+    <div class="two-col">
+      <div class="panel">
+        <div class="section-title">Request</div>
+        <div class="oid-row" style="margin-bottom:8px"><span class="oid-mono">PDU</span><span class="oid-name">${e.request.pdu}</span></div>
+        <div class="oid-row" style="margin-bottom:8px"><span class="oid-mono">Request-ID</span><span>${ridHtml}</span></div>
+        <div style="font-size:11px;color:var(--muted);margin-bottom:6px;font-weight:500;text-transform:uppercase;letter-spacing:0.4px">Cursor OID</div>
+        ${reqOids}
+      </div>
+      <div class="panel">
+        <div class="section-title">Response varbinds</div>
+        <div class="oid-row" style="margin-bottom:8px"><span class="oid-mono">Request-ID</span>${respRidHtml}</div>
+        ${respVbs}
+      </div>
+    </div>`;
+}
+
+function render() {
+  const e=EXAMPLES[idx];
+  document.getElementById("seq-label").textContent=`#${e.seq}`;
+  document.getElementById("content").innerHTML=renderExchange(e);
+}
+function prev() { idx=(idx-1+EXAMPLES.length)%EXAMPLES.length; render(); }
+function next() { idx=(idx+1)%EXAMPLES.length; render(); }
+
+render();
+</script>
+</body>
+</html>

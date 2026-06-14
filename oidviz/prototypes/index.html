@@ -1,0 +1,101 @@
+<!DOCTYPE html>
+<html lang="en">
+<head>
+<meta charset="UTF-8">
+<meta name="viewport" content="width=device-width, initial-scale=1.0">
+<title>OIDviz · Prototypes</title>
+<style>
+*, *::before, *::after { box-sizing: border-box; margin: 0; padding: 0; }
+body { background: #f1f5f9; color: #0f172a; font-family: system-ui, sans-serif; min-height: 100vh; display: flex; align-items: center; justify-content: center; padding: 40px 20px; }
+.wrap { max-width: 560px; width: 100%; }
+h1 { font-size: 28px; font-weight: 800; letter-spacing: -0.5px; margin-bottom: 4px; }
+h1 span { color: #3b82f6; }
+.sub { color: #64748b; font-size: 14px; margin-bottom: 32px; }
+.list { display: flex; flex-direction: column; gap: 10px; }
+a.card { display: flex; align-items: center; gap: 16px; background: #fff; border: 1px solid #e2e8f0; border-radius: 10px; padding: 16px 20px; text-decoration: none; color: inherit; transition: border-color .15s, box-shadow .15s; }
+a.card:hover { border-color: #3b82f6; box-shadow: 0 0 0 3px #eff6ff; }
+.num { font-size: 12px; font-weight: 700; color: #94a3b8; width: 20px; flex-shrink: 0; }
+.card-text { flex: 1; }
+.card-title { font-size: 15px; font-weight: 600; margin-bottom: 2px; }
+.card-desc { font-size: 12px; color: #64748b; }
+.arrow { color: #cbd5e1; font-size: 16px; }
+a.card:hover .arrow { color: #3b82f6; }
+</style>
+</head>
+<body>
+<div class="wrap">
+  <h1>OID<span>viz</span></h1>
+  <p class="sub">UI prototypes — pure vanilla JS &amp; CSS</p>
+  <div class="list">
+    <a class="card" href="01-verdict.html">
+      <span class="num">01</span>
+      <div class="card-text">
+        <div class="card-title">Verdict</div>
+        <div class="card-desc">Walk result, stats, violation tally, settings</div>
+      </div>
+      <span class="arrow">→</span>
+    </a>
+    <a class="card" href="02-waterfall.html">
+      <span class="num">02</span>
+      <div class="card-text">
+        <div class="card-title">Waterfall</div>
+        <div class="card-desc">Gantt-style latency timeline per exchange, zoom, filters</div>
+      </div>
+      <span class="arrow">→</span>
+    </a>
+    <a class="card" href="03-subtree.html">
+      <span class="num">03</span>
+      <div class="card-text">
+        <div class="card-title">Subtree</div>
+        <div class="card-desc">OID tree aggregation — avg/P99 RTT, reliability, copy OID</div>
+      </div>
+      <span class="arrow">→</span>
+    </a>
+    <a class="card" href="04-detail.html">
+      <span class="num">04</span>
+      <div class="card-text">
+        <div class="card-title">Exchange Detail</div>
+        <div class="card-desc">Per-exchange drill-down: attempts, request/response, violations</div>
+      </div>
+      <span class="arrow">→</span>
+    </a>
+    <a class="card" href="05-app.html">
+      <span class="num">05</span>
+      <div class="card-text">
+        <div class="card-title">App Shell</div>
+        <div class="card-desc">Full integrated app — file drop, tab navigation, shared filters</div>
+      </div>
+      <span class="arrow">→</span>
+    </a>
+  </div>
+
+  <h2 style="font-size:15px;font-weight:700;margin:40px 0 12px;color:#475569;letter-spacing:0.3px">LARGE-SCALE VIEWS</h2>
+  <div class="list">
+    <a class="card" href="waterfall-v7-incident-stack.html">
+      <span class="num" style="color:#dc2626">v7</span>
+      <div class="card-text">
+        <div class="card-title">Incident Stack <span style="font-size:11px;color:#16a34a;font-weight:600;margin-left:6px">★ default</span></div>
+        <div class="card-desc">Anomaly clusters ranked worst-first — triage queue, no searching</div>
+      </div>
+      <span class="arrow">→</span>
+    </a>
+    <a class="card" href="waterfall-v5-minimap-detail.html">
+      <span class="num">v5</span>
+      <div class="card-text">
+        <div class="card-title">Minimap + Detail Waterfall</div>
+        <div class="card-desc">Full-trace overview bar + draggable zoom window into detail</div>
+      </div>
+      <span class="arrow">→</span>
+    </a>
+    <a class="card" href="waterfall-v1-oid-tree-explorer.html">
+      <span class="num">v1</span>
+      <div class="card-text">
+        <div class="card-title">OID Tree Explorer</div>
+        <div class="card-desc">Collapsible OID prefix tree — shows distribution across MIB subtrees</div>
+      </div>
+      <span class="arrow">→</span>
+    </a>
+  </div>
+</div>
+</body>
+</html>

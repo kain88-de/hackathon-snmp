@@ -4,3 +4,5 @@ __pycache__/
 .coverage*
 htmlcov/
 .claude/worktrees/
+oidviz/node_modules/
+oidviz/package-lock.json

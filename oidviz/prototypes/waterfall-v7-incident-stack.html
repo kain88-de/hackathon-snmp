@@ -1,0 +1,855 @@
+<!DOCTYPE html>
+<html lang="en">
+<head>
+<meta charset="UTF-8">
+<meta name="viewport" content="width=device-width, initial-scale=1.0">
+<title>OIDviz · Incident Stack</title>
+<style>
+*, *::before, *::after { box-sizing: border-box; margin: 0; padding: 0; }
+:root {
+  --bg: #f1f5f9; --surface: #fff; --border: #e2e8f0;
+  --primary: #3b82f6; --ok: #16a34a; --warn: #d97706; --err: #dc2626;
+  --text: #0f172a; --muted: #64748b;
+  --mono: ui-monospace, 'Cascadia Code', Menlo, monospace;
+}
+body { background: var(--bg); color: var(--text); font-family: system-ui, sans-serif; font-size: 14px; display: flex; flex-direction: column; height: 100vh; overflow: hidden; }
+
+/* ── Drop zone ── */
+#drop-zone { flex: 1; display: flex; flex-direction: column; align-items: center; justify-content: center; gap: 12px; padding: 40px; }
+#drop-zone.hidden { display: none; }
+.drop-box { border: 2px dashed var(--border); border-radius: 12px; padding: 48px 64px; text-align: center; background: var(--surface); cursor: pointer; transition: border-color .15s, background .15s; }
+.drop-box:hover, .drop-box.drag-over { border-color: var(--primary); background: #eff6ff; }
+.drop-title { font-size: 18px; font-weight: 600; margin-bottom: 6px; }
+.drop-sub { font-size: 13px; color: var(--muted); }
+.drop-sub b { color: var(--text); font-family: var(--mono); font-size: 12px; }
+.shortcut-list { display: flex; gap: 8px; flex-wrap: wrap; justify-content: center; }
+.shortcut-btn { border: 1px solid var(--border); background: var(--surface); padding: 6px 14px; border-radius: 6px; font-size: 12px; cursor: pointer; font-family: var(--mono); transition: all .1s; }
+.shortcut-btn:hover { border-color: var(--primary); color: var(--primary); }
+
+/* ── Viewer ── */
+#viewer { flex: 1; display: flex; flex-direction: column; overflow: hidden; }
+#viewer.hidden { display: none; }
+
+/* Metrics bar */
+#metrics { background: #1e293b; color: #e2e8f0; padding: 10px 16px; display: flex; gap: 24px; flex-shrink: 0; font-size: 12px; font-family: var(--mono); flex-wrap: wrap; }
+.metric { display: flex; flex-direction: column; gap: 2px; }
+.metric-label { font-size: 10px; color: #94a3b8; text-transform: uppercase; letter-spacing: 0.5px; }
+.metric-value { font-weight: 600; }
+.metric-value.ok   { color: #4ade80; }
+.metric-value.warn { color: #fbbf24; }
+.metric-value.err  { color: #f87171; }
+#fps-value { transition: color .2s; }
+
+/* Toolbar */
+.toolbar { background: var(--surface); border-bottom: 1px solid var(--border); padding: 8px 16px; display: flex; align-items: center; gap: 16px; flex-shrink: 0; flex-wrap: wrap; }
+.toolbar label { font-size: 12px; color: var(--muted); display: flex; align-items: center; gap: 6px; cursor: pointer; }
+.filter-btn { border: 1px solid var(--border); background: var(--surface); padding: 3px 10px; border-radius: 4px; cursor: pointer; font-size: 11px; font-weight: 500; color: var(--text); transition: all .1s; }
+.filter-btn.active { border-color: var(--warn); background: #fef3c7; color: var(--warn); }
+.btn-reset { margin-left: auto; border: 1px solid var(--border); background: var(--surface); padding: 4px 10px; border-radius: 4px; cursor: pointer; font-size: 12px; color: var(--muted); }
+.btn-reset:hover { color: var(--err); border-color: var(--err); }
+.sort-toggle { font-size: 11px; color: var(--muted); border: 1px solid var(--border); background: var(--surface); padding: 3px 10px; border-radius: 4px; cursor: pointer; transition: all .1s; }
+.sort-toggle.active { border-color: var(--primary); background: #eff6ff; color: var(--primary); }
+
+/* Warnings */
+.canvas-limit-warn { background: #fef3c7; border-top: 1px solid #fcd34d; padding: 8px 16px; font-size: 12px; color: #92400e; flex-shrink: 0; display: none; }
+.canvas-limit-warn.visible { display: block; }
+
+/* ── Chart wrap / virtual list ── */
+.chart-wrap { flex: 1; overflow-y: auto; overflow-x: hidden; position: relative; }
+#spacer { position: relative; }
+#rows { position: absolute; top: 0; left: 0; right: 0; }
+
+/* ── Incident rows ── */
+.incident-row {
+  position: absolute;
+  left: 0; right: 0;
+  height: 72px;
+  display: flex;
+  align-items: center;
+  gap: 12px;
+  padding: 0 16px;
+  border-bottom: 1px solid var(--border);
+  background: var(--surface);
+  cursor: pointer;
+  transition: background .1s;
+  user-select: none;
+}
+.incident-row:hover { background: #f8fafc; }
+.incident-row.expanded { background: #f0f9ff; }
+
+.severity-chip {
+  flex-shrink: 0;
+  width: 48px;
+  height: 48px;
+  border-radius: 10px;
+  display: flex;
+  flex-direction: column;
+  align-items: center;
+  justify-content: center;
+  font-size: 10px;
+  font-weight: 700;
+  font-family: var(--mono);
+  line-height: 1.2;
+}
+.severity-chip.err { background: #fee2e2; color: #dc2626; }
+.severity-chip.warn { background: #fef3c7; color: #d97706; }
+.severity-chip.info { background: #dbeafe; color: #3b82f6; }
+
+.incident-title {
+  flex: 1;
+  min-width: 0;
+  display: flex;
+  flex-direction: column;
+  gap: 3px;
+}
+.incident-name {
+  font-size: 13px;
+  font-weight: 600;
+  white-space: nowrap;
+  overflow: hidden;
+  text-overflow: ellipsis;
+}
+.incident-sub {
+  font-size: 11px;
+  color: var(--muted);
+  font-family: var(--mono);
+  white-space: nowrap;
+  overflow: hidden;
+  text-overflow: ellipsis;
+}
+
+.sparkline-wrap {
+  flex-shrink: 0;
+  width: 160px;
+  height: 40px;
+  border-radius: 4px;
+  overflow: hidden;
+  background: #f8fafc;
+  border: 1px solid var(--border);
+}
+
+.pos-bar-wrap {
+  flex-shrink: 0;
+  width: 110px;
+  display: flex;
+  flex-direction: column;
+  gap: 3px;
+  align-items: stretch;
+}
+.pos-bar-title {
+  font-size: 9px;
+  font-weight: 700;
+  letter-spacing: 0.5px;
+  text-transform: uppercase;
+  color: #94a3b8;
+}
+.pos-bar-track {
+  width: 100%;
+  height: 12px;
+  border-radius: 6px;
+  background: #e2e8f0;
+  position: relative;
+  overflow: hidden;
+}
+.pos-bar-fill {
+  position: absolute;
+  top: 0;
+  height: 100%;
+  border-radius: 6px;
+  min-width: 5px;
+}
+.pos-bar-fill.err { background: #dc2626; }
+.pos-bar-fill.warn { background: #d97706; }
+.pos-bar-fill.info { background: #3b82f6; }
+.pos-bar-ticks {
+  display: flex;
+  justify-content: space-between;
+  font-size: 9px;
+  color: #94a3b8;
+  font-family: ui-monospace, monospace;
+}
+
+/* ── Detail overlay ── */
+#detail-overlay {
+  display: none;
+  position: fixed;
+  inset: 0;
+  background: rgba(15,23,42,0.5);
+  z-index: 200;
+  align-items: center;
+  justify-content: center;
+}
+#detail-overlay.visible { display: flex; }
+#detail-panel {
+  background: var(--surface);
+  border-radius: 12px;
+  width: 760px;
+  max-width: 95vw;
+  max-height: 80vh;
+  display: flex;
+  flex-direction: column;
+  overflow: hidden;
+  box-shadow: 0 20px 60px rgba(0,0,0,0.3);
+}
+#detail-header {
+  background: #1e293b;
+  color: #e2e8f0;
+  padding: 14px 20px;
+  display: flex;
+  align-items: center;
+  justify-content: space-between;
+  flex-shrink: 0;
+}
+#detail-header h3 { font-size: 14px; font-weight: 600; }
+#detail-close { background: none; border: none; color: #94a3b8; font-size: 18px; cursor: pointer; line-height: 1; }
+#detail-close:hover { color: #f1f5f9; }
+#detail-body { overflow-y: auto; padding: 16px 20px; }
+.detail-table { width: 100%; border-collapse: collapse; font-size: 12px; font-family: var(--mono); }
+.detail-table th { text-align: left; padding: 6px 8px; border-bottom: 2px solid var(--border); color: var(--muted); font-size: 10px; text-transform: uppercase; letter-spacing: 0.5px; }
+.detail-table td { padding: 5px 8px; border-bottom: 1px solid var(--border); }
+.detail-table tr:hover td { background: #f8fafc; }
+.tag-viol { color: #d97706; font-weight: 600; }
+.tag-timeout { color: #dc2626; font-weight: 600; }
+.tag-retry { color: #3b82f6; font-weight: 600; }
+
+/* Tooltip */
+#tooltip { position: fixed; background: #1e293b; color: #f1f5f9; font-size: 11px; font-family: var(--mono); padding: 7px 10px; border-radius: 6px; pointer-events: none; display: none; z-index: 300; white-space: pre; line-height: 1.6; }
+</style>
+</head>
+<body>
+
+<!-- Drop zone -->
+<div id="drop-zone">
+  <div class="drop-box" id="drop-box" onclick="document.getElementById('file-input').click()">
+    <div class="drop-title">Drop a trace file or click to open</div>
+    <div class="drop-sub" style="margin-bottom:16px">Accepts <b>.oidtrace.jsonl.gz</b></div>
+  </div>
+  <div style="font-size:12px;color:var(--muted)">Quick load from /oidviz/tools/fixtures/</div>
+  <div class="shortcut-list">
+    <button class="shortcut-btn" onclick="loadPath('/oidviz/tools/fixtures/trace-5k.oidtrace.jsonl.gz')">trace-5k</button>
+    <button class="shortcut-btn" onclick="loadPath('/oidviz/tools/fixtures/trace-50k.oidtrace.jsonl.gz')">trace-50k</button>
+    <button class="shortcut-btn" onclick="loadPath('/oidviz/tools/fixtures/trace-100k.oidtrace.jsonl.gz')">trace-100k</button>
+    <button class="shortcut-btn" style="border-color:#d97706;color:#d97706" onclick="loadPath('/oidviz/tools/fixtures/trace-focused.oidtrace.jsonl.gz')">focused (3 areas)</button>
+  </div>
+  <input type="file" id="file-input" accept=".gz" style="display:none" onchange="loadFile(this.files[0])">
+</div>
+
+<!-- Viewer -->
+<div id="viewer" class="hidden">
+  <div id="metrics">
+    <div class="metric"><span class="metric-label">Exchanges</span><span class="metric-value" id="m-exchanges">—</span></div>
+    <div class="metric"><span class="metric-label">Parse</span><span class="metric-value" id="m-parse">—</span></div>
+    <div class="metric"><span class="metric-label">First render</span><span class="metric-value" id="m-render">—</span></div>
+    <div class="metric"><span class="metric-label">List height</span><span class="metric-value" id="m-cheight">—</span></div>
+    <div class="metric"><span class="metric-label">List width</span><span class="metric-value" id="m-cwidth">—</span></div>
+    <div class="metric"><span class="metric-label">Visible rows</span><span class="metric-value" id="m-visible">—</span></div>
+    <div class="metric"><span class="metric-label">Scroll FPS</span><span class="metric-value" id="fps-value">—</span></div>
+    <div class="metric"><span class="metric-label">Violations</span><span class="metric-value" id="m-violations">—</span></div>
+    <div class="metric"><span class="metric-label">End reason</span><span class="metric-value" id="m-end">—</span></div>
+  </div>
+  <div class="canvas-limit-warn" id="canvas-warn"></div>
+  <div class="toolbar">
+    <label><input type="checkbox" id="f-slow" checked onchange="applyFilters()"> Slow (&gt;2ms)</label>
+    <label><input type="checkbox" id="f-viol" checked onchange="applyFilters()"> Violations</label>
+    <label><input type="checkbox" id="f-retry" checked onchange="applyFilters()"> Retries</label>
+    <span style="color:var(--border);margin:0 4px">|</span>
+    <button class="sort-toggle active" id="btn-sort-sev" onclick="setSort('severity')">Worst first</button>
+    <button class="sort-toggle" id="btn-sort-seq" onclick="setSort('walkorder')">Walk order</button>
+    <button class="btn-reset" onclick="reset()">Load another file</button>
+  </div>
+  <div class="chart-wrap" id="chart-wrap">
+    <div id="spacer">
+      <div id="rows"></div>
+    </div>
+  </div>
+</div>
+
+<!-- Detail overlay -->
+<div id="detail-overlay" onclick="closeDetail(event)">
+  <div id="detail-panel">
+    <div id="detail-header">
+      <h3 id="detail-title">Incident detail</h3>
+      <button id="detail-close" onclick="closeDetail()">&#x2715;</button>
+    </div>
+    <div id="detail-body"></div>
+  </div>
+</div>
+
+<div id="tooltip"></div>
+
+<script>
+// ── Constants ──
+const SLOW_MS = 2;
+const GAP_WINDOW = 8;
+const ROW_PX = 72;
+
+// ── State ──
+let ALL = [];
+let clusters = [];
+let shownClusters = [];
+let summary = null;
+let sortMode = 'severity'; // 'severity' | 'walkorder'
+let sparklineCache = {};
+
+// OID region name lookup
+function oidRegion(oid) {
+  if (!oid) return 'unknown';
+  const prefixes = [
+    ['1.3.6.1.2.1.1.',    'system'],
+    ['1.3.6.1.2.1.2.2.1', 'ifTable/interfaces'],
+    ['1.3.6.1.2.1.2.',    'interfaces'],
+    ['1.3.6.1.2.1.4.',    'ip'],
+    ['1.3.6.1.2.1.6.',    'tcp'],
+    ['1.3.6.1.2.1.7.',    'udp'],
+    ['1.3.6.1.2.1.11.',   'snmp'],
+    ['1.3.6.1.2.1.25.',   'hrSystem'],
+    ['1.3.6.1.4.1.',      'enterprises'],
+  ];
+  for (const [prefix, name] of prefixes) {
+    if (oid.startsWith(prefix)) return name;
+  }
+  // Fallback: first 8 segments
+  const parts = oid.split('.');
+  return parts.slice(0, 8).join('.');
+}
+
+// ── Drop zone ──
+const dropBox = document.getElementById('drop-box');
+dropBox.addEventListener('dragover', e => { e.preventDefault(); dropBox.classList.add('drag-over'); });
+dropBox.addEventListener('dragleave', () => dropBox.classList.remove('drag-over'));
+dropBox.addEventListener('drop', e => { e.preventDefault(); dropBox.classList.remove('drag-over'); const f = e.dataTransfer.files[0]; if (f) loadFile(f); });
+
+async function loadPath(path) {
+  try {
+    const resp = await fetch(path);
+    if (!resp.ok) throw new Error('HTTP ' + resp.status + ' ' + resp.statusText);
+    const blob = await resp.blob();
+    await parseAndShow(blob, path.split('/').pop());
+  } catch(e) {
+    alert('Could not fetch ' + path + '\n' + e.message);
+  }
+}
+
+async function loadFile(file) {
+  await parseAndShow(file, file.name);
+}
+
+// ── Parser (verbatim from base) ──
+async function parseAndShow(blob, name) {
+  const t0 = performance.now();
+
+  let header = null;
+  summary = null;
+  const exchanges = [];
+
+  const ds = new DecompressionStream('gzip');
+  blob.stream().pipeTo(ds.writable).catch(()=>{});
+  const reader = ds.readable.getReader();
+  const decoder = new TextDecoder();
+  let buf = '';
+
+  try {
+    while (true) {
+      const { done, value } = await reader.read();
+      if (done) break;
+      buf += decoder.decode(value, { stream: true });
+      let nl;
+      while ((nl = buf.indexOf('\n')) !== -1) {
+        const line = buf.slice(0, nl).trim();
+        buf = buf.slice(nl + 1);
+        if (!line) continue;
+        const rec = JSON.parse(line);
+        if (rec.type === 'header') {
+          header = rec;
+        } else if (rec.type === 'summary') {
+          summary = rec;
+        } else if (rec.type === 'exchange') {
+          const first = rec.attempts[0];
+          const last  = rec.attempts[rec.attempts.length - 1];
+          const totalRttMs = (last.received_at - first.sent_at) * 1000;
+          const timeoutS = header?.settings?.timeout_s ?? 2.0;
+          exchanges.push({
+            seq:         rec.seq,
+            sentAtMs:    first.sent_at * 1000,
+            receivedAtMs: last.received_at * 1000,
+            rtt:         totalRttMs,
+            violation:   rec.violation ?? null,
+            timeout:     rec.attempts.some(a => (a.received_at - a.sent_at) >= timeoutS - 0.001),
+            attempts:    rec.attempts.map(a => ({
+              sentAtMs: a.sent_at * 1000,
+              rtt:      (a.received_at - a.sent_at) * 1000,
+              timeout:  (a.received_at - a.sent_at) >= timeoutS - 0.001,
+            })),
+            oid: rec.request?.oids?.[0] ?? '',
+          });
+        }
+      }
+    }
+  } catch(e) {
+    console.error('Parse error', e);
+  }
+
+  const parseMs = performance.now() - t0;
+  ALL = exchanges;
+
+  // Normalize sentAtMs/receivedAtMs to 0-based
+  if (ALL.length) {
+    const t0ms = ALL[0].sentAtMs;
+    for (const e of ALL) {
+      e.sentAtMs -= t0ms;
+      e.receivedAtMs -= t0ms;
+      for (const a of e.attempts) a.sentAtMs -= t0ms;
+    }
+  }
+
+  const renderT0 = performance.now();
+  detectAndCluster();
+  applyFilters();
+  showViewer(parseMs, performance.now() - renderT0);
+}
+
+// ── Incident detection & clustering ──
+function detectAndCluster() {
+  sparklineCache = {};
+  if (!ALL.length) { clusters = []; return; }
+
+  // Flag anomalies
+  const isAnomaly = new Uint8Array(ALL.length);
+  for (let i = 0; i < ALL.length; i++) {
+    const e = ALL[i];
+    if (e.rtt > SLOW_MS || e.violation != null || e.attempts.length > 1 || e.timeout) {
+      isAnomaly[i] = 1;
+    }
+  }
+
+  const result = [];
+  let i = 0;
+  while (i < ALL.length) {
+    if (!isAnomaly[i]) { i++; continue; }
+
+    // Start a new cluster
+    const startIdx = i;
+    const members = [i];
+    let lastAnomalyIdx = i;
+
+    i++;
+    while (i < ALL.length) {
+      if (isAnomaly[i]) {
+        // Check if within gap window or same OID region
+        const gap = i - lastAnomalyIdx - 1;
+        const sameRegion = oidRegion(ALL[i].oid) === oidRegion(ALL[lastAnomalyIdx].oid);
+        if (gap <= GAP_WINDOW || sameRegion) {
+          members.push(i);
+          lastAnomalyIdx = i;
+          i++;
+        } else {
+          break;
+        }
+      } else {
+        // Normal exchange — keep going if within gap window
+        const gap = i - lastAnomalyIdx;
+        if (gap <= GAP_WINDOW) {
+          i++;
+        } else {
+          break;
+        }
+      }
+    }
+
+    const endIdx = lastAnomalyIdx;
+
+    // Compute cluster stats
+    let peakRtt = 0;
+    let retryCount = 0;
+    let timeoutCount = 0;
+    const violationTypes = new Set();
+    const regionCounts = {};
+
+    for (const idx of members) {
+      const e = ALL[idx];
+      if (e.rtt > peakRtt) peakRtt = e.rtt;
+      if (e.attempts.length > 1) retryCount += e.attempts.length - 1;
+      if (e.timeout) timeoutCount++;
+      if (e.violation) violationTypes.add(e.violation);
+      const r = oidRegion(e.oid);
+      regionCounts[r] = (regionCounts[r] || 0) + 1;
+    }
+
+    // Dominant region
+    let region = 'unknown';
+    let maxCount = 0;
+    for (const [r, c] of Object.entries(regionCounts)) {
+      if (c > maxCount) { maxCount = c; region = r; }
+    }
+
+    // Score: higher = worse
+    const score = 100 * timeoutCount
+                + 50  * violationTypes.size
+                + 10  * retryCount
+                + Math.log10(Math.max(peakRtt, 1)) * 5
+                + members.length * 0.1;
+
+    result.push({
+      startIdx,
+      endIdx,
+      startSeq: ALL[startIdx].seq,
+      endSeq:   ALL[endIdx].seq,
+      members,
+      peakRtt,
+      retryCount,
+      timeoutCount,
+      violationTypes,
+      region,
+      score,
+    });
+  }
+
+  // Keep walk-order reference, then sort by severity
+  clusters = result;
+}
+
+// ── Severity class ──
+function severityClass(c) {
+  if (c.timeoutCount > 0) return 'err';
+  if (c.violationTypes.size > 0 || c.peakRtt > SLOW_MS) return 'warn';
+  return 'info';
+}
+
+// ── applyFilters ──
+function applyFilters() {
+  const fSlow  = document.getElementById('f-slow')?.checked ?? true;
+  const fViol  = document.getElementById('f-viol')?.checked ?? true;
+  const fRetry = document.getElementById('f-retry')?.checked ?? true;
+
+  shownClusters = clusters.filter(c => {
+    const matchSlow  = fSlow  && c.peakRtt > SLOW_MS;
+    const matchViol  = fViol  && c.violationTypes.size > 0;
+    const matchRetry = fRetry && c.retryCount > 0;
+    // A timeout cluster always matches if any filter that could cover it is on
+    if (c.timeoutCount > 0 && (fSlow || fViol || fRetry)) return true;
+    return matchSlow || matchViol || matchRetry;
+  });
+
+  if (sortMode === 'severity') {
+    shownClusters = [...shownClusters].sort((a, b) => b.score - a.score);
+  }
+  // walkorder = already in walk order from detectAndCluster
+
+  updateMetrics();
+  virtualRender();
+}
+
+// ── Sort ──
+function setSort(mode) {
+  sortMode = mode;
+  document.getElementById('btn-sort-sev').classList.toggle('active', mode === 'severity');
+  document.getElementById('btn-sort-seq').classList.toggle('active', mode === 'walkorder');
+  applyFilters();
+}
+
+// ── Virtual list render ──
+const chartWrap = document.getElementById('chart-wrap');
+const spacer    = document.getElementById('spacer');
+const rowsEl    = document.getElementById('rows');
+
+function virtualRender() {
+  const totalH = shownClusters.length * ROW_PX;
+  spacer.style.height = totalH + 'px';
+  renderVisible();
+
+  // data-ready signal
+  const wrap = document.getElementById('chart-wrap');
+  if (wrap) wrap.setAttribute('data-ready', '1');
+  // Also set on a canvas if any exist (Playwright compatibility)
+  const c = document.querySelector('canvas');
+  if (c) c.setAttribute('data-ready', '1');
+}
+
+function renderVisible() {
+  const scrollTop = chartWrap.scrollTop;
+  const clientH   = chartWrap.clientHeight;
+
+  const first = Math.max(0, Math.floor(scrollTop / ROW_PX));
+  const count = Math.ceil(clientH / ROW_PX) + 2;
+  const last  = Math.min(shownClusters.length, first + count);
+
+  const parts = [];
+  for (let i = first; i < last; i++) {
+    parts.push(buildRow(shownClusters[i], i, first));
+  }
+
+  rowsEl.innerHTML = parts.join('');
+  rowsEl.style.top = (first * ROW_PX) + 'px';
+
+  // Draw sparklines for visible rows
+  for (let i = first; i < last; i++) {
+    drawSparkline(shownClusters[i], i - first);
+  }
+}
+
+function buildRow(c, absIdx, firstIdx) {
+  const cls = severityClass(c);
+  const rank = absIdx + 1;
+
+  // Title
+  let typeStr = '';
+  if (c.timeoutCount > 0) typeStr = `timeout x${c.timeoutCount}`;
+  else if (c.violationTypes.size > 0) typeStr = [...c.violationTypes].join(', ');
+  else if (c.peakRtt > SLOW_MS) typeStr = 'slow region';
+  else typeStr = `${c.retryCount} retr${c.retryCount === 1 ? 'y' : 'ies'}`;
+
+  const titleStr = `${c.region} — ${typeStr}`;
+
+  const seqRange = c.startSeq === c.endSeq
+    ? `seq ${c.startSeq.toLocaleString()}`
+    : `seq ${c.startSeq.toLocaleString()}–${c.endSeq.toLocaleString()}`;
+  const subStr = `${seqRange} · peak ${c.peakRtt.toFixed(0)}ms · ${c.members.length} exchange${c.members.length !== 1 ? 's' : ''}${c.retryCount > 0 ? ` · ${c.retryCount} retr${c.retryCount === 1 ? 'y' : 'ies'}` : ''}`;
+
+  // Position bar percentages
+  const N = ALL.length || 1;
+  const posLeft  = (c.startIdx / N * 100).toFixed(1);
+  const posWidth = Math.max(0.5, ((c.endIdx - c.startIdx + 1) / N * 100)).toFixed(1);
+  const posLabel = Math.round(c.startIdx / N * 100) + '%';
+
+  const localIdx = absIdx - firstIdx;
+
+  return `<div class="incident-row" style="top:${localIdx * ROW_PX}px" data-idx="${absIdx}" onclick="openDetail(${absIdx})">
+  <div class="severity-chip ${cls}">
+    <span style="font-size:9px;opacity:0.7">#</span>
+    <span style="font-size:16px;line-height:1">${rank}</span>
+  </div>
+  <div class="incident-title">
+    <div class="incident-name" title="${escHtml(titleStr)}">${escHtml(titleStr)}</div>
+    <div class="incident-sub">${escHtml(subStr)}</div>
+  </div>
+  <div class="sparkline-wrap">
+    <canvas id="spark-${absIdx}" width="160" height="40" data-cidx="${absIdx}" data-lidx="${localIdx}"></canvas>
+  </div>
+  <div class="pos-bar-wrap">
+    <div class="pos-bar-title">Walk position</div>
+    <div class="pos-bar-track">
+      <div class="pos-bar-fill ${cls}" style="left:${posLeft}%;width:${posWidth}%"></div>
+    </div>
+    <div class="pos-bar-ticks"><span>start</span><span>${posLabel}</span><span>end</span></div>
+  </div>
+</div>`;
+}
+
+// ── Sparkline drawing ──
+function drawSparkline(c, localIdx) {
+  const canvas = document.getElementById('spark-' + (shownClusters.indexOf(c)));
+  if (!canvas) return;
+
+  const absIdx = parseInt(canvas.dataset.cidx);
+  if (sparklineCache[absIdx]) {
+    const cached = sparklineCache[absIdx];
+    const ctx = canvas.getContext('2d');
+    ctx.putImageData(cached, 0, 0);
+    return;
+  }
+
+  // Gather RTT window: members + 4 neighbors each side
+  const N = ALL.length;
+  const minI = Math.max(0, c.startIdx - 4);
+  const maxI = Math.min(N - 1, c.endIdx + 4);
+  const window = [];
+  for (let i = minI; i <= maxI; i++) window.push(ALL[i]);
+
+  if (!window.length) return;
+
+  const W = 160, H = 40;
+  const ctx = canvas.getContext('2d');
+  ctx.clearRect(0, 0, W, H);
+
+  const maxRtt = Math.max(SLOW_MS * 3, ...window.map(e => e.rtt));
+  const rttToY = r => H - 2 - Math.min(H - 4, (r / maxRtt) * (H - 4));
+
+  // SLOW threshold line
+  ctx.strokeStyle = '#fde68a';
+  ctx.lineWidth = 1;
+  ctx.setLineDash([3, 3]);
+  const threshY = rttToY(SLOW_MS);
+  ctx.beginPath();
+  ctx.moveTo(0, threshY);
+  ctx.lineTo(W, threshY);
+  ctx.stroke();
+  ctx.setLineDash([]);
+
+  // RTT line
+  ctx.strokeStyle = '#94a3b8';
+  ctx.lineWidth = 1.5;
+  ctx.beginPath();
+  const memberSet = new Set(c.members);
+  for (let i = 0; i < window.length; i++) {
+    const x = (i / (window.length - 1 || 1)) * W;
+    const y = rttToY(window[i].rtt);
+    i === 0 ? ctx.moveTo(x, y) : ctx.lineTo(x, y);
+  }
+  ctx.stroke();
+
+  // Mark member points
+  for (let i = 0; i < window.length; i++) {
+    const e = window[i];
+    const globalIdx = c.startIdx - 4 + i; // approximate
+    const x = (i / (window.length - 1 || 1)) * W;
+    const y = rttToY(e.rtt);
+    const isMember = e.rtt > SLOW_MS || e.violation || e.attempts.length > 1 || e.timeout;
+    if (isMember) {
+      ctx.beginPath();
+      ctx.arc(x, y, 2.5, 0, Math.PI * 2);
+      if (e.timeout) ctx.fillStyle = '#dc2626';
+      else if (e.violation) ctx.fillStyle = '#d97706';
+      else ctx.fillStyle = '#3b82f6';
+      ctx.fill();
+    }
+  }
+
+  // Mark peak
+  const peakWindow = window.reduce((a, b) => a.rtt > b.rtt ? a : b);
+  const pi = window.indexOf(peakWindow);
+  const px = (pi / (window.length - 1 || 1)) * W;
+  const py = rttToY(peakWindow.rtt);
+  ctx.beginPath();
+  ctx.arc(px, py, 4, 0, Math.PI * 2);
+  ctx.fillStyle = '#ef4444';
+  ctx.fill();
+
+  sparklineCache[absIdx] = ctx.getImageData(0, 0, W, H);
+}
+
+function escHtml(s) {
+  return String(s).replace(/&/g,'&amp;').replace(/</g,'&lt;').replace(/>/g,'&gt;').replace(/"/g,'&quot;');
+}
+
+// ── Metrics ──
+function updateMetrics() {
+  const el = id => document.getElementById(id);
+  el('m-exchanges').textContent = ALL.length.toLocaleString();
+  el('m-visible').textContent = shownClusters.length.toLocaleString();
+  el('m-violations').textContent = summary
+    ? Object.values(summary.violation_counts || {}).reduce((a,b)=>a+b,0)
+    : ALL.filter(e => e.violation).length;
+  el('m-end').textContent = summary?.end_reason ?? '?';
+}
+
+// ── showViewer ──
+function showViewer(parseMs, renderMs) {
+  document.getElementById('drop-zone').classList.add('hidden');
+  document.getElementById('viewer').classList.remove('hidden');
+
+  const totalH = shownClusters.length * ROW_PX;
+  const listW  = chartWrap.clientWidth || 800;
+
+  const el = id => document.getElementById(id);
+  el('m-parse').textContent = parseMs.toFixed(0) + 'ms';
+  el('m-parse').className = 'metric-value ' + (parseMs < 500 ? 'ok' : parseMs < 2000 ? 'warn' : 'err');
+  el('m-render').textContent = renderMs.toFixed(0) + 'ms';
+  el('m-render').className = 'metric-value ' + (renderMs < 200 ? 'ok' : renderMs < 500 ? 'warn' : 'err');
+  el('m-cheight').textContent = totalH.toLocaleString() + 'px';
+  el('m-cheight').className = 'metric-value ok';
+  el('m-cwidth').textContent = listW.toLocaleString() + 'px';
+
+  startFpsMeter();
+}
+
+// ── Detail overlay ──
+function openDetail(absIdx) {
+  const c = shownClusters[absIdx];
+  if (!c) return;
+
+  const cls = severityClass(c);
+  document.getElementById('detail-title').textContent =
+    `#${absIdx + 1} · ${c.region} · seq ${c.startSeq.toLocaleString()}–${c.endSeq.toLocaleString()}`;
+
+  const rows = c.members.map(idx => {
+    const e = ALL[idx];
+    const tag = e.timeout
+      ? `<span class="tag-timeout">timeout</span>`
+      : e.violation
+        ? `<span class="tag-viol">${escHtml(e.violation)}</span>`
+        : e.attempts.length > 1
+          ? `<span class="tag-retry">retry×${e.attempts.length - 1}</span>`
+          : '—';
+    const oidShort = e.oid.length > 50 ? e.oid.slice(0, 50) + '…' : e.oid;
+    return `<tr>
+      <td>${e.seq.toLocaleString()}</td>
+      <td title="${escHtml(e.oid)}">${escHtml(oidShort)}</td>
+      <td>${e.rtt.toFixed(2)} ms</td>
+      <td>${tag}</td>
+    </tr>`;
+  }).join('');
+
+  document.getElementById('detail-body').innerHTML = `
+    <table class="detail-table">
+      <thead><tr><th>Seq</th><th>OID</th><th>RTT</th><th>Flag</th></tr></thead>
+      <tbody>${rows}</tbody>
+    </table>`;
+
+  document.getElementById('detail-overlay').classList.add('visible');
+}
+
+function closeDetail(e) {
+  if (e && e.target !== document.getElementById('detail-overlay')) return;
+  document.getElementById('detail-overlay').classList.remove('visible');
+}
+
+// ── FPS meter ──
+let fpsSamples = [];
+let fpsRaf = null;
+let lastFpsT = null;
+let scrollCount = 0;
+
+function startFpsMeter() {
+  if (fpsRaf) cancelAnimationFrame(fpsRaf);
+  fpsSamples = []; lastFpsT = null; scrollCount = 0;
+  chartWrap.addEventListener('scroll', onScroll, { passive: true });
+  tick();
+}
+
+function onScroll() {
+  scrollCount++;
+  renderVisible();
+}
+
+function tick() {
+  fpsRaf = requestAnimationFrame(t => {
+    if (scrollCount > 0) {
+      scrollCount = 0;
+      if (lastFpsT !== null) {
+        const fps = 1000 / (t - lastFpsT);
+        fpsSamples.push(fps);
+        if (fpsSamples.length > 30) fpsSamples.shift();
+        const avg = fpsSamples.reduce((a,b)=>a+b,0) / fpsSamples.length;
+        const el = document.getElementById('fps-value');
+        el.textContent = avg.toFixed(0) + ' fps';
+        el.className = 'metric-value ' + (avg > 50 ? 'ok' : avg > 30 ? 'warn' : 'err');
+      }
+    }
+    lastFpsT = t;
+    tick();
+  });
+}
+
+// ── Reset ──
+function reset() {
+  if (fpsRaf) cancelAnimationFrame(fpsRaf);
+  ALL = []; clusters = []; shownClusters = []; summary = null;
+  fpsSamples = []; sparklineCache = {};
+  rowsEl.innerHTML = '';
+  spacer.style.height = '0px';
+  document.getElementById('viewer').classList.add('hidden');
+  document.getElementById('drop-zone').classList.remove('hidden');
+  document.getElementById('canvas-warn').classList.remove('visible');
+}
+
+// ── ResizeObserver ──
+new ResizeObserver(() => {
+  if (ALL.length) {
+    document.getElementById('m-cwidth').textContent =
+      (chartWrap.clientWidth || 800).toLocaleString() + 'px';
+    renderVisible();
+  }
+}).observe(chartWrap);
+</script>
+</body>
+</html>

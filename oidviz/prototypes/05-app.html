@@ -1,0 +1,436 @@
+<!DOCTYPE html>
+<html lang="en">
+<head>
+<meta charset="UTF-8">
+<meta name="viewport" content="width=device-width, initial-scale=1.0">
+<title>OIDviz</title>
+<style>
+*, *::before, *::after { box-sizing: border-box; margin: 0; padding: 0; }
+:root {
+  --bg: #f1f5f9; --surface: #fff; --border: #e2e8f0;
+  --primary: #3b82f6; --primary-dim: #eff6ff;
+  --ok: #16a34a; --ok-dim: #dcfce7;
+  --warn: #d97706; --warn-dim: #fef3c7;
+  --err: #dc2626; --err-dim: #fee2e2;
+  --text: #0f172a; --muted: #64748b;
+  --mono: ui-monospace, 'Cascadia Code', Menlo, monospace;
+}
+body { background: var(--bg); color: var(--text); font-family: system-ui, sans-serif; font-size: 14px; height: 100vh; display: flex; flex-direction: column; overflow: hidden; }
+
+/* === TOP BAR === */
+.topbar { background: #0f172a; color: #f1f5f9; padding: 0 20px; display: flex; align-items: center; gap: 0; height: 44px; flex-shrink: 0; }
+.topbar-logo { font-size: 15px; font-weight: 800; letter-spacing: -0.5px; color: #fff; margin-right: 24px; }
+.topbar-logo span { color: #3b82f6; }
+.topbar-file { font-size: 12px; color: #94a3b8; font-family: var(--mono); margin-right: auto; }
+.topbar-badge { font-size: 10px; font-weight: 600; padding: 2px 8px; border-radius: 10px; margin-left: 8px; }
+.badge-ok { background: var(--ok-dim); color: var(--ok); }
+.badge-warn { background: var(--warn-dim); color: var(--warn); }
+
+/* === TABS === */
+.tabs { background: var(--surface); border-bottom: 1px solid var(--border); display: flex; align-items: center; padding: 0 20px; flex-shrink: 0; }
+.tab { padding: 10px 16px; font-size: 13px; font-weight: 500; color: var(--muted); cursor: pointer; border-bottom: 2px solid transparent; transition: all .15s; white-space: nowrap; }
+.tab:hover { color: var(--text); }
+.tab.active { color: var(--primary); border-bottom-color: var(--primary); }
+.tabs-right { margin-left: auto; display: flex; align-items: center; gap: 8px; }
+.filter-chip { font-size: 11px; padding: 3px 10px; border-radius: 20px; border: 1px solid var(--border); background: var(--surface); cursor: pointer; color: var(--muted); transition: all .1s; }
+.filter-chip.on { background: var(--warn-dim); border-color: #fcd34d; color: var(--warn); font-weight: 600; }
+
+/* === CONTENT === */
+.content { flex: 1; overflow: hidden; position: relative; }
+.view { position: absolute; inset: 0; overflow-y: auto; padding: 24px; display: none; }
+.view.active { display: block; }
+
+/* === DROP ZONE === */
+#view-drop { display: flex; align-items: center; justify-content: center; }
+.drop-zone { border: 2px dashed var(--border); border-radius: 16px; padding: 60px 40px; text-align: center; background: var(--surface); max-width: 480px; width: 100%; transition: all .2s; cursor: pointer; }
+.drop-zone:hover, .drop-zone.drag-over { border-color: var(--primary); background: var(--primary-dim); }
+.drop-icon { font-size: 40px; margin-bottom: 16px; }
+.drop-title { font-size: 18px; font-weight: 700; margin-bottom: 8px; }
+.drop-sub { color: var(--muted); font-size: 13px; line-height: 1.6; }
+.drop-btn { display: inline-block; margin-top: 20px; background: var(--primary); color: #fff; padding: 8px 20px; border-radius: 6px; font-size: 13px; font-weight: 500; cursor: pointer; border: none; transition: background .1s; }
+.drop-btn:hover { background: #2563eb; }
+.drop-demo { margin-top: 12px; font-size: 12px; color: var(--muted); cursor: pointer; text-decoration: underline; }
+
+/* === VERDICT VIEW === */
+.stats-row { display: grid; grid-template-columns: repeat(4, 1fr); gap: 12px; margin-bottom: 16px; }
+.stat-card { background: var(--surface); border: 1px solid var(--border); border-radius: 8px; padding: 16px; }
+.stat-num { font-size: 26px; font-weight: 700; letter-spacing: -0.5px; }
+.stat-lbl { font-size: 11px; color: var(--muted); margin-top: 3px; }
+.stat-sub { font-size: 11px; color: var(--muted); font-family: var(--mono); margin-top: 2px; }
+.card { background: var(--surface); border: 1px solid var(--border); border-radius: 8px; padding: 16px; margin-bottom: 12px; }
+.card-ttl { font-size: 11px; font-weight: 600; text-transform: uppercase; letter-spacing: 0.5px; color: var(--muted); margin-bottom: 12px; }
+.viol-row { display: flex; align-items: center; gap: 8px; padding: 6px 0; font-size: 12px; border-bottom: 1px solid #f1f5f9; }
+.viol-row:last-child { border-bottom: none; }
+.vbar { height: 5px; border-radius: 3px; background: var(--warn); transition: width .4s; }
+
+/* === WATERFALL VIEW === */
+.wf-toolbar { display: flex; align-items: center; gap: 12px; margin-bottom: 12px; }
+.wf-toolbar label { font-size: 12px; color: var(--muted); display: flex; align-items: center; gap: 6px; }
+.wf-wrap { background: var(--surface); border: 1px solid var(--border); border-radius: 8px; overflow: hidden; }
+canvas { display: block; width: 100%; }
+#wf-tooltip { position: fixed; background: #1e293b; color: #f1f5f9; font-size: 11px; font-family: var(--mono); padding: 8px 10px; border-radius: 6px; pointer-events: none; display: none; z-index: 200; line-height: 1.7; }
+
+/* === SUBTREE VIEW === */
+.table-wrap { background: var(--surface); border: 1px solid var(--border); border-radius: 8px; overflow: hidden; }
+table { width: 100%; border-collapse: collapse; }
+th { background: #f8fafc; font-size: 11px; font-weight: 600; text-transform: uppercase; letter-spacing: 0.5px; color: var(--muted); padding: 8px 12px; text-align: left; border-bottom: 1px solid var(--border); cursor: pointer; }
+th:hover { color: var(--primary); }
+td { padding: 8px 12px; border-bottom: 1px solid var(--border); font-size: 13px; }
+tr:last-child td { border-bottom: none; }
+tr.sub td { background: #fafafa; font-size: 12px; }
+tr:hover td { background: #f8fafc; }
+.oid-mono { font-family: var(--mono); font-size: 11px; color: var(--muted); }
+.lat { font-family: var(--mono); font-size: 12px; }
+.lat-bar { display: inline-block; height: 4px; border-radius: 2px; vertical-align: middle; margin-right: 5px; }
+
+/* === DETAIL VIEW (embedded) === */
+.detail-outer { display: grid; grid-template-columns: 1fr 1fr; gap: 16px; }
+.detail-card { background: var(--surface); border: 1px solid var(--border); border-radius: 8px; padding: 16px; }
+.att-vis { margin: 10px 0; }
+.att-row2 { display: flex; align-items: center; gap: 8px; margin-bottom: 6px; font-size: 12px; }
+.att-bar2 { height: 10px; border-radius: 3px; }
+.vb-row { display: flex; align-items: flex-start; gap: 6px; padding: 4px 0; border-bottom: 1px solid #f1f5f9; font-size: 11px; }
+.vb-row:last-child { border-bottom: none; }
+.badge { font-size: 9px; padding: 1px 5px; border-radius: 3px; background: var(--border); color: var(--muted); font-family: var(--mono); white-space: nowrap; }
+</style>
+</head>
+<body>
+
+<div class="topbar">
+  <span class="topbar-logo">OID<span>viz</span></span>
+  <span class="topbar-file" id="topbar-file">Drop a trace to get started</span>
+  <span id="topbar-badge"></span>
+</div>
+
+<div class="tabs" id="tabs" style="display:none">
+  <div class="tab active" onclick="showTab('verdict')">Verdict</div>
+  <div class="tab" onclick="showTab('waterfall')">Waterfall</div>
+  <div class="tab" onclick="showTab('subtree')">Subtree</div>
+  <div class="tab" onclick="showTab('detail')">Exchange Detail</div>
+  <div class="tabs-right">
+    <button class="filter-chip" id="viol-filter" onclick="toggleViolFilter()">Violations only</button>
+  </div>
+</div>
+
+<div class="content">
+  <!-- Drop zone -->
+  <div class="view active" id="view-drop">
+    <div class="drop-zone" id="drop-zone"
+      ondragover="event.preventDefault();this.classList.add('drag-over')"
+      ondragleave="this.classList.remove('drag-over')"
+      ondrop="handleDrop(event)">
+      <div class="drop-icon">📡</div>
+      <div class="drop-title">Drop a trace file</div>
+      <div class="drop-sub">Accepts <code>.oidtrace.jsonl.gz</code> files<br>All processing happens in your browser — nothing is uploaded.</div>
+      <button class="drop-btn" onclick="document.getElementById('file-input').click()">Choose file…</button>
+      <div class="drop-demo" onclick="loadDemo()">or load the demo trace</div>
+      <input type="file" id="file-input" style="display:none" accept=".gz" onchange="handleFile(this.files[0])">
+    </div>
+  </div>
+
+  <!-- Verdict -->
+  <div class="view" id="view-verdict">
+    <div class="stats-row" id="stats-row"></div>
+    <div class="card">
+      <div class="card-ttl">Protocol violations</div>
+      <div id="viol-list"></div>
+    </div>
+    <div class="card">
+      <div class="card-ttl">Walk settings</div>
+      <div id="settings-list" style="display:grid;grid-template-columns:1fr 1fr;gap:5px 24px;font-size:12px"></div>
+    </div>
+  </div>
+
+  <!-- Waterfall -->
+  <div class="view" id="view-waterfall" style="padding:16px">
+    <div class="wf-toolbar">
+      <label>Zoom <input type="range" id="wf-zoom" min="1" max="20" value="5" oninput="wfZoom=+this.value;wfDraw()"> <span id="wf-zoom-lbl">5×</span></label>
+      <span style="font-size:12px;color:var(--muted);margin-left:8px" id="wf-count"></span>
+    </div>
+    <div class="wf-wrap"><canvas id="wf-canvas"></canvas></div>
+  </div>
+
+  <!-- Subtree -->
+  <div class="view" id="view-subtree">
+    <div style="margin-bottom:12px;font-size:13px;color:var(--muted)">
+      OID subtrees observed in the walk, aggregated by prefix. Use P99 RTT to set monitoring timeouts.
+    </div>
+    <div class="table-wrap"><table>
+      <thead><tr>
+        <th onclick="stSort('name')">Subtree</th>
+        <th onclick="stSort('exchanges')" style="text-align:right">Exchanges</th>
+        <th onclick="stSort('avg')">Avg RTT</th>
+        <th onclick="stSort('p99')">P99 RTT</th>
+        <th onclick="stSort('viol')">Violations</th>
+        <th></th>
+      </tr></thead>
+      <tbody id="st-tbody"></tbody>
+    </table></div>
+  </div>
+
+  <!-- Detail -->
+  <div class="view" id="view-detail">
+    <div style="display:flex;align-items:center;gap:8px;margin-bottom:16px">
+      <button onclick="detPrev()" style="border:1px solid var(--border);background:var(--surface);padding:4px 12px;border-radius:4px;cursor:pointer;font-size:12px;color:var(--muted)">← Prev</button>
+      <span id="det-seq" style="font-family:var(--mono);font-size:13px;font-weight:600;padding:0 8px"></span>
+      <button onclick="detNext()" style="border:1px solid var(--border);background:var(--surface);padding:4px 12px;border-radius:4px;cursor:pointer;font-size:12px;color:var(--muted)">Next →</button>
+      <span style="font-size:12px;color:var(--muted)" id="det-total"></span>
+    </div>
+    <div id="det-content"></div>
+  </div>
+</div>
+
+<div id="wf-tooltip"></div>
+
+<script>
+// ===== Shared state =====
+let TRACE = null;
+let WF_EXCHANGES = [];
+let wfZoom = 5;
+let wfVisible = [];
+let violFilter = false;
+let detIdx = 0;
+let stSortCol = null, stSortDir = -1;
+
+// ===== Demo data generation =====
+const OID_PREFIXES_D = ["1.3.6.1.2.1.1","1.3.6.1.2.1.2.2.1","1.3.6.1.2.1.4.21","1.3.6.1.2.1.6","1.3.6.1.4.1.9.9"];
+const OID_NAMES_D = {
+  "1.3.6.1.2.1.1":    "system",
+  "1.3.6.1.2.1.2":    "interfaces",
+  "1.3.6.1.2.1.2.2.1":"ifTable",
+  "1.3.6.1.2.1.4":    "ip",
+  "1.3.6.1.2.1.4.21": "ipRouteTable",
+  "1.3.6.1.2.1.6":    "tcp",
+  "1.3.6.1.4.1.9":    "cisco",
+  "1.3.6.1.4.1.9.9":  "ciscoMgmt",
+};
+
+function genDemo() {
+  const exch = []; let t = 0;
+  for (let i = 0; i < 280; i++) {
+    const spike = Math.random() < 0.04;
+    const timeout = Math.random() < 0.007;
+    const rtt = timeout ? 2.0 : spike ? 2.2+Math.random()*5 : 0.15+Math.random()*0.55;
+    const viol = !timeout && Math.random()<0.018 ? ["request-id-mismatch","oid-not-increasing"][Math.floor(Math.random()*2)] : null;
+    const prefix = OID_PREFIXES_D[Math.floor(i/56) % OID_PREFIXES_D.length];
+    const att = timeout
+      ? [{ sentAt:t, rtt:2.0, error:"timeout"}, Math.random()<0.6 ? {sentAt:t+2.1, rtt:0.25+Math.random()*0.4, error:null} : null].filter(Boolean)
+      : [{ sentAt:t, rtt, error:null }];
+    const last = att[att.length-1];
+    const recv = last.sentAt + last.rtt;
+    exch.push({ seq:i+1, sentAt:t, receivedAt:recv, rtt, violation:viol, timeout, attempts:att, prefix, oid:prefix+"."+(i%40+1) });
+    t = recv + 0.55 + Math.random()*0.8;
+  }
+  return exch;
+}
+
+function buildSubtreeData(exch) {
+  const map = {};
+  for (const e of exch) {
+    for (const [oid, name] of Object.entries(OID_NAMES_D)) {
+      if (e.oid.startsWith(oid)) {
+        if (!map[oid]) map[oid] = { oid, name, exchanges:0, rtts:[], violations:0 };
+        map[oid].exchanges++;
+        map[oid].rtts.push(e.rtt);
+        if (e.violation) map[oid].violations++;
+        break;
+      }
+    }
+  }
+  return Object.values(map).map(d => {
+    const s = d.rtts.slice().sort((a,b)=>a-b);
+    return { ...d, avgMs: s.reduce((a,b)=>a+b,0)/s.length, p99Ms: s[Math.floor(s.length*0.99)] || s[s.length-1] };
+  });
+}
+
+function loadDemo() {
+  WF_EXCHANGES = genDemo();
+  const last = WF_EXCHANGES[WF_EXCHANGES.length-1];
+  TRACE = {
+    header: { tool:"oidtrace/0.1.0", started_at:"2026-06-12T12:39:35Z", label:"demo-router", snmp_version:"2c", settings:{ bulk_size:10, timeout_s:2.0, retries:2, start_oid:"1.3.6.1", give_up_after:3 } },
+    summary: { at:last.receivedAt/1000, exchanges:WF_EXCHANGES.length, oids_seen:WF_EXCHANGES.length*10, end_reason:"completed", violation_counts: WF_EXCHANGES.filter(e=>e.violation).reduce((m,e)=>{ m[e.violation]=(m[e.violation]||0)+1; return m; },{}) }
+  };
+  activate();
+}
+
+function handleFile(file) { if (file) loadDemo(); } // placeholder — real impl: decompress+parse
+function handleDrop(e) { e.preventDefault(); document.getElementById("drop-zone").classList.remove("drag-over"); const f=e.dataTransfer.files[0]; if(f) handleFile(f); }
+
+function activate() {
+  document.getElementById("view-drop").style.display = "none";
+  document.getElementById("tabs").style.display = "flex";
+  document.getElementById("topbar-file").textContent = TRACE.header.label || "trace";
+  const badge = document.getElementById("topbar-badge");
+  badge.className = "topbar-badge " + (TRACE.summary.end_reason==="completed" ? "badge-ok" : "badge-warn");
+  badge.textContent = TRACE.summary.end_reason;
+
+  renderVerdict();
+  wfApplyFilter();
+  renderSubtree();
+  renderDetail();
+  showTab("verdict");
+}
+
+// ===== Verdict =====
+function renderVerdict() {
+  const s = TRACE.summary;
+  const totalViol = Object.values(s.violation_counts).reduce((a,b)=>a+b,0);
+  document.getElementById("stats-row").innerHTML = [
+    { v:s.exchanges.toLocaleString(), l:"Exchanges", s:(s.at/s.exchanges*1000).toFixed(1)+"ms avg" },
+    { v:(s.oids_seen).toLocaleString(), l:"OIDs seen", s:(s.oids_seen/s.at).toFixed(0)+" /s" },
+    { v:s.at.toFixed(2)+"s", l:"Duration", s:TRACE.header.settings.start_oid },
+    { v:totalViol||"None", l:"Violations", s:totalViol?"⚠ "+Object.keys(s.violation_counts).length+" type(s)":"✓ clean walk",
+      c:totalViol?"var(--warn)":"var(--ok)" }
+  ].map(d=>`<div class="stat-card"><div class="stat-num" style="${d.c?`color:${d.c}`:""}"">${d.v}</div><div class="stat-lbl">${d.l}</div><div class="stat-sub">${d.s}</div></div>`).join("");
+
+  const vc = s.violation_counts, keys=Object.keys(vc);
+  const max = keys.length ? Math.max(...Object.values(vc)) : 1;
+  document.getElementById("viol-list").innerHTML = keys.length
+    ? keys.map(k=>`<div class="viol-row"><span style="font-family:var(--mono);flex:1">${k}</span><div style="width:120px;height:5px;background:var(--border);border-radius:3px;overflow:hidden"><div class="vbar" data-p="${(vc[k]/max*100).toFixed(0)}" style="width:0%"></div></div><span style="font-family:var(--mono);font-size:12px;color:var(--warn);width:32px;text-align:right">${vc[k]}</span></div>`).join("")
+    : `<div style="color:var(--ok);text-align:center;padding:12px;font-weight:500">✓ No violations</div>`;
+  setTimeout(()=>document.querySelectorAll(".vbar").forEach(b=>b.style.width=b.dataset.p+"%"),80);
+
+  const cfg = TRACE.header.settings;
+  document.getElementById("settings-list").innerHTML =
+    [["Bulk size",cfg.bulk_size],["Timeout",cfg.timeout_s+"s"],["Retries",cfg.retries],["Start OID",cfg.start_oid]]
+    .map(([k,v])=>`<span style="color:var(--muted)">${k}</span><span style="font-family:var(--mono);font-weight:500">${v}</span>`).join("");
+}
+
+// ===== Waterfall =====
+const WF_MARGIN = 56, WF_ROW = 9, WF_GAP = 2, WF_BAR = 6;
+function wfApplyFilter() {
+  wfVisible = violFilter ? WF_EXCHANGES.filter(e=>e.violation||e.timeout) : WF_EXCHANGES;
+  document.getElementById("wf-count").textContent = `${wfVisible.length} exchanges shown`;
+  requestAnimationFrame(wfDraw);
+}
+function wfDraw() {
+  document.getElementById("wf-zoom-lbl").textContent = wfZoom+"×";
+  const canvas = document.getElementById("wf-canvas");
+  const W = canvas.parentElement.clientWidth;
+  if (!W) return;
+  const H = 32 + wfVisible.length*(WF_ROW+WF_GAP);
+  canvas.width = W; canvas.height = H; canvas.style.height = H+"px";
+  const ctx = canvas.getContext("2d");
+  ctx.clearRect(0,0,W,H);
+  const mpp = 1.5/wfZoom;
+  // axis
+  const tickEvery = [0.5,1,2,5,10,20,50].find(t=>t/mpp>55)||100;
+  const maxT = wfVisible.length ? wfVisible[wfVisible.length-1].receivedAt : 300;
+  ctx.font="9px system-ui"; ctx.fillStyle="#94a3b8"; ctx.textAlign="left";
+  for (let t=0;t<=maxT+tickEvery;t+=tickEvery) {
+    const x=WF_MARGIN+t/mpp; if(x>W) break;
+    ctx.fillStyle="#e2e8f0"; ctx.fillRect(x,0,1,H);
+    ctx.fillStyle="#94a3b8"; ctx.fillText(t<1000?t+"ms":(t/1000).toFixed(1)+"s",x+2,11);
+  }
+  for (let i=0;i<wfVisible.length;i++) {
+    const e=wfVisible[i];
+    const y=24+i*(WF_ROW+WF_GAP);
+    if (i%2===0) { ctx.fillStyle="#f8fafc"; ctx.fillRect(0,y,W,WF_ROW+WF_GAP); }
+    ctx.fillStyle="#cbd5e1"; ctx.font="8px system-ui"; ctx.textAlign="right";
+    ctx.fillText(e.seq,WF_MARGIN-3,y+WF_BAR);
+    ctx.textAlign="left";
+    for (const att of e.attempts) {
+      const x=WF_MARGIN+att.sentAt/mpp, w=Math.max(2,att.rtt/mpp);
+      ctx.fillStyle=att.error?"#ef4444":e.violation?"#f59e0b":att!==e.attempts[0]?"#93c5fd":"#3b82f6";
+      ctx.beginPath(); ctx.roundRect(x,y+(WF_ROW-WF_BAR)/2,w,WF_BAR,2); ctx.fill();
+    }
+    if (e.violation) { ctx.fillStyle="#f59e0b"; ctx.font="bold 8px system-ui"; ctx.fillText("!",WF_MARGIN+e.receivedAt/mpp+3,y+WF_BAR); }
+  }
+}
+function wfRowAt(y) { const i=Math.floor((y-24)/(WF_ROW+WF_GAP)); return (i>=0&&i<wfVisible.length)?wfVisible[i]:null; }
+const wfCanvas = document.getElementById("wf-canvas");
+const wfTooltip = document.getElementById("wf-tooltip");
+wfCanvas.addEventListener("mousemove",ev=>{
+  const r=wfCanvas.getBoundingClientRect(), e=wfRowAt(ev.clientY-r.top);
+  if(!e){wfTooltip.style.display="none";return;}
+  wfTooltip.style.display="block"; wfTooltip.style.left=(ev.clientX+12)+"px"; wfTooltip.style.top=(ev.clientY-8)+"px";
+  wfTooltip.innerHTML=`#${e.seq}  ${e.rtt.toFixed(2)}ms${e.violation?" ⚠ "+e.violation:""}`;
+});
+wfCanvas.addEventListener("mouseleave",()=>wfTooltip.style.display="none");
+wfCanvas.addEventListener("click",ev=>{
+  const r=wfCanvas.getBoundingClientRect(), e=wfRowAt(ev.clientY-r.top);
+  if(!e) return;
+  detIdx=WF_EXCHANGES.findIndex(x=>x.seq===e.seq);
+  renderDetail(); showTab("detail");
+});
+new ResizeObserver(()=>{ if(TRACE) wfDraw(); }).observe(document.getElementById("wf-canvas").parentElement);
+
+// ===== Subtree =====
+function renderSubtree() {
+  const data = buildSubtreeData(violFilter ? WF_EXCHANGES.filter(e=>e.violation) : WF_EXCHANGES);
+  let rows = data;
+  if (stSortCol) {
+    const k = {name:r=>r.name,exchanges:r=>r.exchanges,avg:r=>r.avgMs,p99:r=>r.p99Ms,viol:r=>r.violations}[stSortCol];
+    rows = [...data].sort((a,b)=>(k(a)>k(b)?1:-1)*stSortDir);
+  }
+  const maxP99 = Math.max(...data.map(d=>d.p99Ms), 0.01);
+  function lc(ms) { return ms<0.5?"#16a34a":ms<1.5?"#d97706":"#dc2626"; }
+  document.getElementById("st-tbody").innerHTML = rows.map(d=>`<tr>
+    <td><div style="font-weight:500">${d.name}</div><div class="oid-mono">${d.oid}</div></td>
+    <td style="text-align:right">${d.exchanges.toLocaleString()}</td>
+    <td><span class="lat-bar" style="width:${Math.max(4,d.avgMs/maxP99*80)}px;background:${lc(d.avgMs)}"></span><span class="lat" style="color:${lc(d.avgMs)}">${d.avgMs.toFixed(2)}ms</span></td>
+    <td><span class="lat-bar" style="width:${Math.max(4,d.p99Ms/maxP99*80)}px;background:${lc(d.p99Ms)}"></span><span class="lat" style="color:${lc(d.p99Ms)}">${d.p99Ms.toFixed(2)}ms</span></td>
+    <td>${d.violations>0?`<span style="color:var(--warn);font-weight:600">${d.violations}</span>`:'<span style="color:var(--muted)">0</span>'}</td>
+    <td><button onclick="navigator.clipboard.writeText('${d.oid}')" style="border:1px solid var(--border);background:var(--surface);padding:2px 8px;border-radius:4px;font-size:10px;cursor:pointer;color:var(--muted)">Copy OID</button></td>
+  </tr>`).join("");
+}
+function stSort(c) { stSortDir = stSortCol===c ? stSortDir*-1 : -1; stSortCol=c; renderSubtree(); }
+
+// ===== Detail =====
+function renderDetail() {
+  const exch = WF_EXCHANGES;
+  if (!exch.length) return;
+  if (detIdx>=exch.length) detIdx=0;
+  const e = exch[detIdx];
+  document.getElementById("det-seq").textContent = "#"+e.seq;
+  document.getElementById("det-total").textContent = `of ${exch.length}`;
+  const chip = e.violation?`<span style="font-size:10px;font-weight:600;padding:2px 8px;border-radius:10px;background:var(--warn-dim);color:var(--warn)">${e.violation}</span>`
+    :e.timeout?`<span style="font-size:10px;font-weight:600;padding:2px 8px;border-radius:10px;background:var(--err-dim);color:var(--err)">timeout</span>`
+    :`<span style="font-size:10px;font-weight:600;padding:2px 8px;border-radius:10px;background:var(--ok-dim);color:var(--ok)">ok</span>`;
+  const attHtml = e.attempts.map((a,i)=>{
+    const w=Math.max(20,Math.min(160,a.rtt*60));
+    const c=a.error?"#ef4444":"#3b82f6";
+    return `<div class="att-row2"><span style="color:var(--muted);width:12px;font-size:10px">${i+1}</span><div class="att-bar2" style="width:${w}px;background:${c}"></div><span style="color:var(--muted)">${a.rtt.toFixed(3)}ms${a.error?" ⚠ "+a.error:""}</span></div>`;
+  }).join("");
+  document.getElementById("det-content").innerHTML = `
+    <div class="detail-outer">
+      <div class="detail-card">
+        <div style="font-size:11px;font-weight:600;text-transform:uppercase;letter-spacing:.5px;color:var(--muted);margin-bottom:10px">Summary</div>
+        <div style="display:flex;align-items:center;gap:8px;margin-bottom:12px"><span style="font-size:16px;font-weight:700">Exchange #${e.seq}</span>${chip}</div>
+        <div style="font-size:12px;display:grid;grid-template-columns:1fr 1fr;gap:4px 16px;color:var(--muted)">
+          <span>Sent at</span><span style="font-family:var(--mono);color:var(--text)">${e.sentAt.toFixed(3)}ms</span>
+          <span>Total RTT</span><span style="font-family:var(--mono);color:var(--text)">${e.attempts.reduce((s,a)=>s+a.rtt,0).toFixed(3)}ms</span>
+          <span>Subtree</span><span style="font-family:var(--mono);color:var(--text);font-size:11px">${e.prefix}</span>
+        </div>
+        <div class="att-vis" style="margin-top:14px">
+          <div style="font-size:11px;font-weight:600;text-transform:uppercase;letter-spacing:.5px;color:var(--muted);margin-bottom:8px">Attempts</div>
+          ${attHtml}
+        </div>
+      </div>
+      <div class="detail-card">
+        <div style="font-size:11px;font-weight:600;text-transform:uppercase;letter-spacing:.5px;color:var(--muted);margin-bottom:10px">Cursor OID</div>
+        <div style="font-family:var(--mono);font-size:11px;color:var(--text);word-break:break-all;margin-bottom:14px">${e.oid}</div>
+        ${e.violation?`<div style="background:var(--warn-dim);border:1px solid #fcd34d;border-radius:6px;padding:10px;font-size:12px"><div style="font-family:var(--mono);font-weight:600;color:var(--warn)">${e.violation}</div><div style="color:#92400e;margin-top:4px">${e.violation==="request-id-mismatch"?"Response request_id did not match sent request_id. Device may be returning stale responses.":"OID sequence did not strictly increase. Agent bug or loop."}</div></div>`:""}
+      </div>
+    </div>`;
+}
+function detPrev() { if(!WF_EXCHANGES.length) return; detIdx=(detIdx-1+WF_EXCHANGES.length)%WF_EXCHANGES.length; renderDetail(); }
+function detNext() { if(!WF_EXCHANGES.length) return; detIdx=(detIdx+1)%WF_EXCHANGES.length; renderDetail(); }
+
+// ===== Tabs + filter =====
+function showTab(name) {
+  document.querySelectorAll(".tab").forEach(t=>t.classList.remove("active"));
+  document.querySelectorAll(".view").forEach(v=>v.classList.remove("active"));
+  const tabs = ["verdict","waterfall","subtree","detail"];
+  document.querySelectorAll(".tab")[tabs.indexOf(name)]?.classList.add("active");
+  document.getElementById("view-"+name).classList.add("active");
+  if (name==="waterfall") requestAnimationFrame(wfDraw);
+}
+function toggleViolFilter() {
+  violFilter = !violFilter;
+  document.getElementById("viol-filter").classList.toggle("on", violFilter);
+  if (TRACE) { wfApplyFilter(); renderSubtree(); }
+}
+</script>
+</body>
+</html>

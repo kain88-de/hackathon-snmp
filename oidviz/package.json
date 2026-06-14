@@ -1,0 +1,13 @@
+{
+  "name": "oidviz",
+  "version": "0.1.0",
+  "private": true,
+  "scripts": {
+    "perf-test": "npx tsx tools/perf_test.ts",
+    "perf-test:headed": "npx tsx tools/perf_test.ts --headed"
+  },
+  "devDependencies": {
+    "@types/node": "^22.19.21",
+    "playwright": "^1.60.0"
+  }
+}
