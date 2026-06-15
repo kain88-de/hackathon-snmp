@@ -90,41 +90,42 @@ Sections (top to bottom):
 ### Brand
 `OIDviz` logotype.
 
-### Walk summary
-Shown after a file loads:
-- End reason chip (Completed / Unresponsive / OID Loop / Interrupted / Time Budget) — colour-coded
-- Duration (e.g. `7.1s`)
-- Exchanges count
-- OIDs seen
-- Violations total (0 = green, >0 = amber)
+### Load
+"Open trace file…" button + shortcut buttons for bundled fixture files. Hidden file input accepts `.oidtrace.jsonl.gz`.
 
 ### Device
-Extracted from system MIB OIDs in exchange responses:
+Populated from the `system_info` record (type `system_info`, point `start`) when present. Hidden if no such record exists in the trace.
 
 | Field | Source OID |
 |---|---|
-| sysName | `1.3.6.1.2.1.1.5.0` |
 | sysDescr (first line) | `1.3.6.1.2.1.1.1.0` |
-| sysUpTime | `1.3.6.1.2.1.1.3.0` |
-| sysLocation | `1.3.6.1.2.1.1.6.0` |
-| sysContact | `1.3.6.1.2.1.1.4.0` |
 | sysObjectID | `1.3.6.1.2.1.1.2.0` |
+| sysUpTime | `1.3.6.1.2.1.1.3.0` |
 
-Fields not found in the walk are shown as `—`. The section is hidden if no system MIB values were seen.
+Fields not found are shown as `—`.
+
+### Walk info
+Shown after a file loads:
+- Label (from `header.label`)
+- SNMP version (from `header.snmp.version`)
+- Start OID (from `header.settings.start_oid`)
+- Exchanges count
+- OIDs seen (from `summary.oids_seen`)
+- Duration
+- Violations total (0 = green, >0 = red)
+- End reason (raw string from `summary.end_reason`)
+- Parse time (ms elapsed to parse the file)
 
 ### Views
 Navigation: Incident Stack · Minimap + Detail · OID Tree. Active view highlighted.
 
 ### Filters
-- **Slow** (checkbox, on by default) — exchanges with RTT > slowMs
+- **Slow** (checkbox, on by default) — exchanges with RTT > threshold; inline threshold input in seconds (default `1`)
 - **Violations** (checkbox, on by default) — exchanges with a violation
 - **Retries** (checkbox, on by default) — exchanges with >1 attempt
 - **Timeouts** (checkbox, off by default) — exchanges where an attempt timed out
 
-Changing a filter immediately re-renders the active view.
-
-### Settings
-Slow threshold: number input (ms, default 1000). Changing it re-renders all views immediately.
+Changing a filter or threshold immediately re-renders the active view.
 
 ### Walk config
 Read-only fields from `header.settings`: bulk size, timeout, retries, give-up count, start OID.
@@ -162,8 +163,8 @@ score = timeoutCount × 100
 ### Row layout
 Each incident row (72px):
 - **Severity chip** (48×48px): `err` (any timeout), `warn` (violation or slow), `info` (retry only)
-- **Title**: `{region} — {type}` where type is the dominant anomaly
-- **Subtitle**: seq range · peak RTT · exchange count · retry count
+- **Title**: `{region} — {type}` where region is a well-known name or the first 8 OID arcs for unknown prefixes, and type is the dominant anomaly
+- **Subtitle**: seq range (or single seq if start = end) · peak RTT · exchange count · retry count (omitted if 0)
 - **Walk position bar**: shows where in the walk this incident falls (proportional)
 
 ### Filters
@@ -185,7 +186,7 @@ Opens on row click. Fixed overlay with backdrop; clicking the backdrop or pressi
 Two-panel canvas layout for timeline-based exploration of the full walk.
 
 ### Minimap panel (80px tall)
-Covers the full walk duration. Each pixel column represents a time bucket. Colour priority: timeout (`#ef4444`) > violation (`#f59e0b`) > retry (`#93c5fd`) > slow (`#3b82f6`) > ok (`#94a3b8`). Bar height proportional to event count in the bucket.
+Covers the full walk duration. Each pixel column represents a time bucket; ok (non-anomalous) exchanges are not shown. Colour priority for anomalous buckets: timeout (`#ef4444`) > violation (`#f59e0b`) > retry (`#93c5fd`) > slow (`#3b82f6`). Bar height proportional to event count in the bucket.
 
 A selection rectangle highlights the current detail window.
 
@@ -195,7 +196,7 @@ Tooltip on hover: time offset, event count, max RTT, violation flag.
 Shows individual exchange bars for exchanges whose time window overlaps the selection:
 - One horizontal bar per exchange on a vertical list, ordered by sent time
 - Bar length proportional to RTT on the shared time axis
-- Retry attempts rendered as stacked bars (same colours as minimap)
+- Retry attempts rendered as stacked bars — colours: timeout (`#ef4444`), violation (`#f59e0b`), retry attempt (`#93c5fd`), slow (`#3b82f6`), ok (`#94a3b8`)
 - Violation marker `!` after the bar
 - Seq number label on the left
 - Time-axis tick marks and labels at the top
