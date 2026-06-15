@@ -48,18 +48,7 @@ Do not hand-write types for trace records.
 
 ### Reload behaviour
 
-The trace file is **not persisted** — no IndexedDB, no localStorage for file content.
-On page reload, the app returns to the landing screen and the user must provide the file again.
-Settings (slow threshold, selected view) ARE persisted in `localStorage` under key `oidviz`.
-
-### localStorage schema
-
-```ts
-{
-  slowMs: number;                              // default 1000 — slow RTT threshold in ms
-  view: 'incidents' | 'minimap' | 'oidtree';  // last active view
-}
-```
+Nothing is persisted. On page reload the app returns to the landing screen; the user must provide the file again. All settings (slow threshold, active view) reset to defaults.
 
 ### Error states
 
@@ -130,7 +119,7 @@ Navigation: Incident Stack · Minimap + Detail · OID Tree. Active view highligh
 Changing a filter immediately re-renders the active view.
 
 ### Settings
-Slow threshold: number input (ms, default 1000). Persisted in localStorage. Changing it re-renders all views immediately.
+Slow threshold: number input (ms, default 1000). Changing it re-renders all views immediately.
 
 ### Walk config
 Read-only fields from `header.settings`: bulk size, timeout, retries, give-up count, start OID.
