@@ -1,5 +1,6 @@
 <script setup lang="ts">
 import { computed, onMounted, onUnmounted, ref } from 'vue'
+import Sidebar from './components/Sidebar.vue'
 import { buildIncidents } from './lib/incidentStack'
 import type { AppState, FilterState, ParseResult, WorkerRequest, WorkerResponse } from './lib/model'
 import { autoExpand, buildTrie, flatten, rollup } from './lib/oidTrie'
@@ -79,31 +80,24 @@ const errorMessage = computed<string | null>(() => {
   return null
 })
 
-const fileInput = ref<HTMLInputElement | null>(null)
-
-function openFilePicker() {
-  fileInput.value?.click()
-}
-
-function onFileInput(event: Event) {
-  const input = event.target as HTMLInputElement
-  const file = input.files?.[0]
-  if (!file) return
-  file.arrayBuffer().then(handleFile)
-}
-
 // Suppress unused variable warnings for computed values used by child components
 void incidents
 void flatRows
-void toggleDarkMode
-void activeView
 </script>
 
 <template>
-  <aside class="sidebar">
-    <!-- Sidebar placeholder for now — will be replaced in Task 9 -->
-    <div class="sidebar-brand">OIDviz</div>
-  </aside>
+  <Sidebar
+    :appState="appState"
+    :result="viewerResult"
+    :filterState="filterState"
+    :activeView="activeView"
+    :darkMode="darkMode"
+    @file-selected="buf => handleFile(buf)"
+    @fixture-selected="buf => handleFile(buf)"
+    @view-change="view => (activeView = view)"
+    @filter-change="patch => (filterState = { ...filterState, ...patch })"
+    @toggle-dark-mode="toggleDarkMode"
+  />
   <main class="main-area">
     <!-- Landing / Loading / Error state -->
     <template v-if="appState.phase === 'landing' || appState.phase === 'loading' || appState.phase === 'error'">
@@ -111,8 +105,6 @@ void activeView
         <span v-if="appState.phase === 'loading'">Parsing…</span>
         <span v-else-if="appState.phase === 'error'" role="alert">{{ errorMessage }}</span>
         <span v-else>Drop a .oidtrace.jsonl.gz file here</span>
-        <input type="file" accept=".oidtrace.jsonl.gz" style="display:none" ref="fileInput" @change="onFileInput" />
-        <button @click="openFilePicker">Open file</button>
       </div>
     </template>
     <!-- Viewer state -->
