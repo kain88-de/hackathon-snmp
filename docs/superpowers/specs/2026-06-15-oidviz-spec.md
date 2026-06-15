@@ -47,9 +47,8 @@ Do not hand-write types for trace records.
 
 1. App opens → landing screen with drag-and-drop zone and file-picker button
 2. User drops or selects a `.oidtrace.jsonl.gz` file
-3. File is parsed in a **Web Worker** (gzip decompress + JSONL parse). The Worker retains a normalized `ExchangeRecord` array; raw JSON strings are discarded as soon as each line is parsed.
-4. The Worker also extracts `header`, `summary`, and `system_info` records, then posts the complete `ParsedTrace` object to the main thread via `postMessage`.
-5. App transitions to the viewer layout
+3. File is parsed off the main thread (gzip decompress + JSONL parse) — the UI stays responsive during loading, even for large trace files.
+4. App transitions to the viewer layout once parsing completes.
 
 ### Reload behaviour
 

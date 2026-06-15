@@ -19,10 +19,9 @@ Items 7–11 (should fix) are resolved in the spec. Items 12–16 are open and t
 ## Should fix — resolved
 
 **7. Web Worker vs prototype contradiction** ✓
-Web Worker is real scope. The Worker parses and holds a normalized `ExchangeRecord` array; raw
-JSON strings are discarded as each line is parsed. The "never hold raw records in memory" language
-was aspirational — removed. All three views work from the exchange array held in the Worker's
-`ParsedTrace` result.
+Spec now describes the product behaviour ("UI stays responsive during loading") rather than the
+implementation mechanism. Web Worker remains the implementation choice for v1 but is not
+mentioned in the spec.
 
 **8. Three inconsistent well-known-prefix lists** ✓
 The three lists serve distinct purposes and are intentionally separate:
