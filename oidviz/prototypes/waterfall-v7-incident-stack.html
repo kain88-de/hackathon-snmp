@@ -112,16 +112,6 @@ body { background: var(--bg); color: var(--text); font-family: system-ui, sans-s
   text-overflow: ellipsis;
 }
 
-.sparkline-wrap {
-  flex-shrink: 0;
-  width: 160px;
-  height: 40px;
-  border-radius: 4px;
-  overflow: hidden;
-  background: #f8fafc;
-  border: 1px solid var(--border);
-}
-
 .pos-bar-wrap {
   flex-shrink: 0;
   width: 110px;
@@ -244,11 +234,6 @@ body { background: var(--bg); color: var(--text); font-family: system-ui, sans-s
     <label><input type="checkbox" id="f-slow" checked onchange="applyFilters()"> Slow (&gt;<input type="number" id="slow-ms" value="2" min="1" max="100000" step="1" style="width:52px;font-size:11px;padding:1px 3px;border:1px solid var(--border);border-radius:3px;font-family:var(--mono)" onchange="SLOW_MS=Math.max(1,+this.value||2);detectAndCluster();applyFilters()">ms)</label>
     <label><input type="checkbox" id="f-viol" checked onchange="applyFilters()"> Violations</label>
     <label><input type="checkbox" id="f-retry" checked onchange="applyFilters()"> Retries</label>
-    <div style="display:flex;align-items:center;gap:10px;margin-left:auto;font-size:11px;color:var(--muted)">
-      <span style="display:flex;align-items:center;gap:3px"><span style="width:8px;height:8px;border-radius:50%;background:#ef4444;display:inline-block"></span>timeout</span>
-      <span style="display:flex;align-items:center;gap:3px"><span style="width:8px;height:8px;border-radius:50%;background:#f59e0b;display:inline-block"></span>violation</span>
-      <span style="display:flex;align-items:center;gap:3px"><span style="width:8px;height:8px;border-radius:50%;background:#93c5fd;display:inline-block"></span>retry</span>
-    </div>
     <button class="btn-reset" onclick="reset()">Load another file</button>
   </div>
   <div class="chart-wrap" id="chart-wrap">
@@ -571,10 +556,6 @@ function renderVisible() {
   rowsEl.innerHTML = parts.join('');
   rowsEl.style.top = (first * ROW_PX) + 'px';
 
-  // Draw sparklines for visible rows
-  for (let i = first; i < last; i++) {
-    drawSparkline(shownClusters[i], i - first);
-  }
 }
 
 function buildRow(c, absIdx, firstIdx) {
@@ -602,9 +583,7 @@ function buildRow(c, absIdx, firstIdx) {
   const posWidth = Math.max(0.5, (c.endIdx - c.startIdx + 1) / N * 100).toFixed(1);
   const posLabel = Math.round(pStart) + '%';
 
-  const localIdx = absIdx - firstIdx;
-
-  return `<div class="incident-row" style="top:${localIdx * ROW_PX}px" data-idx="${absIdx}" onclick="openDetail(${absIdx})">
+  return `<div class="incident-row" style="top:${(absIdx - firstIdx) * ROW_PX}px" data-idx="${absIdx}" onclick="openDetail(${absIdx})">
   <div class="severity-chip ${cls}">
     <span style="font-size:9px;opacity:0.7">#</span>
     <span style="font-size:16px;line-height:1">${rank}</span>
@@ -612,9 +591,6 @@ function buildRow(c, absIdx, firstIdx) {
   <div class="incident-title">
     <div class="incident-name" title="${escHtml(titleStr)}">${escHtml(titleStr)}</div>
     <div class="incident-sub">${escHtml(subStr)}</div>
-  </div>
-  <div class="sparkline-wrap">
-    <canvas id="spark-${absIdx}" width="160" height="40" data-cidx="${absIdx}" data-lidx="${localIdx}"></canvas>
   </div>
   <div class="pos-bar-wrap">
     <div class="pos-bar-title">Walk position</div>
@@ -624,83 +600,6 @@ function buildRow(c, absIdx, firstIdx) {
     <div class="pos-bar-ticks"><span>start</span><span>${posLabel}</span><span>end</span></div>
   </div>
 </div>`;
-}
-
-// ── Sparkline drawing ──
-function drawSparkline(c, localIdx) {
-  const canvas = document.getElementById('spark-' + (shownClusters.indexOf(c)));
-  if (!canvas) return;
-
-  // Gather RTT window: members + 4 neighbors each side
-  const N = ALL.length;
-  const minI = Math.max(0, c.startIdx - 4);
-  const maxI = Math.min(N - 1, c.endIdx + 4);
-  const window = [];
-  for (let i = minI; i <= maxI; i++) window.push(ALL[i]);
-
-  if (!window.length) return;
-
-  const W = 160, H = 40;
-  const ctx = canvas.getContext('2d');
-  ctx.clearRect(0, 0, W, H);
-
-  const maxRtt = Math.max(SLOW_MS * 3, ...window.map(e => e.rtt));
-  const rttToY = r => H - 2 - Math.min(H - 4, (r / maxRtt) * (H - 4));
-
-  // SLOW threshold line
-  ctx.strokeStyle = '#fde68a';
-  ctx.lineWidth = 1;
-  ctx.setLineDash([3, 3]);
-  const threshY = rttToY(SLOW_MS);
-  ctx.beginPath();
-  ctx.moveTo(0, threshY);
-  ctx.lineTo(W, threshY);
-  ctx.stroke();
-  ctx.setLineDash([]);
-
-  // RTT line
-  ctx.strokeStyle = '#94a3b8';
-  ctx.lineWidth = 1.5;
-  ctx.beginPath();
-  for (let i = 0; i < window.length; i++) {
-    const x = (i / (window.length - 1 || 1)) * W;
-    const y = rttToY(window[i].rtt);
-    i === 0 ? ctx.moveTo(x, y) : ctx.lineTo(x, y);
-  }
-  ctx.stroke();
-
-  // Mark member points
-  for (let i = 0; i < window.length; i++) {
-    const e = window[i];
-    const x = (i / (window.length - 1 || 1)) * W;
-    const y = rttToY(e.rtt);
-    const isMember = e.rtt > SLOW_MS || e.violation || e.attempts.length > 1 || e.timeout;
-    if (isMember) {
-      ctx.beginPath();
-      ctx.arc(x, y, 2.5, 0, Math.PI * 2);
-      if (e.timeout)       ctx.fillStyle = '#ef4444';
-      else if (e.violation) ctx.fillStyle = '#f59e0b';
-      else                  ctx.fillStyle = '#93c5fd';
-      ctx.fill();
-    }
-  }
-
-  // Peak marker: white ring
-  const peakWindow = window.reduce((a, b) => a.rtt > b.rtt ? a : b);
-  const pi = window.indexOf(peakWindow);
-  const px = (pi / (window.length - 1 || 1)) * W;
-  const py = rttToY(peakWindow.rtt);
-  ctx.beginPath();
-  ctx.arc(px, py, 4, 0, Math.PI * 2);
-  ctx.strokeStyle = '#fff';
-  ctx.lineWidth = 1.5;
-  ctx.stroke();
-  ctx.beginPath();
-  ctx.arc(px, py, 4, 0, Math.PI * 2);
-  ctx.strokeStyle = '#64748b';
-  ctx.lineWidth = 1;
-  ctx.stroke();
-
 }
 
 function escHtml(s) {
