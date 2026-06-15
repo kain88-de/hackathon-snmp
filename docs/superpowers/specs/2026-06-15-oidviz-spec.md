@@ -64,15 +64,15 @@ Nothing is persisted. On page reload the app returns to the landing screen; the 
 ## Layout
 
 ```
-┌──────────┬────────────────────────────────┬──────────┐
-│ Sidebar  │         Main view              │ Slideout │
-│  210px   │  Incident Stack                │  320px   │
-│  fixed   │  Minimap + Detail              │  hidden  │
-│          │  OID Tree                      │  on sel. │
-└──────────┴────────────────────────────────┴──────────┘
+┌──────────┬────────────────────────────────┐
+│ Sidebar  │         Main view              │
+│  220px   │  Incident Stack                │
+│  fixed   │  Minimap + Detail              │
+│          │  OID Tree                      │
+└──────────┴────────────────────────────────┘
 ```
 
-Slideout slides in from the right when an exchange, incident, or subtree row is selected. It does not push the main view — it overlaps on narrow screens, sits alongside on wide screens.
+Two columns. Detail content appears as a modal overlay (Incident Stack) or hover tooltip (Minimap + Detail). OID Tree has no detail panel.
 
 ---
 
@@ -161,11 +161,11 @@ Incidents are hidden/shown based on active sidebar filters. Count label updates 
 ### Virtualised rendering
 Only rows within the visible viewport are rendered. ROW_PX = 72.
 
-### Incident detail slideout
-Opens on row click:
+### Incident detail modal
+Opens on row click. Fixed overlay with backdrop; clicking the backdrop or pressing Escape closes it.
+- Header: incident number · region · seq range · Prev / Next navigation · close button
 - Summary stats grid: Peak RTT, Timeouts, Retries, Exchanges, Violations
 - Exchange table: Seq · OID · RTT · Flag (timeout / violation type / retry count)
-- Prev / Next navigation between incidents
 
 ---
 
@@ -190,7 +190,6 @@ Shows individual exchange bars for exchanges whose time window overlaps the sele
 - Time-axis tick marks and labels at the top
 
 Hover tooltip: seq, % into trace, violation/status, RTT, sent-at time, OID.
-Click opens the exchange detail slideout.
 
 ### Window interaction
 - **Drag** on empty minimap area: create new window
@@ -228,29 +227,13 @@ Virtualised, ROW_H = 22. Two row types:
 **Leaf row**: indent · seq number · OID prefix · (shared) tag if OID appeared in multiple exchanges | attempts (×N or —) | RTT (coloured) | violation badge
 
 Clicking a node toggles expand/collapse and re-flattens the visible row list.
-Clicking a leaf opens the exchange detail slideout.
+Leaf rows are display-only — no detail panel.
 
 ### Toolbar
 "Collapse all" · matching/shown count label.
 
 ### Filters
 Active sidebar filters determine which exchanges are included in the trie. Auto-expand: nodes containing anomalous leaves are expanded on initial load.
-
----
-
-## Exchange detail slideout
-
-Shared across all three views. Opens from the right (320px).
-
-Contents:
-- Status chip (ok / violation type / timeout+retry)
-- Attempt timing bars, proportional to max RTT in this exchange
-- Metadata grid: sent at, total RTT, attempts, bulk size
-- Cursor OID with resolved name
-- Response varbinds list: OID · resolved name · vtype badge
-- Violation box (name + plain-English explanation) if applicable
-
-Keyboard: Escape closes, focus returns to the trigger element.
 
 ---
 
@@ -271,12 +254,11 @@ The doctor UI embeds oidviz components to show walk results. The following compo
 
 | Component | Props | Used by |
 |---|---|---|
-| `LatencyBar` | `ms: number, slowMs: number` | OID Tree, slideout stats |
-| `ViolationBadge` | `type: string` | Incident Stack, OID Tree, exchange detail |
-| `ViolationBox` | `type: string, requestId?: {sent, received}` | Exchange detail slideout |
-| `OidDisplay` | `oid: string, nameMap: Record<string,string>` | Varbind lists, subtree rows |
-| `ExchangeDetail` | `exchange: Exchange` | Slideout, doctor UI |
-| `SubtreeStat` | `label: string, value: string\|number, color?: string` | Slideout stats grid |
+| `LatencyBar` | `ms: number, slowMs: number` | OID Tree, incident modal stats |
+| `ViolationBadge` | `type: string` | Incident Stack, OID Tree, incident modal |
+| `ViolationBox` | `type: string, requestId?: {sent, received}` | Incident modal exchange table |
+| `OidDisplay` | `oid: string, nameMap: Record<string,string>` | Incident modal, OID Tree |
+| `IncidentDetail` | `cluster: Cluster, exchanges: Exchange[]` | Incident modal, doctor UI |
 | `WalkSummaryBar` | `summary: Summary, header: Header` | Sidebar |
 | `DeviceInfo` | `device: DeviceInfo` | Sidebar |
 
@@ -308,17 +290,17 @@ All three views use virtualised rendering — only visible rows/bars are painted
 |---|---|
 | File drop zone | Tab to focus, Enter/Space to open picker |
 | Minimap canvas | Tab to focus, Arrow to shift window |
-| OID Tree rows | Tab, Enter to expand/open slideout |
-| Incident Stack rows | Tab, Enter to open slideout |
-| Slideout | Escape to close, focus returns to trigger |
+| OID Tree rows | Tab, Enter to expand/collapse |
+| Incident Stack rows | Tab, Enter to open modal |
+| Incident modal | Escape to close, focus returns to trigger row |
 | Filter checkboxes | Tab, Space/Enter to toggle |
 | Number inputs | Standard keyboard editing |
 
 ### Screen reader
-- `<aside>` for sidebar, `<main>` for view area, `role="complementary"` for slideout
+- `<aside>` for sidebar, `<main>` for view area
 - Canvas wrappers: `role="application"`, `aria-label`
 - `aria-live="polite"` region in the sidebar for status messages (file loaded, filter changed)
-- Focus moves to slideout `<h2>` heading on open, returns to trigger on close
+- Modal open: focus moves to modal heading; modal close: focus returns to trigger row
 
 ### CI gate
 `axe-core/cli` run against the dev server. Zero WCAG 2.1 AA violations is a hard gate before merge.
