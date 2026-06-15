@@ -20,6 +20,11 @@ Secondary user: SNMP expert drilling into a specific exchange to debug device ag
 - Real-time / live monitoring (input is a completed walk file)
 - MIB compilation or full MIB browser
 - Mobile layout (desktop-first; responsive is acceptable but not required)
+- Multi-file comparison or side-by-side diff
+- Export (CSV, PNG, or any other format)
+- URL-encoded view state or bookmarking
+- Annotation or note-taking on traces
+- Persistent storage of any kind (settings, history, preferences)
 
 ---
 
@@ -42,8 +47,8 @@ Do not hand-write types for trace records.
 
 1. App opens → landing screen with drag-and-drop zone and file-picker button
 2. User drops or selects a `.oidtrace.jsonl.gz` file
-3. File is parsed in a **Web Worker** (gzip decompress + JSONL parse)
-4. A single-pass aggregator builds the ViewModel (subtree stats, device info from system OIDs) without holding all raw records in memory
+3. File is parsed in a **Web Worker** (gzip decompress + JSONL parse). The Worker retains a normalized `ExchangeRecord` array; raw JSON strings are discarded as soon as each line is parsed.
+4. The Worker also extracts `header`, `summary`, and `system_info` records, then posts the complete `ParsedTrace` object to the main thread via `postMessage`.
 5. App transitions to the viewer layout
 
 ### Reload behaviour
@@ -121,11 +126,23 @@ Navigation: Incident Stack · Minimap + Detail · OID Tree. Active view highligh
 
 ### Filters
 - **Slow** (checkbox, on by default) — exchanges with RTT > threshold; inline threshold input in seconds (default `1`)
-- **Violations** (checkbox, on by default) — exchanges with a violation
+- **Violations** (checkbox, on by default) — exchanges with at least one entry in `violations`
 - **Retries** (checkbox, on by default) — exchanges with >1 attempt
-- **Timeouts** (checkbox, off by default) — exchanges where an attempt timed out
+- **Timeouts** (checkbox, off by default) — exchanges where any attempt has `received_at === null`
 
 Changing a filter or threshold immediately re-renders the active view.
+
+#### Filter compose rule per view
+
+An exchange **matches** the active filters if it satisfies at least one checked criterion. When no filter is checked, all exchanges are shown (not zero).
+
+| View | Unit filtered | Match condition |
+|---|---|---|
+| Incident Stack | Cluster | Show cluster if it has at least one matching exchange (slow: `peakRtt > slowMs`; violations: `violationTypes.size > 0`; retries: `retryCount > 0`; timeouts: `timeoutCount > 0`) |
+| Minimap + Detail | Exchange | Show exchange if it matches at least one checked criterion |
+| OID Tree | Exchange | Same as Minimap + Detail — exchange enters the trie if it matches at least one checked criterion |
+
+The four filters are fully independent — the Timeouts checkbox alone is sufficient to surface timeout exchanges/clusters.
 
 ### Walk config
 Read-only fields from `header.settings`: `bulk_size`, `timeout_s`, `retries`, `start_oid`, `time_budget_s` (optional), `resume_from` (optional).
@@ -152,10 +169,29 @@ An attempt is a **timeout** when `received_at === null`. RTT for a timed-out att
 An exchange is anomalous if any of: RTT > slowMs, `violations` is non-empty, has >1 attempt (retry), any attempt timed out (`received_at === null`).
 
 ### Clustering
-Anomalous exchanges within a configurable gap window (default 8 non-anomalous exchanges) are merged into one cluster. Two anomalous exchanges separated by more than the gap window are merged only if they fall in the same OID region.
+Anomalous exchanges are merged into clusters using a gap-window algorithm:
+- OID for region assignment: `request.oids[0]` (always present; represents what the walker requested at that point).
+- Two consecutive anomalous exchanges are merged into the same cluster if the number of non-anomalous exchanges *between* them is ≤ `GAP_WINDOW` (default 8), **or** both map to the same OID region (regardless of gap size).
+- Non-anomalous exchanges are never added to a cluster as members; they are only used to compute the gap.
+- The gap count is `(indexB − indexA − 1)` where A and B are the indices of the two anomalous exchanges.
 
 ### OID regions
-Well-known prefixes mapped to region names: `system`, `ifTable`, `interfaces`, `ip`, `tcp`, `snmp`, `hrSystem`, `enterprises`. Unknown OIDs use the first 8 arcs.
+Well-known prefixes mapped to region names for **clustering only** (coarse topology grouping):
+
+| Prefix | Name |
+|---|---|
+| `1.3.6.1.2.1.1.` | `system` |
+| `1.3.6.1.2.1.2.2.1` | `ifTable` |
+| `1.3.6.1.2.1.2.` | `interfaces` |
+| `1.3.6.1.2.1.4.` | `ip` |
+| `1.3.6.1.2.1.6.` | `tcp` |
+| `1.3.6.1.2.1.11.` | `snmp` |
+| `1.3.6.1.2.1.25.` | `hrSystem` |
+| `1.3.6.1.4.1.` | `enterprises` |
+
+Matching is longest-prefix-first. Unknown OIDs use the first 8 arcs as the region label.
+
+This list is intentionally separate from the OID Tree's well-known name map (which is for display labels) and from the build-time resolution map (which covers ~2k prefixes for tooltips). Each list is sized to its purpose.
 
 ### Incident scoring
 ```
@@ -233,7 +269,8 @@ Each node: arc label, full OID, optional well-known name, children map, leaf exc
 
 Leaves are individual filtered exchanges attached to the deepest matching prefix node.
 
-Well-known prefixes: `system`, `interfaces`, `ip`, `tcp`, `snmp`, `host`, `cisco`, `snmpVacm`.
+Well-known prefix names for **display labels** in the tree (distinct from the clustering region list):
+`system`, `interfaces`, `ip`, `tcp`, `snmp`, `host`, `cisco`, `snmpVacm`.
 
 ### Rollup
 Stats aggregate bottom-up: children's stats fold into the parent. Severity propagates upward (max).
@@ -258,12 +295,15 @@ Active sidebar filters determine which exchanges are included in the trie. Auto-
 
 ## OID name resolution
 
-Bundle a static map of ~2k standard RFC OID prefixes → names at build time.
+Bundle a static map of ~2k standard RFC OID prefixes → names at build time. Used for **tooltip display** and node labels that fall outside the OID Tree's short well-known-name list.
+
 Sources: SNMPv2-MIB, IF-MIB, IP-MIB, TCP-MIB, UDP-MIB, HOST-RESOURCES-MIB, SNMP-FRAMEWORK-MIB, common Cisco/Juniper/Net-SNMP enterprise prefixes.
 
 Resolution: longest-prefix match. Unknown OIDs are shown as the numeric OID.
 
 User-supplied MIB files are out of scope for the initial version.
+
+Note: the project uses three OID prefix lists with distinct purposes — see [OID regions](#oid-regions) for the clustering list, [OID Tree well-known names](#data-model) for the tree display list, and this section for the comprehensive tooltip resolution map. They are intentionally separate.
 
 ---
 

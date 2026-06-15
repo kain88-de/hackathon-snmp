@@ -1,7 +1,7 @@
 # OIDviz spec review findings
 
 Generated 2026-06-15 by Opus critical review. Items 1–6 (must fix) are resolved in the spec.
-Items 7–16 are open and tracked here.
+Items 7–11 (should fix) are resolved in the spec. Items 12–16 are open and tracked here.
 
 ---
 
@@ -16,43 +16,36 @@ Items 7–16 are open and tracked here.
 
 ---
 
-## Should fix — open
+## Should fix — resolved
 
-**7. Web Worker vs prototype contradiction**
-Spec mandates a Web Worker with streaming aggregator that never holds all exchanges in memory.
-The prototype holds the full `ALL[]` array and all three views re-scan it on every filter change.
-Decision needed: is the Worker + streaming model real scope for v1, or aspirational? If real,
-it requires a different data model (pre-aggregated ViewModel instead of raw exchange array),
-which affects every view.
+**7. Web Worker vs prototype contradiction** ✓
+Web Worker is real scope. The Worker parses and holds a normalized `ExchangeRecord` array; raw
+JSON strings are discarded as each line is parsed. The "never hold raw records in memory" language
+was aspirational — removed. All three views work from the exchange array held in the Worker's
+`ParsedTrace` result.
 
-**8. Three inconsistent well-known-prefix lists**
-- Incident Stack `oidRegion()`: `system, ifTable, interfaces, ip, tcp, snmp, hrSystem, enterprises`
-- OID Tree `WK` map: `system, interfaces, ip, tcp, snmp, host, cisco, snmpVacm`
-- Build-time OID name resolution: ~2k RFC prefix map (separate, not yet defined)
-Decision needed: should these share one source, or are they intentionally separate
-(clustering vs. tree labels vs. tooltip resolution)?
+**8. Three inconsistent well-known-prefix lists** ✓
+The three lists serve distinct purposes and are intentionally separate:
+- Incident Stack `oidRegion()`: coarse topology grouping for clustering (8 entries + enterprises catch-all)
+- OID Tree `WK` map: human-readable display labels for trie nodes (different set)
+- Build-time map: comprehensive tooltip/hover resolution (~2k prefixes)
+Spec now documents this distinction in each section.
 
-**9. Filter algebra not defined**
-The four filters (Slow, Violations, Retries, Timeouts) interact differently across views.
-In the prototype, Incident Stack shows a timeout cluster if *any* of Slow/Violations/Retries
-is checked, making the Timeouts checkbox mostly inert there.
-The spec describes four independent toggles but doesn't define the compose rule per view.
+**9. Filter algebra not defined** ✓
+Defined: an exchange/cluster is shown if it matches at least one checked criterion. When no filter
+is checked, all exchanges are shown. Compose rule documented per view in the spec (Filters section).
+The Timeouts filter is now fully independent — it surfaces timeout exchanges/clusters on its own.
 
-**10. Non-goals are weak**
-Current non-goals (real-time monitoring, MIB compilation) are obvious and don't protect scope.
-Missing non-goals that would actually constrain implementation decisions:
-- No multi-file comparison / side-by-side
-- No export (CSV, PNG, etc.)
-- No URL-encoded view state / bookmarking
-- No annotation or note-taking on traces
-- No persistent storage of any kind
+**10. Non-goals are weak** ✓
+Added: no multi-file comparison, no export, no URL-encoded state, no annotations, no persistent
+storage of any kind.
 
-**11. Clustering rule ambiguous**
-Two open questions:
-- Which OID drives region assignment — `request.oids[0]` (what the prototype uses) or response
-  varbind OIDs (what the tree uses)?
-- Gap counting: the prototype mixes `i - lastIdx - 1` (anomalous-to-anomalous) and `i - lastIdx`
-  (absolute index), inconsistently with the prose "8 non-anomalous exchanges".
+**11. Clustering rule ambiguous** ✓
+OID source: `request.oids[0]` (always present; correct for clustering — it represents the OID
+being walked at that point, not what the device happened to respond with).
+Gap counting: gap = `(indexB − indexA − 1)` non-anomalous exchanges between two anomalous ones.
+The non-anomalous scan guard `i − lastIdx ≤ GAP_WINDOW` is a correct early-exit equivalent.
+Spec now uses `(indexB − indexA − 1)` as the canonical definition.
 
 ---
 
