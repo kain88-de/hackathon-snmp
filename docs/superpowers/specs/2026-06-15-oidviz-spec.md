@@ -254,24 +254,6 @@ User-supplied MIB files are out of scope for the initial version.
 
 ---
 
-## Reusable components (doctor UI contract)
-
-The doctor UI embeds oidviz components to show walk results. The following components must be self-contained Svelte components: props-only (no global state reads), CSS custom properties for colours, exported TypeScript prop types.
-
-| Component | Props | Used by |
-|---|---|---|
-| `LatencyBar` | `ms: number, slowMs: number` | OID Tree, incident modal stats |
-| `ViolationBadge` | `type: string` | Incident Stack, OID Tree, incident modal |
-| `ViolationBox` | `type: string, requestId?: {sent, received}` | Incident modal exchange table |
-| `OidDisplay` | `oid: string, nameMap: Record<string,string>` | Incident modal, OID Tree |
-| `IncidentDetail` | `cluster: Cluster, exchanges: Exchange[]` | Incident modal, doctor UI |
-| `WalkSummaryBar` | `summary: Summary, header: Header` | Sidebar |
-| `DeviceInfo` | `device: DeviceInfo` | Sidebar |
-
-Components live in `oidviz/src/lib/`. The doctor UI imports them as a monorepo workspace package.
-
----
-
 ## Accessibility (WCAG 2.1 AA)
 
 ### Colour
