@@ -1,5 +1,6 @@
 <script setup lang="ts">
 import { computed, onMounted, onUnmounted, ref } from 'vue'
+import LandingScreen from './components/LandingScreen.vue'
 import Sidebar from './components/Sidebar.vue'
 import { buildIncidents } from './lib/incidentStack'
 import type { AppState, FilterState, ParseResult, WorkerRequest, WorkerResponse } from './lib/model'
@@ -75,11 +76,6 @@ const flatRows = computed(() => {
   return flatten(root)
 })
 
-const errorMessage = computed<string | null>(() => {
-  if (appState.value.phase === 'error') return appState.value.message
-  return null
-})
-
 // Suppress unused variable warnings for computed values used by child components
 void incidents
 void flatRows
@@ -99,14 +95,11 @@ void flatRows
     @toggle-dark-mode="toggleDarkMode"
   />
   <main class="main-area">
-    <!-- Landing / Loading / Error state -->
-    <template v-if="appState.phase === 'landing' || appState.phase === 'loading' || appState.phase === 'error'">
-      <div class="landing-placeholder">
-        <span v-if="appState.phase === 'loading'">Parsing…</span>
-        <span v-else-if="appState.phase === 'error'" role="alert">{{ errorMessage }}</span>
-        <span v-else>Drop a .oidtrace.jsonl.gz file here</span>
-      </div>
-    </template>
+    <LandingScreen
+      v-if="appState.phase !== 'viewer'"
+      :appState="appState"
+      @file-selected="handleFile"
+    />
     <!-- Viewer state -->
     <template v-if="appState.phase === 'viewer'">
       <div class="view-area">
