@@ -1,5 +1,5 @@
 <script setup lang="ts">
-import { computed, onMounted, ref } from 'vue'
+import { computed, onMounted, onUnmounted, ref } from 'vue'
 import { buildIncidents } from './lib/incidentStack'
 import type { AppState, FilterState, ParseResult, WorkerRequest, WorkerResponse } from './lib/model'
 import { autoExpand, buildTrie, flatten, rollup } from './lib/oidTrie'
@@ -43,6 +43,10 @@ function toggleDarkMode() {
 }
 
 let worker: Worker | null = null
+
+onUnmounted(() => {
+  worker?.terminate()
+})
 
 function handleFile(buffer: ArrayBuffer) {
   appState.value = { phase: 'loading' }
