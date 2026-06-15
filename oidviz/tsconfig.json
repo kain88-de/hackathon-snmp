@@ -3,9 +3,11 @@
     "target": "ES2022",
     "module": "ESNext",
     "moduleResolution": "bundler",
-    "types": ["node"],
     "strict": true,
-    "noEmit": true
+    "noEmit": true,
+    "noUncheckedIndexedAccess": true,
+    "exactOptionalPropertyTypes": true,
+    "skipLibCheck": true
   },
-  "include": ["tools/**/*.ts"]
+  "include": ["tools/**/*.ts", "src/**/*.ts", "src/**/*.vue"]
 }
