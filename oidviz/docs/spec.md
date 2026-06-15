@@ -1,7 +1,7 @@
 # OIDviz — specification
 
 Hosted browser-based viewer for oidtrace walk files.
-Supersedes `docs/superpowers/specs/2026-06-11-oidviz-design.md`.
+Supersedes `docs/superpowers/specs/2026-06-11-oidviz-design.md` (deleted).
 
 ---
 
@@ -50,18 +50,16 @@ Do not hand-write types for trace records.
 
 The trace file is **not persisted** — no IndexedDB, no localStorage for file content.
 On page reload, the app returns to the landing screen and the user must provide the file again.
-Settings (slow threshold, selected view, filter state) ARE persisted in `localStorage` under key `oidviz`.
+Settings (slow threshold, selected view) ARE persisted in `localStorage` under key `oidviz`.
 
 ### localStorage schema
 
 ```ts
 {
-  slowMs: number;          // default 2 — slow RTT threshold in milliseconds
-  view: 'waterfall' | 'subtree';  // last active view
+  slowMs: number;                              // default 1000 — slow RTT threshold in ms
+  view: 'incidents' | 'minimap' | 'oidtree';  // last active view
 }
 ```
-
-human question: this should reset on reload! do we need it?
 
 ### Error states
 
@@ -77,15 +75,15 @@ human question: this should reset on reload! do we need it?
 ## Layout
 
 ```
-┌─────────────┬─────────────────────────────────┬─────────────┐
-│   Sidebar   │          Main view               │  Slideout   │
-│   210px     │          flex-1                  │  320px      │
-│   fixed     │          Waterfall or Subtree    │  hidden     │
-│             │                                  │  until sel. │
-└─────────────┴─────────────────────────────────┴─────────────┘
+┌──────────┬────────────────────────────────┬──────────┐
+│ Sidebar  │         Main view              │ Slideout │
+│  210px   │  Incident Stack                │  320px   │
+│  fixed   │  Minimap + Detail              │  hidden  │
+│          │  OID Tree                      │  on sel. │
+└──────────┴────────────────────────────────┴──────────┘
 ```
 
-Slideout slides in from the right when an exchange or subtree row is selected. It does not push the main view — it overlaps on narrow screens, sits alongside on wide screens.
+Slideout slides in from the right when an exchange, incident, or subtree row is selected. It does not push the main view — it overlaps on narrow screens, sits alongside on wide screens.
 
 ---
 
@@ -99,7 +97,7 @@ Sections (top to bottom):
 `OIDviz` logotype.
 
 ### Walk summary
-Shown immediately after a file loads. Fields:
+Shown after a file loads:
 - End reason chip (Completed / Unresponsive / OID Loop / Interrupted / Time Budget) — colour-coded
 - Duration (e.g. `7.1s`)
 - Exchanges count
@@ -107,7 +105,7 @@ Shown immediately after a file loads. Fields:
 - Violations total (0 = green, >0 = amber)
 
 ### Device
-Extracted from system MIB OIDs in the first exchange responses:
+Extracted from system MIB OIDs in exchange responses:
 
 | Field | Source OID |
 |---|---|
@@ -116,98 +114,154 @@ Extracted from system MIB OIDs in the first exchange responses:
 | sysUpTime | `1.3.6.1.2.1.1.3.0` |
 | sysLocation | `1.3.6.1.2.1.1.6.0` |
 | sysContact | `1.3.6.1.2.1.1.4.0` |
-| sysObjectID → vendor | `1.3.6.1.2.1.1.2.0` |
+| sysObjectID | `1.3.6.1.2.1.1.2.0` |
 
-Fields that were not found in the walk are shown as `—`.
+Fields not found in the walk are shown as `—`. The section is hidden if no system MIB values were seen.
 
 ### Views
-Navigation: Waterfall · Subtree. Active view highlighted.
+Navigation: Incident Stack · Minimap + Detail · OID Tree. Active view highlighted.
+
+### Filters
+- **Slow** (checkbox, on by default) — exchanges with RTT > slowMs
+- **Violations** (checkbox, on by default) — exchanges with a violation
+- **Retries** (checkbox, on by default) — exchanges with >1 attempt
+- **Timeouts** (checkbox, off by default) — exchanges where an attempt timed out
+
+Changing a filter immediately re-renders the active view.
 
 ### Settings
-Slow threshold: number input (ms). Persisted. Changing it re-renders all views immediately.
+Slow threshold: number input (ms, default 1000). Persisted in localStorage. Changing it re-renders all views immediately.
 
 ### Walk config
 Read-only fields from `header.settings`: bulk size, timeout, retries, give-up count, start OID.
 
 ---
 
-## View: Waterfall
+## View: Incident Stack
 
-Canvas-based. Renders one horizontal bar per exchange on a shared time axis.
+Clusters anomalous exchanges into named, scored incidents using a gap-window algorithm.
 
-### Bar colours
-- Blue `#3b82f6` — OK
-- Amber `#f59e0b` — exchange has a violation
-- Red `#ef4444` — attempt timed out
-- Light blue `#93c5fd` — retry attempt (after a timeout)
+### Anomaly detection
+An exchange is anomalous if any of: RTT > slowMs, has a violation, has >1 attempt (retry), timed out.
 
-### Toolbar
-- Zoom slider (1×–20×, default 5×)
-- Filters: **Violations** · **Slow** · **Retries** (each independently toggleable)
-  - Slow filter is **on by default**
-  - Slow filter uses the sidebar slow threshold
-- Legend
+### Clustering
+Anomalous exchanges within a configurable gap window (default 8 non-anomalous exchanges) are merged into one cluster. Two anomalous exchanges separated by more than the gap window are merged only if they fall in the same OID region.
 
-### Exchange detail slideout
-Opens on click. Contains:
-- Status chip (ok / violation type / timeout+retry)
-- Attempt timing bars (proportional to max RTT in this exchange)
-- Exchange metadata: sent at, total RTT, attempts, PDU / bulk size
-- Cursor OID with resolved name
-- Response varbinds list: OID, resolved name if known, vtype badge
-- Violation box (name + plain-English explanation) if applicable
+### OID regions
+Well-known prefixes mapped to region names: `system`, `ifTable`, `interfaces`, `ip`, `tcp`, `snmp`, `hrSystem`, `enterprises`. Unknown OIDs use the first 8 arcs.
 
-### Performance and scale
-Target: render up to **50k exchanges** without jank.
-Implementation requirement: **row virtualisation** — only paint rows within the visible scroll viewport. A 100k-exchange trace should open in under 2 seconds on a mid-range laptop.
+### Incident scoring
+```
+score = timeoutCount × 100
+      + violationTypes × 50
+      + retryCount × 10
+      + log10(peakRtt) × 5
+      + memberCount × 0.1
+```
 
-Performance gates (to be validated before shipping):
-- 5k exchanges: open < 500ms, scroll at 60fps
-- 50k exchanges: open < 2s, scroll at 60fps
-- 100k exchanges: open < 5s (acceptable jank on scroll)
+### Row layout
+Each incident row (72px):
+- **Severity chip** (48×48px): `err` (any timeout), `warn` (violation or slow), `info` (retry only)
+- **Title**: `{region} — {type}` where type is the dominant anomaly
+- **Subtitle**: seq range · peak RTT · exchange count · retry count
+- **Walk position bar**: shows where in the walk this incident falls (proportional)
 
-### Accessibility (WCAG 2.1 AA)
-The canvas cannot be read by screen readers. Required mitigations:
-- `role="application"` + `aria-label="Exchange waterfall"` on the canvas wrapper
-- Keyboard navigation: Tab focuses the canvas; arrow keys move the selected exchange; Enter opens the detail slideout
-- The detail slideout (HTML, not canvas) carries full accessible content for the selected exchange
-- Focus moves to the slideout heading on open, returns to canvas on close
+### Filters
+Incidents are hidden/shown based on active sidebar filters. Count label updates accordingly.
+
+### Virtualised rendering
+Only rows within the visible viewport are rendered. ROW_PX = 72.
+
+### Incident detail slideout
+Opens on row click:
+- Summary stats grid: Peak RTT, Timeouts, Retries, Exchanges, Violations
+- Exchange table: Seq · OID · RTT · Flag (timeout / violation type / retry count)
+- Prev / Next navigation between incidents
 
 ---
 
-## View: Subtree
+## View: Minimap + Detail
 
-HTML table. One row per OID subtree aggregated from the walk.
+Two-panel canvas layout for timeline-based exploration of the full walk.
 
-### Aggregation
-Single-pass over exchange records: for each response varbind OID, identify the longest matching OID prefix in the known subtree list. Accumulate exchange count, RTT sum, RTT samples (for P99), violation count.
+### Minimap panel (80px tall)
+Covers the full walk duration. Each pixel column represents a time bucket. Colour priority: timeout (`#ef4444`) > violation (`#f59e0b`) > retry (`#93c5fd`) > slow (`#3b82f6`) > ok (`#94a3b8`). Bar height proportional to event count in the bucket.
 
-P99 is computed from a reservoir sample (max 1000 samples per subtree) to avoid unbounded memory.
+A selection rectangle highlights the current detail window.
 
-### Columns
-Subtree (name + OID) · Exchanges · Avg RTT · P99 RTT · Violations · Reliability · Copy OID
+Tooltip on hover: time offset, event count, max RTT, violation flag.
 
-### Latency colours
-Relative to the slow threshold `slowMs`:
-- Green: `< slowMs × 0.5`
-- Amber: `≥ slowMs × 0.5`
-- Red: `≥ slowMs`
+### Detail panel (flex remainder)
+Shows individual exchange bars for exchanges whose time window overlaps the selection:
+- One horizontal bar per exchange on a vertical list, ordered by sent time
+- Bar length proportional to RTT on the shared time axis
+- Retry attempts rendered as stacked bars (same colours as minimap)
+- Violation marker `!` after the bar
+- Seq number label on the left
+- Time-axis tick marks and labels at the top
 
-Changing `slowMs` re-colours the entire table immediately.
+Hover tooltip: seq, % into trace, violation/status, RTT, sent-at time, OID.
+Click opens the exchange detail slideout.
 
-### Filters (toolbar)
-- **Slow P99** (amber) — show only rows where P99 RTT > slowMs
-- **Violations** (red) — show only rows with violations > 0
-- Filters compose with OR: either condition is sufficient to show a row
-- A parent row is shown if it or any of its children match
+### Window interaction
+- **Drag** on empty minimap area: create new window
+- **Drag** inside window: pan
+- **Drag** window edges (±6px): resize
+- **Click** (no drag): centre window at clicked point (window width = 5% of trace)
+- **Arrow Left / Right**: shift window by 20% of current span
 
-### Subtree detail slideout
-Opens on row click. Contains:
-- Subtree name, OID, description
-- Stats grid: exchanges, violations (coloured), avg RTT (coloured), P99 RTT (coloured)
-- Notable exchanges list: worst RTT and violated exchanges for this subtree
-  - Each notable exchange is expandable inline: RTT, attempts, violation box
-- "slow P99" badge on section title when P99 > slowMs
+Toolbar: window time range label · "Zoom to problems" (focuses densest problem bucket) · "Reset window" (restores default 5% width).
+
+### Filters
+Active sidebar filters determine which exchanges are included in the minimap buckets and detail list.
+
+---
+
+## View: OID Tree
+
+Trie built from exchange response varbind OIDs (up to 7 prefix levels). Stats rolled up per node.
+
+### Data model
+Each node: arc label, full OID, optional well-known name, children map, leaf exchanges, stats (count, maxRtt, violationCount), severity (0 = ok, 1 = slow, 2 = violation).
+
+Leaves are individual filtered exchanges attached to the deepest matching prefix node.
+
+Well-known prefixes: `system`, `interfaces`, `ip`, `tcp`, `snmp`, `host`, `cisco`, `snmpVacm`.
+
+### Rollup
+Stats aggregate bottom-up: children's stats fold into the parent. Severity propagates upward (max).
+
+### Row layout
+Virtualised, ROW_H = 22. Two row types:
+
+**Node row**: indent · caret (▸/▾) · OID arc · well-known name (muted) | Count | Max RTT (coloured) | Violations (badge)
+
+**Leaf row**: indent · seq number · OID prefix · (shared) tag if OID appeared in multiple exchanges | attempts (×N or —) | RTT (coloured) | violation badge
+
+Clicking a node toggles expand/collapse and re-flattens the visible row list.
+Clicking a leaf opens the exchange detail slideout.
+
+### Toolbar
+"Collapse all" · matching/shown count label.
+
+### Filters
+Active sidebar filters determine which exchanges are included in the trie. Auto-expand: nodes containing anomalous leaves are expanded on initial load.
+
+---
+
+## Exchange detail slideout
+
+Shared across all three views. Opens from the right (320px).
+
+Contents:
+- Status chip (ok / violation type / timeout+retry)
+- Attempt timing bars, proportional to max RTT in this exchange
+- Metadata grid: sent at, total RTT, attempts, bulk size
+- Cursor OID with resolved name
+- Response varbinds list: OID · resolved name · vtype badge
+- Violation box (name + plain-English explanation) if applicable
+
+Keyboard: Escape closes, focus returns to the trigger element.
 
 ---
 
@@ -218,15 +272,13 @@ Sources: SNMPv2-MIB, IF-MIB, IP-MIB, TCP-MIB, UDP-MIB, HOST-RESOURCES-MIB, SNMP-
 
 Resolution: longest-prefix match. Unknown OIDs are shown as the numeric OID.
 
-User-supplied MIB files are **out of scope** for the initial version.
+User-supplied MIB files are out of scope for the initial version.
 
 ---
 
 ## Reusable components (doctor UI contract)
 
-The doctor UI is an interactive tool for tuning monitoring settings. It embeds oidviz components to show walk results and guide users without switching apps.
-
-The following components must be designed as self-contained Svelte components that accept data via props, emit events upward, and carry no global state.
+The doctor UI embeds oidviz components to show walk results. The following components must be self-contained Svelte components: props-only (no global state reads), CSS custom properties for colours, exported TypeScript prop types.
 
 | Component | Props | Used by |
 |---|---|---|
@@ -234,62 +286,56 @@ The following components must be designed as self-contained Svelte components th
 | `ViolationBadge` | `type: string` | Waterfall, exchange detail |
 | `ViolationBox` | `type: string, requestId?: {sent, received}` | Exchange detail slideout |
 | `OidDisplay` | `oid: string, nameMap: Record<string,string>` | Varbind lists, subtree rows |
-| `ExchangeDetail` | `exchange: Exchange` | Waterfall slideout, doctor UI |
+| `ExchangeDetail` | `exchange: Exchange` | Slideout, doctor UI |
 | `SubtreeStat` | `label: string, value: string\|number, color?: string` | Slideout stats grid |
 | `WalkSummaryBar` | `summary: Summary, header: Header` | Sidebar |
 | `DeviceInfo` | `device: DeviceInfo` | Sidebar |
 
-Components must:
-- Accept `slowMs` as a prop where colour-coding is involved (no localStorage reads inside components)
-- Use CSS custom properties for colours so the doctor UI can theme them
-- Export TypeScript prop types
-
-### Sharing mechanism
-Components live in `oidviz/src/lib/`. The doctor UI imports them directly from the monorepo (workspace package) rather than a published npm package. If the doctor UI is built on a different stack, agree on a web component wrapper at that point.
+Components live in `oidviz/src/lib/`. The doctor UI imports them as a monorepo workspace package.
 
 ---
 
-## Accessibility — WCAG 2.1 AA requirements
+## Performance targets
+
+| Trace size | Open time | Scroll |
+|---|---|---|
+| 5k exchanges | < 500ms | 60fps |
+| 50k exchanges | < 2s | 60fps |
+| 100k exchanges | < 5s | acceptable jank |
+
+All three views use virtualised rendering — only visible rows/bars are painted.
+
+---
+
+## Accessibility (WCAG 2.1 AA)
 
 ### Colour
-- All text/background combinations must meet 4.5:1 contrast ratio (3:1 for large text)
-- Latency colouring (green/amber/red) must never be the **only** indicator — pair with a text label or icon
-- The existing violation `!` marker on the canvas counts as the paired indicator for waterfall bars
+- All text/background combinations: 4.5:1 contrast ratio (3:1 for large text)
+- Latency/severity colouring is never the only indicator — paired with a text label or icon
 
 ### Keyboard
+
 | Element | Keys |
 |---|---|
-| File drop zone | Tab to focus, Enter/Space to open file picker |
-| Waterfall canvas | Tab to focus, ←→ to step exchanges, Enter to open slideout |
-| Subtree table rows | Tab, Enter to open slideout |
-| Slideout | Escape to close, focus returns to trigger element |
-| Filter buttons | Tab, Space/Enter to toggle |
+| File drop zone | Tab to focus, Enter/Space to open picker |
+| Minimap canvas | Tab to focus, Arrow to shift window |
+| OID Tree rows | Tab, Enter to expand/open slideout |
+| Incident Stack rows | Tab, Enter to open slideout |
+| Slideout | Escape to close, focus returns to trigger |
+| Filter checkboxes | Tab, Space/Enter to toggle |
 | Number inputs | Standard keyboard editing |
 
 ### Screen reader
-- Landmark roles: `<aside>` for sidebar, `<main>` for view area, `role="complementary"` for slideout
-- Table: proper `<thead>`, `<th scope="col">` for all columns
-- Sort buttons: `aria-sort="ascending|descending|none"`
-- Canvas: `role="application"`, `aria-label`, hidden off-screen table with the currently selected exchange for screen readers
-- Status messages (file loaded, filter changed): `aria-live="polite"` region in the sidebar
+- `<aside>` for sidebar, `<main>` for view area, `role="complementary"` for slideout
+- Canvas wrappers: `role="application"`, `aria-label`
+- `aria-live="polite"` region in the sidebar for status messages (file loaded, filter changed)
+- Focus moves to slideout `<h2>` heading on open, returns to trigger on close
 
-### Focus management
-- Slideout open: focus moves to the slideout's `<h2>` heading
-- Slideout close: focus returns to the row/bar that opened it
-- File loaded: focus moves to the first view (waterfall or last selected)
-
-### Axe-core CI gate
-Run `axe-core/cli` against the dev server as part of CI. Zero violations at WCAG 2.1 AA level is a hard gate before merge.
+### CI gate
+`axe-core/cli` run against the dev server. Zero WCAG 2.1 AA violations is a hard gate before merge.
 
 ---
 
-## Open questions / future work
+## Dark mode
 
-- **Dark mode**: not in scope for v1, but CSS custom properties must be used throughout so it can be added without structural changes
-  -> yes dark mode, and guess from system by default show this in the header/hero
-- **URL state**: view and filter state could be encoded in the URL hash to allow bookmarking a specific view — deferred
-  -> hm is this needed?
-- **Export**: copy OID is implemented; CSV export of subtree stats is a reasonable v2 addition
- -> no
-- **Trace comparison**: loading two traces side-by-side is useful for before/after tuning — deferred
- -> yes not needed here
+Default to system preference (`prefers-color-scheme`). Toggle in the sidebar header. CSS custom properties used throughout — no hard-coded colours in components. Dark mode is in scope for v1.
