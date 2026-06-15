@@ -122,7 +122,7 @@ body { background: var(--bg); color: var(--text); font-family: system-ui, sans-s
     <button class="shortcut-btn" onclick="loadPath('/oidviz/tools/fixtures/trace-100k.oidtrace.jsonl.gz')">trace-100k</button>
     <button class="shortcut-btn" style="border-color:#d97706;color:#d97706" onclick="loadPath('/oidviz/tools/fixtures/trace-focused.oidtrace.jsonl.gz')">focused (3 areas)</button>
   </div>
-  <input type="file" id="file-input" accept=".gz" style="display:none" onchange="loadFile(this.files[0])">
+  <input type="file" id="file-input" accept=".gz,.jsonl,.jsonl.gz" style="display:none" onchange="loadFile(this.files[0])">
 </div>
 
 <!-- Viewer -->
@@ -139,15 +139,24 @@ body { background: var(--bg); color: var(--text); font-family: system-ui, sans-s
     <div class="metric"><span class="metric-label">End reason</span><span class="metric-value" id="m-end">—</span></div>
   </div>
   <div class="canvas-limit-warn" id="canvas-warn">
-    Virtual tree height exceeds display limits — canvas clipped.
+    Tree is very large — some rows may not render. Try collapsing branches.
   </div>
   <div class="toolbar">
-    <label><input type="checkbox" id="f-slow" checked onchange="applyFilters()"> Slow (&gt;2ms)</label>
-    <label><input type="checkbox" id="f-viol" onchange="applyFilters()"> Violations only</label>
+    <label><input type="checkbox" id="f-slow" checked onchange="applyFilters()"> Slow (&gt;<input type="number" id="slow-ms" value="2" min="1" max="100000" step="1" style="width:52px;font-size:11px;padding:1px 3px;border:1px solid var(--border);border-radius:3px;font-family:var(--mono)" onchange="SLOW_MS=Math.max(1,+this.value||2);applyFilters()">ms)</label>
+    <label><input type="checkbox" id="f-viol" checked onchange="applyFilters()"> Violations only</label>
     <label><input type="checkbox" id="f-retry" onchange="applyFilters()"> Retries only</label>
+    <label><input type="checkbox" id="f-timeout" onchange="applyFilters()"> Timeouts</label>
     <span style="font-size:11px;color:var(--muted)" id="filter-count"></span>
+    <span style="font-size:11px;color:var(--muted)">Sparkbar: <span style="color:#4ade80">▌</span>fast → <span style="color:#ef4444">▌</span>slow</span>
     <button class="filter-btn" onclick="collapseAllAndRender()">Collapse all</button>
-    <button class="btn-reset" onclick="reset()">Load another file</button>
+    <button class="btn-reset" style="margin-left:auto" onclick="reset()">Load another file</button>
+  </div>
+  <div style="background:var(--surface);border-bottom:1px solid var(--border);padding:0 8px;display:flex;align-items:center;height:22px;font-size:11px;color:var(--muted);font-family:var(--mono);flex-shrink:0;user-select:none;">
+    <span style="flex:1;padding-left:32px">OID / Name</span>
+    <span style="width:60px;text-align:right">Count</span>
+    <span style="width:80px;text-align:right">Max RTT</span>
+    <span style="width:60px;text-align:right">Violations</span>
+    <span style="width:56px;margin-left:8px;text-align:center">Distribution</span>
   </div>
   <div id="chart-wrap">
     <div id="tree-spacer"></div>
@@ -156,7 +165,7 @@ body { background: var(--bg); color: var(--text); font-family: system-ui, sans-s
 
 <script>
 // ── Constants ──
-const SLOW_MS  = 2;
+let SLOW_MS  = 2;
 const ROW_H    = 22;
 const OVERSCAN = 4;  // extra rows above/below viewport
 
@@ -295,6 +304,13 @@ async function parseAndShow(blob, _name) {
   document.getElementById('m-violations').textContent = summary
     ? Object.values(summary.violation_counts || {}).reduce((a,b)=>a+b,0)
     : '?';
+  const violEl = document.getElementById('m-violations');
+  violEl.style.cursor = 'pointer';
+  violEl.title = 'Click to show violations';
+  violEl.onclick = () => {
+    document.getElementById('f-viol').checked = true;
+    applyFilters();
+  };
   document.getElementById('m-end').textContent = summary?.end_reason ?? '?';
 
   startFpsMeter();
@@ -306,25 +322,23 @@ function truncateOid(oid, depth) {
   return parts.slice(0, depth).join('.');
 }
 
-// ── Filter predicate ──
-function makeLeafPredicate() {
-  const fSlow  = document.getElementById('f-slow')?.checked  ?? false;
-  const fViol  = document.getElementById('f-viol')?.checked  ?? false;
-  const fRetry = document.getElementById('f-retry')?.checked ?? false;
-  return (e) => {
-    if (fSlow  && e.rtt <= SLOW_MS)             return false;
-    if (fViol  && !e.violation)                  return false;
-    if (fRetry && e.attempts.length <= 1)        return false;
-    return true;
-  };
-}
-
 // ── Build trie ──
-function buildTrie(exchanges, pred) {
+function buildTrie(exchanges) {
+  const fSlow    = document.getElementById('f-slow')?.checked    ?? false;
+  const fViol    = document.getElementById('f-viol')?.checked    ?? false;
+  const fRetry   = document.getElementById('f-retry')?.checked   ?? false;
+  const fTimeout = document.getElementById('f-timeout')?.checked ?? false;
   const root = makeNode('', '');
 
   for (const exc of exchanges) {
-    if (!pred(exc)) continue;
+    const anyFilter = fSlow || fViol || fRetry || fTimeout;
+    if (anyFilter) {
+      const matchSlow    = fSlow    && exc.rtt > SLOW_MS && !exc.violation && !exc.timeout;
+      const matchViol    = fViol    && !!exc.violation;
+      const matchRetry   = fRetry   && exc.attempts.length > 1;
+      const matchTimeout = fTimeout && exc.timeout;
+      if (!matchSlow && !matchViol && !matchRetry && !matchTimeout) continue;
+    }
     const shared = exc.oids.length > 1;
     for (const prefix of exc.oids) {
       const parts = prefix.split('.');
@@ -458,8 +472,9 @@ function buildSparkData(node) {
 }
 
 // ── RTT color helper ──
-function rttClass(rtt, timeout) {
-  if (timeout) return 'err';
+function rttClass(rtt, timeout, violation) {
+  if (violation) return 'err';
+  if (timeout)   return 'err';
   if (rtt > SLOW_MS) return 'warn';
   return 'ok';
 }
@@ -469,8 +484,7 @@ const wrap    = document.getElementById('chart-wrap');
 const spacer  = document.getElementById('tree-spacer');
 
 function buildAndRender() {
-  const pred = makeLeafPredicate();
-  root = buildTrie(ALL, pred);
+  root = buildTrie(ALL);
 
   // Collapse everything first
   collapseAll(root);
@@ -543,6 +557,11 @@ function renderRowInto(el, row, rowIndex) {
     const node = row.node;
     const hasContent = node.children.size > 0 || node.leaves.length > 0;
     el.className = 'tree-row node';
+    if (hasContent) {
+      el.style.cursor = 'pointer';
+      el.onclick = () => { node.expanded = !node.expanded; flatRows = flattenTree(root); paintRows(); updateMetrics(); };
+    }
+    if (node.fullOid) el.title = node.fullOid;
 
     // Indent spacer
     const spacerEl = document.createElement('span');
@@ -554,7 +573,6 @@ function renderRowInto(el, row, rowIndex) {
     const caret = document.createElement('span');
     caret.className = 'caret';
     caret.textContent = !hasContent ? '' : (node.expanded ? '▾' : '▸');
-    caret.onclick = () => { node.expanded = !node.expanded; flatRows = flattenTree(root); paintRows(); updateMetrics(); };
     el.appendChild(caret);
 
     // Label
@@ -577,7 +595,7 @@ function renderRowInto(el, row, rowIndex) {
 
     // Max RTT
     const rttEl = document.createElement('span');
-    rttEl.className = 'row-rtt ' + rttClass(node.stats.maxRtt, false);
+    rttEl.className = 'row-rtt ' + rttClass(node.stats.maxRtt, false, node.severity >= 2);
     rttEl.textContent = node.stats.maxRtt >= 1000
       ? (node.stats.maxRtt / 1000).toFixed(1) + 's'
       : node.stats.maxRtt.toFixed(1) + 'ms';
@@ -597,16 +615,13 @@ function renderRowInto(el, row, rowIndex) {
     // Sparkbar
     const spark = document.createElement('span');
     spark.className = 'sparkbar';
+    spark.title = 'RTT distribution across this subtree (green=fastest, dark red=slowest)';
     const bins = buildSparkData(node);
+    const sparkColors = ['#4ade80','#a3e635','#fbbf24','#fb923c','#ef4444','#dc2626','#b91c1c','#7f1d1d'];
     for (let b = 0; b < bins.length; b++) {
       const bin = document.createElement('span');
       bin.className = 'sparkbar-bin';
-      const h = Math.max(2, Math.round(bins[b] * 12));
-      // Color: first bins green, last bins red
-      const ratio = b / (bins.length - 1);
-      const r = Math.round(ratio * 220);
-      const g = Math.round((1 - ratio) * 160);
-      bin.style.cssText = `height:${h}px;background:rgb(${r},${g},60);`;
+      bin.style.cssText = `height:${Math.max(2, Math.round(bins[b] * 12))}px;background:${sparkColors[b]};`;
       spark.appendChild(bin);
     }
     el.appendChild(spark);
@@ -643,7 +658,7 @@ function renderRowInto(el, row, rowIndex) {
 
     // RTT
     const rttEl = document.createElement('span');
-    rttEl.className = 'row-rtt ' + rttClass(exc.rtt, exc.timeout);
+    rttEl.className = 'row-rtt ' + rttClass(exc.rtt, exc.timeout, !!exc.violation);
     rttEl.textContent = exc.rtt >= 1000
       ? (exc.rtt / 1000).toFixed(2) + 's'
       : exc.rtt.toFixed(1) + 'ms';
@@ -670,10 +685,17 @@ function renderRowInto(el, row, rowIndex) {
   el.style.display = 'flex';
 }
 
+function countTotalLeaves(node) {
+  let count = node.leaves.length;
+  for (const child of node.children.values()) count += countTotalLeaves(child);
+  return count;
+}
+
 function updateMetrics() {
-  const leafCount = flatRows.filter(r => r.type === 'leaf').length;
+  const totalMatching = root ? countTotalLeaves(root) : 0;
+  const visibleLeaves = flatRows.filter(r => r.type === 'leaf').length;
   document.getElementById('filter-count').textContent =
-    leafCount.toLocaleString() + ' leaves visible';
+    totalMatching.toLocaleString() + ' matching / ' + visibleLeaves.toLocaleString() + ' shown';
 }
 
 // ── applyFilters (called by checkboxes + externally) ──
@@ -696,7 +718,10 @@ wrap.addEventListener('scroll', () => {
 }, { passive: true });
 
 new ResizeObserver(() => {
-  if (root) renderViewport();
+  if (root) {
+    document.getElementById('m-cwidth').textContent = (wrap.clientWidth || 600) + 'px';
+    renderViewport();
+  }
 }).observe(wrap);
 
 // ── FPS meter (same pattern as base) ──

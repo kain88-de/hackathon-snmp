@@ -46,13 +46,7 @@ body { background: var(--bg); color: var(--text); font-family: system-ui, sans-s
 .filter-btn { border: 1px solid var(--border); background: var(--surface); padding: 3px 10px; border-radius: 4px; cursor: pointer; font-size: 11px; font-weight: 500; color: var(--text); transition: all .1s; }
 .filter-btn.active { border-color: var(--warn); background: #fef3c7; color: var(--warn); }
 .btn-reset { margin-left: auto; border: 1px solid var(--border); background: var(--surface); padding: 4px 10px; border-radius: 4px; cursor: pointer; font-size: 12px; color: var(--muted); }
-.btn-reset:hover { color: var(--err); border-color: var(--err); }
-.sort-toggle { font-size: 11px; color: var(--muted); border: 1px solid var(--border); background: var(--surface); padding: 3px 10px; border-radius: 4px; cursor: pointer; transition: all .1s; }
-.sort-toggle.active { border-color: var(--primary); background: #eff6ff; color: var(--primary); }
-
-/* Warnings */
-.canvas-limit-warn { background: #fef3c7; border-top: 1px solid #fcd34d; padding: 8px 16px; font-size: 12px; color: #92400e; flex-shrink: 0; display: none; }
-.canvas-limit-warn.visible { display: block; }
+.btn-reset:hover { color: var(--primary); border-color: var(--primary); }
 
 /* ── Chart wrap / virtual list ── */
 .chart-wrap { flex: 1; overflow-y: auto; overflow-x: hidden; position: relative; }
@@ -212,8 +206,7 @@ body { background: var(--bg); color: var(--text); font-family: system-ui, sans-s
 .tag-timeout { color: #dc2626; font-weight: 600; }
 .tag-retry { color: #3b82f6; font-weight: 600; }
 
-/* Tooltip */
-#tooltip { position: fixed; background: #1e293b; color: #f1f5f9; font-size: 11px; font-family: var(--mono); padding: 7px 10px; border-radius: 6px; pointer-events: none; display: none; z-index: 300; white-space: pre; line-height: 1.6; }
+
 </style>
 </head>
 <body>
@@ -231,7 +224,7 @@ body { background: var(--bg); color: var(--text); font-family: system-ui, sans-s
     <button class="shortcut-btn" onclick="loadPath('/oidviz/tools/fixtures/trace-100k.oidtrace.jsonl.gz')">trace-100k</button>
     <button class="shortcut-btn" style="border-color:#d97706;color:#d97706" onclick="loadPath('/oidviz/tools/fixtures/trace-focused.oidtrace.jsonl.gz')">focused (3 areas)</button>
   </div>
-  <input type="file" id="file-input" accept=".gz" style="display:none" onchange="loadFile(this.files[0])">
+  <input type="file" id="file-input" accept=".gz,.jsonl,.jsonl.gz" style="display:none" onchange="loadFile(this.files[0])">
 </div>
 
 <!-- Viewer -->
@@ -242,19 +235,20 @@ body { background: var(--bg); color: var(--text); font-family: system-ui, sans-s
     <div class="metric"><span class="metric-label">First render</span><span class="metric-value" id="m-render">—</span></div>
     <div class="metric"><span class="metric-label">List height</span><span class="metric-value" id="m-cheight">—</span></div>
     <div class="metric"><span class="metric-label">List width</span><span class="metric-value" id="m-cwidth">—</span></div>
-    <div class="metric"><span class="metric-label">Visible rows</span><span class="metric-value" id="m-visible">—</span></div>
+    <div class="metric"><span class="metric-label">Incidents</span><span class="metric-value" id="m-visible">—</span></div>
     <div class="metric"><span class="metric-label">Scroll FPS</span><span class="metric-value" id="fps-value">—</span></div>
     <div class="metric"><span class="metric-label">Violations</span><span class="metric-value" id="m-violations">—</span></div>
     <div class="metric"><span class="metric-label">End reason</span><span class="metric-value" id="m-end">—</span></div>
   </div>
-  <div class="canvas-limit-warn" id="canvas-warn"></div>
   <div class="toolbar">
-    <label><input type="checkbox" id="f-slow" checked onchange="applyFilters()"> Slow (&gt;2ms)</label>
+    <label><input type="checkbox" id="f-slow" checked onchange="applyFilters()"> Slow (&gt;<input type="number" id="slow-ms" value="2" min="1" max="100000" step="1" style="width:52px;font-size:11px;padding:1px 3px;border:1px solid var(--border);border-radius:3px;font-family:var(--mono)" onchange="SLOW_MS=Math.max(1,+this.value||2);detectAndCluster();applyFilters()">ms)</label>
     <label><input type="checkbox" id="f-viol" checked onchange="applyFilters()"> Violations</label>
     <label><input type="checkbox" id="f-retry" checked onchange="applyFilters()"> Retries</label>
-    <span style="color:var(--border);margin:0 4px">|</span>
-    <button class="sort-toggle active" id="btn-sort-sev" onclick="setSort('severity')">Worst first</button>
-    <button class="sort-toggle" id="btn-sort-seq" onclick="setSort('walkorder')">Walk order</button>
+    <div style="display:flex;align-items:center;gap:10px;margin-left:auto;font-size:11px;color:var(--muted)">
+      <span style="display:flex;align-items:center;gap:3px"><span style="width:8px;height:8px;border-radius:50%;background:#ef4444;display:inline-block"></span>timeout</span>
+      <span style="display:flex;align-items:center;gap:3px"><span style="width:8px;height:8px;border-radius:50%;background:#f59e0b;display:inline-block"></span>violation</span>
+      <span style="display:flex;align-items:center;gap:3px"><span style="width:8px;height:8px;border-radius:50%;background:#93c5fd;display:inline-block"></span>retry</span>
+    </div>
     <button class="btn-reset" onclick="reset()">Load another file</button>
   </div>
   <div class="chart-wrap" id="chart-wrap">
@@ -269,17 +263,20 @@ body { background: var(--bg); color: var(--text); font-family: system-ui, sans-s
   <div id="detail-panel">
     <div id="detail-header">
       <h3 id="detail-title">Incident detail</h3>
-      <button id="detail-close" onclick="closeDetail()">&#x2715;</button>
+      <div style="display:flex;align-items:center;gap:8px">
+        <button onclick="openDetail(currentDetailIdx-1)" id="detail-prev" style="background:none;border:1px solid #475569;color:#94a3b8;padding:2px 8px;border-radius:4px;cursor:pointer;font-size:12px">&#8592; Prev</button>
+        <span id="detail-nav-label" style="font-size:11px;color:#64748b;min-width:60px;text-align:center"></span>
+        <button onclick="openDetail(currentDetailIdx+1)" id="detail-next" style="background:none;border:1px solid #475569;color:#94a3b8;padding:2px 8px;border-radius:4px;cursor:pointer;font-size:12px">Next &#8594;</button>
+        <button id="detail-close" onclick="closeDetail()">&#x2715;</button>
+      </div>
     </div>
     <div id="detail-body"></div>
   </div>
 </div>
 
-<div id="tooltip"></div>
-
 <script>
 // ── Constants ──
-const SLOW_MS = 2;
+let SLOW_MS = 2;
 const GAP_WINDOW = 8;
 const ROW_PX = 72;
 
@@ -288,8 +285,7 @@ let ALL = [];
 let clusters = [];
 let shownClusters = [];
 let summary = null;
-let sortMode = 'severity'; // 'severity' | 'walkorder'
-let sparklineCache = {};
+let currentDetailIdx = -1;
 
 // OID region name lookup
 function oidRegion(oid) {
@@ -410,7 +406,6 @@ async function parseAndShow(blob, name) {
 
 // ── Incident detection & clustering ──
 function detectAndCluster() {
-  sparklineCache = {};
   if (!ALL.length) { clusters = []; return; }
 
   // Flag anomalies
@@ -530,21 +525,10 @@ function applyFilters() {
     return matchSlow || matchViol || matchRetry;
   });
 
-  if (sortMode === 'severity') {
-    shownClusters = [...shownClusters].sort((a, b) => b.score - a.score);
-  }
-  // walkorder = already in walk order from detectAndCluster
+  // clusters are in walk order from detectAndCluster()
 
   updateMetrics();
   virtualRender();
-}
-
-// ── Sort ──
-function setSort(mode) {
-  sortMode = mode;
-  document.getElementById('btn-sort-sev').classList.toggle('active', mode === 'severity');
-  document.getElementById('btn-sort-seq').classList.toggle('active', mode === 'walkorder');
-  applyFilters();
 }
 
 // ── Virtual list render ──
@@ -555,7 +539,13 @@ const rowsEl    = document.getElementById('rows');
 function virtualRender() {
   const totalH = shownClusters.length * ROW_PX;
   spacer.style.height = totalH + 'px';
-  renderVisible();
+
+  if (shownClusters.length === 0) {
+    rowsEl.innerHTML = '<div style="padding:48px 24px;text-align:center;color:var(--muted);font-size:13px">No incidents match the current filters.</div>';
+    rowsEl.style.top = '0px';
+  } else {
+    renderVisible();
+  }
 
   // data-ready signal
   const wrap = document.getElementById('chart-wrap');
@@ -607,9 +597,10 @@ function buildRow(c, absIdx, firstIdx) {
 
   // Position bar percentages
   const N = ALL.length || 1;
-  const posLeft  = (c.startIdx / N * 100).toFixed(1);
-  const posWidth = Math.max(0.5, ((c.endIdx - c.startIdx + 1) / N * 100)).toFixed(1);
-  const posLabel = Math.round(c.startIdx / N * 100) + '%';
+  const pStart = c.startIdx / N * 100;
+  const posLeft  = pStart.toFixed(1);
+  const posWidth = Math.max(0.5, (c.endIdx - c.startIdx + 1) / N * 100).toFixed(1);
+  const posLabel = Math.round(pStart) + '%';
 
   const localIdx = absIdx - firstIdx;
 
@@ -639,14 +630,6 @@ function buildRow(c, absIdx, firstIdx) {
 function drawSparkline(c, localIdx) {
   const canvas = document.getElementById('spark-' + (shownClusters.indexOf(c)));
   if (!canvas) return;
-
-  const absIdx = parseInt(canvas.dataset.cidx);
-  if (sparklineCache[absIdx]) {
-    const cached = sparklineCache[absIdx];
-    const ctx = canvas.getContext('2d');
-    ctx.putImageData(cached, 0, 0);
-    return;
-  }
 
   // Gather RTT window: members + 4 neighbors each side
   const N = ALL.length;
@@ -679,7 +662,6 @@ function drawSparkline(c, localIdx) {
   ctx.strokeStyle = '#94a3b8';
   ctx.lineWidth = 1.5;
   ctx.beginPath();
-  const memberSet = new Set(c.members);
   for (let i = 0; i < window.length; i++) {
     const x = (i / (window.length - 1 || 1)) * W;
     const y = rttToY(window[i].rtt);
@@ -690,31 +672,35 @@ function drawSparkline(c, localIdx) {
   // Mark member points
   for (let i = 0; i < window.length; i++) {
     const e = window[i];
-    const globalIdx = c.startIdx - 4 + i; // approximate
     const x = (i / (window.length - 1 || 1)) * W;
     const y = rttToY(e.rtt);
     const isMember = e.rtt > SLOW_MS || e.violation || e.attempts.length > 1 || e.timeout;
     if (isMember) {
       ctx.beginPath();
       ctx.arc(x, y, 2.5, 0, Math.PI * 2);
-      if (e.timeout) ctx.fillStyle = '#dc2626';
-      else if (e.violation) ctx.fillStyle = '#d97706';
-      else ctx.fillStyle = '#3b82f6';
+      if (e.timeout)       ctx.fillStyle = '#ef4444';
+      else if (e.violation) ctx.fillStyle = '#f59e0b';
+      else                  ctx.fillStyle = '#93c5fd';
       ctx.fill();
     }
   }
 
-  // Mark peak
+  // Peak marker: white ring
   const peakWindow = window.reduce((a, b) => a.rtt > b.rtt ? a : b);
   const pi = window.indexOf(peakWindow);
   const px = (pi / (window.length - 1 || 1)) * W;
   const py = rttToY(peakWindow.rtt);
   ctx.beginPath();
   ctx.arc(px, py, 4, 0, Math.PI * 2);
-  ctx.fillStyle = '#ef4444';
-  ctx.fill();
+  ctx.strokeStyle = '#fff';
+  ctx.lineWidth = 1.5;
+  ctx.stroke();
+  ctx.beginPath();
+  ctx.arc(px, py, 4, 0, Math.PI * 2);
+  ctx.strokeStyle = '#64748b';
+  ctx.lineWidth = 1;
+  ctx.stroke();
 
-  sparklineCache[absIdx] = ctx.getImageData(0, 0, W, H);
 }
 
 function escHtml(s) {
@@ -726,6 +712,7 @@ function updateMetrics() {
   const el = id => document.getElementById(id);
   el('m-exchanges').textContent = ALL.length.toLocaleString();
   el('m-visible').textContent = shownClusters.length.toLocaleString();
+  el('m-cheight').textContent = (shownClusters.length * ROW_PX).toLocaleString() + 'px';
   el('m-violations').textContent = summary
     ? Object.values(summary.violation_counts || {}).reduce((a,b)=>a+b,0)
     : ALL.filter(e => e.violation).length;
@@ -757,19 +744,19 @@ function openDetail(absIdx) {
   const c = shownClusters[absIdx];
   if (!c) return;
 
+  currentDetailIdx = absIdx;
+
   const cls = severityClass(c);
   document.getElementById('detail-title').textContent =
     `#${absIdx + 1} · ${c.region} · seq ${c.startSeq.toLocaleString()}–${c.endSeq.toLocaleString()}`;
 
   const rows = c.members.map(idx => {
     const e = ALL[idx];
-    const tag = e.timeout
-      ? `<span class="tag-timeout">timeout</span>`
-      : e.violation
-        ? `<span class="tag-viol">${escHtml(e.violation)}</span>`
-        : e.attempts.length > 1
-          ? `<span class="tag-retry">retry×${e.attempts.length - 1}</span>`
-          : '—';
+    const tags = [];
+    if (e.timeout) tags.push(`<span class="tag-timeout">timeout</span>`);
+    if (e.violation) tags.push(`<span class="tag-viol">${escHtml(e.violation)}</span>`);
+    if (e.attempts.length > 1) tags.push(`<span class="tag-retry">retry×${e.attempts.length - 1}</span>`);
+    const tag = tags.length ? tags.join(' ') : '—';
     const oidShort = e.oid.length > 50 ? e.oid.slice(0, 50) + '…' : e.oid;
     return `<tr>
       <td>${e.seq.toLocaleString()}</td>
@@ -779,11 +766,25 @@ function openDetail(absIdx) {
     </tr>`;
   }).join('');
 
-  document.getElementById('detail-body').innerHTML = `
+  const violList = [...c.violationTypes].join(', ') || '—';
+  const summary = `<div style="display:flex;gap:16px;flex-wrap:wrap;padding:12px 0 16px;border-bottom:1px solid var(--border);margin-bottom:12px;font-size:12px;font-family:var(--mono)">
+  <div><div style="font-size:10px;color:var(--muted);text-transform:uppercase;letter-spacing:0.5px;margin-bottom:2px">Peak RTT</div><div style="font-weight:600">${c.peakRtt.toFixed(0)} ms</div></div>
+  <div><div style="font-size:10px;color:var(--muted);text-transform:uppercase;letter-spacing:0.5px;margin-bottom:2px">Timeouts</div><div style="font-weight:600;color:${c.timeoutCount > 0 ? '#ef4444' : 'inherit'}">${c.timeoutCount}</div></div>
+  <div><div style="font-size:10px;color:var(--muted);text-transform:uppercase;letter-spacing:0.5px;margin-bottom:2px">Retries</div><div style="font-weight:600">${c.retryCount}</div></div>
+  <div><div style="font-size:10px;color:var(--muted);text-transform:uppercase;letter-spacing:0.5px;margin-bottom:2px">Exchanges</div><div style="font-weight:600">${c.members.length}</div></div>
+  <div><div style="font-size:10px;color:var(--muted);text-transform:uppercase;letter-spacing:0.5px;margin-bottom:2px">Violations</div><div style="font-weight:600">${escHtml(violList)}</div></div>
+</div>`;
+
+  document.getElementById('detail-body').innerHTML = summary + `
     <table class="detail-table">
       <thead><tr><th>Seq</th><th>OID</th><th>RTT</th><th>Flag</th></tr></thead>
       <tbody>${rows}</tbody>
     </table>`;
+
+  document.getElementById('detail-nav-label').textContent =
+    (absIdx + 1) + ' / ' + shownClusters.length;
+  document.getElementById('detail-prev').disabled = absIdx <= 0;
+  document.getElementById('detail-next').disabled = absIdx >= shownClusters.length - 1;
 
   document.getElementById('detail-overlay').classList.add('visible');
 }
@@ -792,6 +793,8 @@ function closeDetail(e) {
   if (e && e.target !== document.getElementById('detail-overlay')) return;
   document.getElementById('detail-overlay').classList.remove('visible');
 }
+
+document.addEventListener('keydown', e => { if (e.key === 'Escape') closeDetail(); });
 
 // ── FPS meter ──
 let fpsSamples = [];
@@ -834,12 +837,11 @@ function tick() {
 function reset() {
   if (fpsRaf) cancelAnimationFrame(fpsRaf);
   ALL = []; clusters = []; shownClusters = []; summary = null;
-  fpsSamples = []; sparklineCache = {};
+  fpsSamples = [];
   rowsEl.innerHTML = '';
   spacer.style.height = '0px';
   document.getElementById('viewer').classList.add('hidden');
   document.getElementById('drop-zone').classList.remove('hidden');
-  document.getElementById('canvas-warn').classList.remove('visible');
 }
 
 // ── ResizeObserver ──
