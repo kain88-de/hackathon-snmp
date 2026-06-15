@@ -95,7 +95,7 @@ Sections (top to bottom):
 `OIDviz` logotype.
 
 ### Load
-"Open trace file…" button + shortcut buttons for bundled fixture files. Hidden file input accepts `.oidtrace.jsonl.gz`.
+"Open trace file…" button + shortcut buttons for bundled fixture files. Hidden file input accepts `.oidtrace.jsonl.gz`. Uncompressed `.oidtrace.jsonl` is not accepted.
 
 ### Device
 Populated from the `system_info` record (`type: "system_info"`, `point: "start"`) when present. Hidden if no such record exists in the trace. Values are looked up by OID key in `system_info.values`.
@@ -193,17 +193,10 @@ Matching is longest-prefix-first. Unknown OIDs use the first 8 arcs as the regio
 This list is intentionally separate from the OID Tree's well-known name map (which is for display labels) and from the build-time resolution map (which covers ~2k prefixes for tooltips). Each list is sized to its purpose.
 
 ### Incident scoring
-```
-score = timeoutCount × 100
-      + distinctViolationTypes × 50
-      + retryCount × 10
-      + log10(peakRtt) × 5
-      + memberCount × 0.1
-```
-where `distinctViolationTypes` = count of unique violation strings across all member exchanges.
+Score prioritises: timeouts > distinct violation types > retries > peak RTT > member count. `distinctViolationTypes` is the count of unique violation strings across all member exchanges. See prototype for exact weights.
 
 ### Row layout
-Each incident row (72px):
+Each incident row:
 - **Severity chip** (48×48px): `err` (any timeout), `warn` (violation or slow), `info` (retry only)
 - **Title**: `{region} — {type}` where region is a well-known name or the first 8 OID arcs for unknown prefixes, and type summarises the dominant anomaly (e.g. `timeout ×3`, `request-id-mismatch`, `slow region`, `2 retries`)
 - **Subtitle**: seq range (or single seq if start = end) · peak RTT · exchange count · retry count (omitted if 0)
@@ -213,7 +206,7 @@ Each incident row (72px):
 Incidents are hidden/shown based on active sidebar filters. Count label updates accordingly.
 
 ### Virtualised rendering
-Only rows within the visible viewport are rendered. ROW_PX = 72.
+Only rows within the visible viewport are rendered.
 
 ### Incident detail modal
 Opens on row click. Fixed overlay with backdrop; clicking the backdrop or pressing Escape closes it.
@@ -227,8 +220,8 @@ Opens on row click. Fixed overlay with backdrop; clicking the backdrop or pressi
 
 Two-panel canvas layout for timeline-based exploration of the full walk.
 
-### Minimap panel (80px tall)
-Covers the full walk duration. Each pixel column represents a time bucket; ok (non-anomalous) exchanges are not shown. Colour priority for anomalous buckets: timeout (`#ef4444`) > violation (`#f59e0b`) > retry (`#93c5fd`) > slow (`#3b82f6`). Bar height proportional to event count in the bucket.
+### Minimap panel
+Covers the full walk duration. Each pixel column represents a time bucket; ok (non-anomalous) exchanges are not shown. Colour priority for anomalous buckets: timeout > violation > retry > slow (see prototype for exact colours). Bar height proportional to event count in the bucket.
 
 A selection rectangle highlights the current detail window.
 
@@ -238,7 +231,7 @@ Tooltip on hover: time offset, event count, max RTT, violation flag.
 Shows individual exchange bars for exchanges whose time window overlaps the selection:
 - One horizontal bar per exchange on a vertical list, ordered by sent time
 - Bar length proportional to RTT on the shared time axis
-- Retry attempts rendered as stacked bars — colours: timeout (`#ef4444`), violation (`#f59e0b`), retry attempt (`#93c5fd`), slow (`#3b82f6`), ok (`#94a3b8`)
+- Retry attempts rendered as stacked bars — colours follow the same priority as the minimap (see prototype for exact colours)
 - Violation marker `!` after the bar
 - Seq number label on the left
 - Time-axis tick marks and labels at the top
@@ -248,7 +241,7 @@ Hover tooltip: seq, % into trace, violation/status, RTT, sent-at time, OID.
 ### Window interaction
 - **Drag** on empty minimap area: create new window
 - **Drag** inside window: pan
-- **Drag** window edges (±6px): resize
+- **Drag** window edges: resize
 - **Click** (no drag): centre window at clicked point (window width = 5% of trace)
 - **Arrow Left / Right**: shift window by 20% of current span
 
@@ -275,7 +268,7 @@ Well-known prefix names for **display labels** in the tree (distinct from the cl
 Stats aggregate bottom-up: children's stats fold into the parent. Severity propagates upward (max).
 
 ### Row layout
-Virtualised, ROW_H = 22. Two row types:
+Virtualised. Two row types:
 
 **Node row**: indent · caret (▸/▾) · OID arc · well-known name (muted) | Count | Max RTT (coloured) | Violations (badge)
 
@@ -331,10 +324,14 @@ Note: the project uses three OID prefix lists with distinct purposes — see [OI
 - Modal open: focus moves to modal heading; modal close: focus returns to trigger row
 
 ### CI gate
-`axe-core/cli` run against the dev server. Zero WCAG 2.1 AA violations is a hard gate before merge.
+`axe-core` cannot inspect canvas internals. The gate applies to DOM-based content only: sidebar, incident modal, and OID Tree. Zero WCAG 2.1 AA violations in DOM content is a hard gate before merge. Minimap + Detail (canvas) is validated manually.
 
 ---
 
 ## Dark mode
 
-Default to system preference (`prefers-color-scheme`). Toggle in the sidebar header. CSS custom properties used throughout — no hard-coded colours in components. Dark mode is in scope for v1.
+Default to system preference (`prefers-color-scheme`). Toggle in the sidebar header.
+
+DOM-based content (sidebar, incident modal, OID Tree) uses CSS custom properties throughout — no hard-coded colours. Dark mode is in scope for v1.
+
+Canvas-based views (Minimap + Detail) use hard-coded colours (`fillStyle` cannot read CSS variables). Dark mode for canvas is out of scope for v1.
