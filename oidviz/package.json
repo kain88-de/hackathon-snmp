@@ -8,9 +8,7 @@
     "preview": "vite preview",
     "test": "bun test",
     "lint": "bunx oxlint src/ && bunx biome check --formatter-enabled=false src/",
-    "check": "bunx tsc --noEmit --skipLibCheck",
-    "perf-test": "npx tsx tools/perf_test.ts",
-    "perf-test:headed": "npx tsx tools/perf_test.ts --headed"
+    "check": "bunx tsc --noEmit --skipLibCheck"
   },
   "devDependencies": {
     "@biomejs/biome": "^1.8.0",
