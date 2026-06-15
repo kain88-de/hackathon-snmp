@@ -82,7 +82,7 @@ function drawMini() {
   ctx.clearRect(0, 0, W, H)
 
   const buckets = buildBuckets(W)
-  const maxCount = Math.max(1, ...buckets.map(b => b.count))
+  const maxCount = buckets.reduce((m, b) => Math.max(m, b.count), 1)
   const barMaxH = H - 4
 
   buckets.forEach((b, col) => {
@@ -233,10 +233,13 @@ function onMiniMousemove(event: MouseEvent) {
   const dms = (dx / canvas.width) * mT
 
   switch (dragging.value.kind) {
-    case 'pan':
-      winS.value = Math.max(0, dragging.value.startWinS + dms)
-      winE.value = Math.min(mT, dragging.value.startWinE + dms)
+    case 'pan': {
+      const span = dragging.value.startWinE - dragging.value.startWinS
+      const clampedDms = Math.max(-dragging.value.startWinS, Math.min(mT - dragging.value.startWinE, dms))
+      winS.value = dragging.value.startWinS + clampedDms
+      winE.value = dragging.value.startWinS + clampedDms + span
       break
+    }
     case 'create':
       winS.value = Math.min(getMiniMs(dragging.value.startX), getMiniMs(event.offsetX))
       winE.value = Math.max(getMiniMs(dragging.value.startX), getMiniMs(event.offsetX))
