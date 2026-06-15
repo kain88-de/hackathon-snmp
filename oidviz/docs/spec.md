@@ -282,8 +282,8 @@ The doctor UI embeds oidviz components to show walk results. The following compo
 
 | Component | Props | Used by |
 |---|---|---|
-| `LatencyBar` | `ms: number, slowMs: number` | Subtree table, slideout stats |
-| `ViolationBadge` | `type: string` | Waterfall, exchange detail |
+| `LatencyBar` | `ms: number, slowMs: number` | OID Tree, slideout stats |
+| `ViolationBadge` | `type: string` | Incident Stack, OID Tree, exchange detail |
 | `ViolationBox` | `type: string, requestId?: {sent, received}` | Exchange detail slideout |
 | `OidDisplay` | `oid: string, nameMap: Record<string,string>` | Varbind lists, subtree rows |
 | `ExchangeDetail` | `exchange: Exchange` | Slideout, doctor UI |
