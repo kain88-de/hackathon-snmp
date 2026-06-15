@@ -266,18 +266,6 @@ Components live in `oidviz/src/lib/`. The doctor UI imports them as a monorepo w
 
 ---
 
-## Performance targets
-
-| Trace size | Open time | Scroll |
-|---|---|---|
-| 5k exchanges | < 500ms | 60fps |
-| 50k exchanges | < 2s | 60fps |
-| 100k exchanges | < 5s | acceptable jank |
-
-All three views use virtualised rendering — only visible rows/bars are painted.
-
----
-
 ## Accessibility (WCAG 2.1 AA)
 
 ### Colour
