@@ -66,6 +66,17 @@ lines.append(json.dumps({
     },
 }))
 
+lines.append(json.dumps({
+    "type": "system_info",
+    "at": 0.0,
+    "point": "start",
+    "values": {
+        "1.3.6.1.2.1.1.1.0": "Cisco IOS Software, Version 15.2(4)M — focused problem trace",
+        "1.3.6.1.2.1.1.2.0": "1.3.6.1.4.1.9.1.516",
+        "1.3.6.1.2.1.1.3.0": 492711442,
+    },
+}))
+
 seq = 0
 t = 0.0005        # seconds from start
 violation_counts = {}
