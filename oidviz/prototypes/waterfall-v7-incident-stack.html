@@ -231,7 +231,7 @@ body { background: var(--bg); color: var(--text); font-family: system-ui, sans-s
     <div class="metric"><span class="metric-label">End reason</span><span class="metric-value" id="m-end">—</span></div>
   </div>
   <div class="toolbar">
-    <label><input type="checkbox" id="f-slow" checked onchange="applyFilters()"> Slow (&gt;<input type="number" id="slow-ms" value="2" min="1" max="100000" step="1" style="width:52px;font-size:11px;padding:1px 3px;border:1px solid var(--border);border-radius:3px;font-family:var(--mono)" onchange="SLOW_MS=Math.max(1,+this.value||2);detectAndCluster();applyFilters()">ms)</label>
+    <label><input type="checkbox" id="f-slow" checked onchange="applyFilters()"> Slow (&gt;<input type="number" id="slow-s" value="1" min="0.01" max="100" step="0.1" style="width:52px;font-size:11px;padding:1px 3px;border:1px solid var(--border);border-radius:3px;font-family:var(--mono)" onchange="SLOW_MS=Math.max(10,(+this.value||1)*1000);detectAndCluster();applyFilters()">s)</label>
     <label><input type="checkbox" id="f-viol" checked onchange="applyFilters()"> Violations</label>
     <label><input type="checkbox" id="f-retry" checked onchange="applyFilters()"> Retries</label>
     <button class="btn-reset" onclick="reset()">Load another file</button>
@@ -261,7 +261,7 @@ body { background: var(--bg); color: var(--text); font-family: system-ui, sans-s
 
 <script>
 // ── Constants ──
-let SLOW_MS = 2;
+let SLOW_MS = 1000; // 1 s default
 const GAP_WINDOW = 8;
 const ROW_PX = 72;
 

@@ -115,13 +115,13 @@ body { background: var(--bg); color: var(--text); font-family: system-ui, sans-s
     <span style="font-size:11px;color:var(--text);font-family:var(--mono)" id="win-label">—</span>
     <span style="color:var(--border);margin:0 4px">|</span>
     <label style="font-size:12px;color:var(--muted)">
-      <input type="checkbox" id="f-slow" checked onchange="applyFilters()"> Slow (&gt;<input type="number" id="slow-ms" value="2" min="1" max="100000" step="1" style="width:52px;font-size:11px;padding:1px 3px;border:1px solid var(--border);border-radius:3px;font-family:var(--mono)" onchange="SLOW_MS=Math.max(1,+this.value||2);applyFilters()">ms)
+      <input type="checkbox" id="f-slow" checked onchange="applyFilters()"> Slow (&gt;<input type="number" id="slow-s" value="1" min="0.01" max="100" step="0.1" style="width:52px;font-size:11px;padding:1px 3px;border:1px solid var(--border);border-radius:3px;font-family:var(--mono)" onchange="SLOW_MS=Math.max(10,(+this.value||1)*1000);applyFilters()">s)
     </label>
     <label style="font-size:12px;color:var(--muted)">
-      <input type="checkbox" id="f-viol" onchange="applyFilters()"> Violations only
+      <input type="checkbox" id="f-viol" onchange="applyFilters()"> Violations
     </label>
     <label style="font-size:12px;color:var(--muted)">
-      <input type="checkbox" id="f-retry" onchange="applyFilters()"> Retries only
+      <input type="checkbox" id="f-retry" onchange="applyFilters()"> Retries
     </label>
     <div class="legend">
       <span class="legend-item"><span class="legend-dot" style="background:#ef4444"></span>timeout</span>
@@ -147,7 +147,7 @@ body { background: var(--bg); color: var(--text); font-family: system-ui, sans-s
 
 <script>
 // ── Constants ──
-let SLOW_MS = 2;
+let SLOW_MS = 1000; // 1 s default
 const MINI_H = 80;
 const MARGIN_L = 64, MARGIN_T = 24, ROW_H = 9, ROW_GAP = 3, BAR_H = 6;
 const CANVAS_MAX_H = 32767;

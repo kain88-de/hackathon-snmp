@@ -91,18 +91,16 @@ body { background: var(--bg); color: var(--text); font-family: system-ui, sans-s
 .row-label { flex: 1; overflow: hidden; text-overflow: ellipsis; }
 .row-name  { color: var(--muted); margin-left: 4px; font-size: 11px; font-weight: 400; }
 
-.row-count { width: 60px; text-align: right; color: var(--muted); flex-shrink: 0; }
-.row-rtt   { width: 80px; text-align: right; flex-shrink: 0; font-weight: 600; }
+.row-count { width: 60px; text-align: center; color: var(--muted); flex-shrink: 0; border-left: 1px solid var(--border); }
+.row-rtt   { width: 80px; text-align: center; flex-shrink: 0; font-weight: 600; border-left: 1px solid var(--border); }
 .row-rtt.ok   { color: var(--ok); }
 .row-rtt.warn { color: var(--warn); }
 .row-rtt.err  { color: var(--err); }
 
-.row-viol  { width: 60px; text-align: right; flex-shrink: 0; }
+.row-viol  { width: 60px; text-align: center; flex-shrink: 0; border-left: 1px solid var(--border); }
 .viol-badge { display: inline-block; background: #fef3c7; color: #92400e; border-radius: 3px; padding: 1px 5px; font-size: 10px; font-weight: 700; }
 .viol-badge.sev2 { background: #fee2e2; color: #991b1b; }
 
-.sparkbar { width: 48px; height: 14px; flex-shrink: 0; display: flex; align-items: flex-end; gap: 1px; margin-left: 8px; }
-.sparkbar-bin { flex: 1; border-radius: 1px 1px 0 0; min-height: 2px; }
 
 .shared-tag { font-size: 9px; color: #94a3b8; margin-left: 4px; }
 </style>
@@ -142,30 +140,28 @@ body { background: var(--bg); color: var(--text); font-family: system-ui, sans-s
     Tree is very large — some rows may not render. Try collapsing branches.
   </div>
   <div class="toolbar">
-    <label><input type="checkbox" id="f-slow" checked onchange="applyFilters()"> Slow (&gt;<input type="number" id="slow-ms" value="2" min="1" max="100000" step="1" style="width:52px;font-size:11px;padding:1px 3px;border:1px solid var(--border);border-radius:3px;font-family:var(--mono)" onchange="SLOW_MS=Math.max(1,+this.value||2);applyFilters()">ms)</label>
-    <label><input type="checkbox" id="f-viol" checked onchange="applyFilters()"> Violations only</label>
-    <label><input type="checkbox" id="f-retry" onchange="applyFilters()"> Retries only</label>
+    <label><input type="checkbox" id="f-slow" checked onchange="applyFilters()"> Slow (&gt;<input type="number" id="slow-s" value="1" min="0.01" max="100" step="0.1" style="width:52px;font-size:11px;padding:1px 3px;border:1px solid var(--border);border-radius:3px;font-family:var(--mono)" onchange="SLOW_MS=Math.max(10,(+this.value||1)*1000);applyFilters()">s)</label>
+    <label><input type="checkbox" id="f-viol" checked onchange="applyFilters()"> Violations</label>
+    <label><input type="checkbox" id="f-retry" onchange="applyFilters()"> Retries</label>
     <label><input type="checkbox" id="f-timeout" onchange="applyFilters()"> Timeouts</label>
     <span style="font-size:11px;color:var(--muted)" id="filter-count"></span>
-    <span style="font-size:11px;color:var(--muted)">Sparkbar: <span style="color:#4ade80">▌</span>fast → <span style="color:#ef4444">▌</span>slow</span>
-    <button class="filter-btn" onclick="collapseAllAndRender()">Collapse all</button>
+<button class="filter-btn" onclick="collapseAllAndRender()">Collapse all</button>
     <button class="btn-reset" style="margin-left:auto" onclick="reset()">Load another file</button>
   </div>
-  <div style="background:var(--surface);border-bottom:1px solid var(--border);padding:0 8px;display:flex;align-items:center;height:22px;font-size:11px;color:var(--muted);font-family:var(--mono);flex-shrink:0;user-select:none;">
-    <span style="flex:1;padding-left:32px">OID / Name</span>
-    <span style="width:60px;text-align:right">Count</span>
-    <span style="width:80px;text-align:right">Max RTT</span>
-    <span style="width:60px;text-align:right">Violations</span>
-    <span style="width:56px;margin-left:8px;text-align:center">Distribution</span>
-  </div>
   <div id="chart-wrap">
+    <div style="position:sticky;top:0;z-index:1;background:var(--surface);border-bottom:1px solid var(--border);padding:0 8px;display:flex;align-items:center;height:22px;font-size:11px;color:var(--muted);font-family:var(--mono);user-select:none;">
+      <span style="flex:1;padding-left:32px">OID / Name</span>
+      <span style="width:60px;text-align:center;border-left:1px solid var(--border)">Count</span>
+      <span style="width:80px;text-align:center;border-left:1px solid var(--border)">Max RTT</span>
+      <span style="width:60px;text-align:center;border-left:1px solid var(--border)">Violations</span>
+    </div>
     <div id="tree-spacer"></div>
   </div>
 </div>
 
 <script>
 // ── Constants ──
-let SLOW_MS  = 2;
+let SLOW_MS  = 1000; // 1 s default
 const ROW_H    = 22;
 const OVERSCAN = 4;  // extra rows above/below viewport
 
@@ -422,12 +418,6 @@ function autoExpand(node) {
   return hasInteresting;
 }
 
-// ── Collect all descendant leaves (for sparkbar sampling) ──
-function collectLeaves(node, out) {
-  for (const { exc } of node.leaves) out.push(exc);
-  for (const child of node.children.values()) collectLeaves(child, out);
-}
-
 // ── Flatten visible tree into flat rows ──
 function flattenTree(root) {
   const rows = [];
@@ -453,22 +443,6 @@ function flattenNode(node, depth, rows) {
   for (const { exc, shared } of node.leaves) {
     rows.push({ depth: depth + 1, type: 'leaf', exc, shared });
   }
-}
-
-// ── Sparkbar data: bucket RTTs of descendant leaves into 8 bins ──
-function buildSparkData(node) {
-  const leaves = [];
-  collectLeaves(node, leaves);
-  if (!leaves.length) return [];
-  const maxRtt = node.stats.maxRtt || 1;
-  const BINS = 8;
-  const counts = new Array(BINS).fill(0);
-  for (const exc of leaves) {
-    const b = Math.min(BINS - 1, Math.floor((exc.rtt / maxRtt) * BINS));
-    counts[b]++;
-  }
-  const peak = Math.max(...counts, 1);
-  return counts.map(c => c / peak);
 }
 
 // ── RTT color helper ──
@@ -593,9 +567,9 @@ function renderRowInto(el, row, rowIndex) {
     countEl.textContent = node.stats.count.toLocaleString();
     el.appendChild(countEl);
 
-    // Max RTT
+    // Max RTT — color by value only; violations are shown in their own column
     const rttEl = document.createElement('span');
-    rttEl.className = 'row-rtt ' + rttClass(node.stats.maxRtt, false, node.severity >= 2);
+    rttEl.className = 'row-rtt ' + (node.stats.maxRtt > SLOW_MS ? 'warn' : 'ok');
     rttEl.textContent = node.stats.maxRtt >= 1000
       ? (node.stats.maxRtt / 1000).toFixed(1) + 's'
       : node.stats.maxRtt.toFixed(1) + 'ms';
@@ -611,20 +585,6 @@ function renderRowInto(el, row, rowIndex) {
       violEl.appendChild(badge);
     }
     el.appendChild(violEl);
-
-    // Sparkbar
-    const spark = document.createElement('span');
-    spark.className = 'sparkbar';
-    spark.title = 'RTT distribution across this subtree (green=fastest, dark red=slowest)';
-    const bins = buildSparkData(node);
-    const sparkColors = ['#4ade80','#a3e635','#fbbf24','#fb923c','#ef4444','#dc2626','#b91c1c','#7f1d1d'];
-    for (let b = 0; b < bins.length; b++) {
-      const bin = document.createElement('span');
-      bin.className = 'sparkbar-bin';
-      bin.style.cssText = `height:${Math.max(2, Math.round(bins[b] * 12))}px;background:${sparkColors[b]};`;
-      spark.appendChild(bin);
-    }
-    el.appendChild(spark);
 
   } else {
     // Leaf (exchange)
@@ -653,7 +613,7 @@ function renderRowInto(el, row, rowIndex) {
     // Count (attempts)
     const countEl = document.createElement('span');
     countEl.className = 'row-count';
-    countEl.textContent = exc.attempts.length > 1 ? exc.attempts.length + 'x' : '';
+    countEl.textContent = exc.attempts.length > 1 ? exc.attempts.length + '×' : '—';
     el.appendChild(countEl);
 
     // RTT
@@ -670,16 +630,13 @@ function renderRowInto(el, row, rowIndex) {
     if (exc.violation) {
       const badge = document.createElement('span');
       badge.className = 'viol-badge sev2';
-      badge.textContent = '!';
+      // Show first word of the violation string (e.g. "pdu_too_large" → "pdu")
+      const firstWord = exc.violation.split('_')[0];
+      badge.textContent = firstWord || exc.violation;
       badge.title = exc.violation;
       violEl.appendChild(badge);
     }
     el.appendChild(violEl);
-
-    // No sparkbar for leaves — add spacer
-    const sparkSpacer = document.createElement('span');
-    sparkSpacer.style.width = '56px';
-    el.appendChild(sparkSpacer);
   }
 
   el.style.display = 'flex';
