@@ -2,6 +2,7 @@
 import { computed, onMounted, onUnmounted, ref } from 'vue'
 import IncidentStack from './components/IncidentStack.vue'
 import LandingScreen from './components/LandingScreen.vue'
+import MinimapDetail from './components/MinimapDetail.vue'
 import Sidebar from './components/Sidebar.vue'
 import { buildIncidents } from './lib/incidentStack'
 import type { AppState, FilterState, ParseResult, WorkerRequest, WorkerResponse } from './lib/model'
@@ -109,7 +110,11 @@ void flatRows
           :filterState="filterState"
           :exchanges="viewerResult?.exchanges ?? []"
         />
-        <div v-else-if="activeView === 'minimap'">Minimap view (placeholder)</div>
+        <MinimapDetail
+          v-else-if="activeView === 'minimap'"
+          :exchanges="viewerResult?.exchanges ?? []"
+          :filterState="filterState"
+        />
         <div v-else>OID Tree view (placeholder)</div>
       </div>
     </template>
