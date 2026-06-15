@@ -74,6 +74,11 @@ Nothing is persisted. On page reload the app returns to the landing screen; the 
 
 Two columns. Detail content appears as a modal overlay (Incident Stack) or hover tooltip (Minimap + Detail). OID Tree has no detail panel.
 
+### Viewport
+- Minimum supported width: **1280px**. Below this the layout is not tested and may break.
+- The main area stretches to fill all available width — no max-width cap. Canvas-based views resize via `ResizeObserver` and work correctly on 4K and ultrawide displays.
+- System zoom and DPI scaling are handled by the OS/browser; the app requires no special treatment.
+
 ---
 
 ## Sidebar
