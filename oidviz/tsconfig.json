@@ -9,5 +9,5 @@
     "exactOptionalPropertyTypes": true,
     "skipLibCheck": true
   },
-  "include": ["tools/**/*.ts", "src/**/*.ts", "src/**/*.vue"]
+  "include": ["tools/**/*.ts", "src/**/*.ts", "src/**/*.vue", "tests/**/*.ts"]
 }
