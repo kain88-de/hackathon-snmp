@@ -1,5 +1,6 @@
 <script setup lang="ts">
 import { computed, onMounted, onUnmounted, ref } from 'vue'
+import IncidentStack from './components/IncidentStack.vue'
 import LandingScreen from './components/LandingScreen.vue'
 import Sidebar from './components/Sidebar.vue'
 import { buildIncidents } from './lib/incidentStack'
@@ -77,7 +78,6 @@ const flatRows = computed(() => {
 })
 
 // Suppress unused variable warnings for computed values used by child components
-void incidents
 void flatRows
 </script>
 
@@ -103,7 +103,12 @@ void flatRows
     <!-- Viewer state -->
     <template v-if="appState.phase === 'viewer'">
       <div class="view-area">
-        <div v-if="activeView === 'incidents'">Incidents view (placeholder)</div>
+        <IncidentStack
+          v-if="activeView === 'incidents'"
+          :incidents="incidents"
+          :filterState="filterState"
+          :exchanges="viewerResult?.exchanges ?? []"
+        />
         <div v-else-if="activeView === 'minimap'">Minimap view (placeholder)</div>
         <div v-else>OID Tree view (placeholder)</div>
       </div>
