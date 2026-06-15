@@ -1,4 +1,4 @@
-import type { Header, SystemInfo, Summary } from './types.gen'
+import type { Header, Summary, SystemInfo } from './types.gen'
 
 // Branded nominal type for OID strings
 export type OidString = string & { readonly _brand: 'OidString' }
