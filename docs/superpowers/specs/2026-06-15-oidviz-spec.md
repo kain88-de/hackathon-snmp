@@ -126,6 +126,12 @@ Read-only fields from `header.settings`: bulk size, timeout, retries, give-up co
 
 ---
 
+## Visual reference
+
+`oidviz/prototypes/index.html` is the authoritative visual reference for all three views. Open it in a browser to see the exact layout, colours, and interactions. The descriptions below specify structure and behaviour; the prototype resolves any ambiguity about appearance.
+
+---
+
 ## View: Incident Stack
 
 Clusters anomalous exchanges into named, scored incidents using a gap-window algorithm.
