@@ -27,9 +27,9 @@ Secondary user: SNMP expert drilling into a specific exchange to debug device ag
 
 Svelte 5 · TypeScript · Bun · Vite · see `oidviz/docs/web-guardrails.md` for toolchain guardrails.
 
-Types are generated from `../traceformat/docs/trace-format.schema.json`:
+Types are generated from `../docs/trace-format.schema.json` (path relative to `oidviz/`):
 ```sh
-bunx json-schema-to-typescript ../traceformat/docs/trace-format.schema.json -o src/types.gen.ts
+bunx json-schema-to-typescript ../docs/trace-format.schema.json -o src/types.gen.ts
 ```
 
 Do not hand-write types for trace records.
@@ -94,11 +94,11 @@ Sections (top to bottom):
 "Open trace file…" button + shortcut buttons for bundled fixture files. Hidden file input accepts `.oidtrace.jsonl.gz`.
 
 ### Device
-Populated from the `system_info` record (type `system_info`, point `start`) when present. Hidden if no such record exists in the trace.
+Populated from the `system_info` record (`type: "system_info"`, `point: "start"`) when present. Hidden if no such record exists in the trace. Values are looked up by OID key in `system_info.values`.
 
-| Field | Source OID |
+| Field | Key in `system_info.values` |
 |---|---|
-| sysDescr (first line) | `1.3.6.1.2.1.1.1.0` |
+| sysDescr (first line only) | `1.3.6.1.2.1.1.1.0` |
 | sysObjectID | `1.3.6.1.2.1.1.2.0` |
 | sysUpTime | `1.3.6.1.2.1.1.3.0` |
 
@@ -128,7 +128,7 @@ Navigation: Incident Stack · Minimap + Detail · OID Tree. Active view highligh
 Changing a filter or threshold immediately re-renders the active view.
 
 ### Walk config
-Read-only fields from `header.settings`: bulk size, timeout, retries, give-up count, start OID.
+Read-only fields from `header.settings`: `bulk_size`, `timeout_s`, `retries`, `start_oid`, `time_budget_s` (optional), `resume_from` (optional).
 
 ---
 
@@ -142,8 +142,14 @@ Read-only fields from `header.settings`: bulk size, timeout, retries, give-up co
 
 Clusters anomalous exchanges into named, scored incidents using a gap-window algorithm.
 
+### Violations
+`exchange.violations` is an array of strings (open enum). Known values: `request-id-mismatch`, `oid-not-increasing`, `missing-end-of-mib`, `duplicate-response`, `malformed-ber`, `response-from-unexpected-source`. An exchange may have multiple violations simultaneously.
+
+### Timeouts and RTT
+An attempt is a **timeout** when `received_at === null`. RTT for a timed-out attempt is defined as `timeout_s` (the configured timeout, i.e. the minimum time the walker waited). Exchange RTT is `last_attempt.received_at - first_attempt.sent_at`; if the last attempt timed out, use `last_attempt.sent_at + timeout_s - first_attempt.sent_at`.
+
 ### Anomaly detection
-An exchange is anomalous if any of: RTT > slowMs, has a violation, has >1 attempt (retry), timed out.
+An exchange is anomalous if any of: RTT > slowMs, `violations` is non-empty, has >1 attempt (retry), any attempt timed out (`received_at === null`).
 
 ### Clustering
 Anomalous exchanges within a configurable gap window (default 8 non-anomalous exchanges) are merged into one cluster. Two anomalous exchanges separated by more than the gap window are merged only if they fall in the same OID region.
@@ -154,16 +160,17 @@ Well-known prefixes mapped to region names: `system`, `ifTable`, `interfaces`, `
 ### Incident scoring
 ```
 score = timeoutCount × 100
-      + violationTypes × 50
+      + distinctViolationTypes × 50
       + retryCount × 10
       + log10(peakRtt) × 5
       + memberCount × 0.1
 ```
+where `distinctViolationTypes` = count of unique violation strings across all member exchanges.
 
 ### Row layout
 Each incident row (72px):
 - **Severity chip** (48×48px): `err` (any timeout), `warn` (violation or slow), `info` (retry only)
-- **Title**: `{region} — {type}` where region is a well-known name or the first 8 OID arcs for unknown prefixes, and type is the dominant anomaly
+- **Title**: `{region} — {type}` where region is a well-known name or the first 8 OID arcs for unknown prefixes, and type summarises the dominant anomaly (e.g. `timeout ×3`, `request-id-mismatch`, `slow region`, `2 retries`)
 - **Subtitle**: seq range (or single seq if start = end) · peak RTT · exchange count · retry count (omitted if 0)
 - **Walk position bar**: shows where in the walk this incident falls (proportional)
 
