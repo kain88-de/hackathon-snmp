@@ -25,7 +25,7 @@ Secondary user: SNMP expert drilling into a specific exchange to debug device ag
 
 ## Tech stack
 
-Svelte 5 · TypeScript · Bun · Vite · see `docs/web-guardrails.md` for toolchain guardrails.
+Svelte 5 · TypeScript · Bun · Vite · see `oidviz/docs/web-guardrails.md` for toolchain guardrails.
 
 Types are generated from `../traceformat/docs/trace-format.schema.json`:
 ```sh
