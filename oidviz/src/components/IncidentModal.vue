@@ -30,13 +30,15 @@ function truncateOid(oid: string): string {
 <template>
   <div
     class="modal-overlay"
-    role="dialog"
-    aria-modal="true"
-    :aria-labelledby="headingId"
     @keydown.escape="emit('close')"
     @click.self="emit('close')"
   >
-    <div class="modal-panel">
+    <div
+      class="modal-panel"
+      role="dialog"
+      aria-modal="true"
+      :aria-labelledby="headingId"
+    >
       <div class="modal-header">
         <h2 :id="headingId" ref="headingRef" tabindex="-1">
           Incident {{ props.index + 1 }} of {{ props.total }} — {{ props.incident.region }}

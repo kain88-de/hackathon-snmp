@@ -106,7 +106,7 @@ function navigateModal(delta: number) {
       v-else
       ref="containerRef"
       class="scroll-container"
-      @scroll="scrollTop = ($event.target as HTMLDivElement).scrollTop"
+      @scroll.passive="scrollTop = ($event.target as HTMLDivElement).scrollTop"
     >
       <div class="spacer" :style="{ height: shownIncidents.length * ROW_H + 'px' }">
         <div
@@ -203,8 +203,8 @@ function navigateModal(delta: number) {
 }
 
 .severity-chip {
-  width: 32px;
-  height: 32px;
+  width: 48px;
+  height: 48px;
   border-radius: 50%;
   display: flex;
   align-items: center;
