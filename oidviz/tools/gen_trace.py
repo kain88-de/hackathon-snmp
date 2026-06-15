@@ -54,8 +54,20 @@ def gen_trace(n: int, path: str, seed: int = 42) -> None:
     oids_seen = 0
     violation_counts: dict[str, int] = {}
 
+    system_info = {
+        "type": "system_info",
+        "at": 0.0,
+        "point": "start",
+        "values": {
+            "1.3.6.1.2.1.1.1.0": f"Synthetic NOS 1.0 — {n} exchanges",
+            "1.3.6.1.2.1.1.2.0": "1.3.6.1.4.1.99999.1.1",
+            "1.3.6.1.2.1.1.3.0": 492711442,
+        },
+    }
+
     with gzip.open(path, "wt", compresslevel=6) as f:
         f.write(json.dumps(header) + "\n")
+        f.write(json.dumps(system_info) + "\n")
 
         for i in range(n):
             spike = rng.random() < 0.03
