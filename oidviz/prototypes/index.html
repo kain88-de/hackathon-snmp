@@ -3,55 +3,912 @@
 <head>
 <meta charset="UTF-8">
 <meta name="viewport" content="width=device-width, initial-scale=1.0">
-<title>OIDviz · Prototypes</title>
+<title>OIDviz</title>
 <style>
 *, *::before, *::after { box-sizing: border-box; margin: 0; padding: 0; }
-body { background: #f1f5f9; color: #0f172a; font-family: system-ui, sans-serif; min-height: 100vh; display: flex; align-items: center; justify-content: center; padding: 40px 20px; }
-.wrap { max-width: 560px; width: 100%; }
-h1 { font-size: 28px; font-weight: 800; letter-spacing: -0.5px; margin-bottom: 4px; }
-h1 span { color: #3b82f6; }
-.sub { color: #64748b; font-size: 14px; margin-bottom: 32px; }
-.list { display: flex; flex-direction: column; gap: 10px; }
-a.card { display: flex; align-items: center; gap: 16px; background: #fff; border: 1px solid #e2e8f0; border-radius: 10px; padding: 16px 20px; text-decoration: none; color: inherit; transition: border-color .15s, box-shadow .15s; }
-a.card:hover { border-color: #3b82f6; box-shadow: 0 0 0 3px #eff6ff; }
-.num { font-size: 12px; font-weight: 700; color: #94a3b8; width: 20px; flex-shrink: 0; }
-.card-text { flex: 1; }
-.card-title { font-size: 15px; font-weight: 600; margin-bottom: 2px; }
-.card-desc { font-size: 12px; color: #64748b; }
-.arrow { color: #cbd5e1; font-size: 16px; }
-a.card:hover .arrow { color: #3b82f6; }
+:root {
+  --bg: #f1f5f9; --surface: #fff; --border: #e2e8f0;
+  --primary: #3b82f6; --ok: #16a34a; --warn: #d97706; --err: #dc2626;
+  --text: #0f172a; --muted: #64748b;
+  --mono: ui-monospace, 'Cascadia Code', Menlo, monospace;
+  --sidebar-w: 220px;
+  --sb: #1e293b; --sb-text: #e2e8f0; --sb-muted: #94a3b8; --sb-border: #334155;
+}
+body { background: var(--bg); color: var(--text); font-family: system-ui, sans-serif; font-size: 14px; display: flex; height: 100vh; overflow: hidden; }
+
+/* ── Sidebar ── */
+#sidebar { width: var(--sidebar-w); flex-shrink: 0; background: var(--sb); color: var(--sb-text); display: flex; flex-direction: column; overflow-y: auto; border-right: 1px solid var(--sb-border); }
+.sb-logo { padding: 16px 16px 14px; font-size: 20px; font-weight: 800; letter-spacing: -0.5px; border-bottom: 1px solid var(--sb-border); flex-shrink: 0; }
+.sb-logo span { color: var(--primary); }
+.sb-section { padding: 12px 16px; border-bottom: 1px solid var(--sb-border); }
+.sb-title { font-size: 10px; font-weight: 700; text-transform: uppercase; letter-spacing: 0.8px; color: var(--sb-muted); margin-bottom: 10px; }
+
+.load-btn { width: 100%; padding: 7px 12px; background: var(--primary); color: #fff; border: none; border-radius: 6px; font-size: 12px; font-weight: 600; cursor: pointer; transition: background .1s; }
+.load-btn:hover { background: #2563eb; }
+.shortcuts { display: flex; flex-direction: column; gap: 4px; margin-top: 8px; }
+.shortcut-btn { border: 1px solid var(--sb-border); background: transparent; padding: 4px 8px; border-radius: 4px; font-size: 11px; cursor: pointer; font-family: var(--mono); color: var(--sb-muted); text-align: left; transition: all .1s; }
+.shortcut-btn:hover { border-color: var(--primary); color: var(--sb-text); }
+
+.info-row { display: flex; justify-content: space-between; align-items: baseline; gap: 8px; padding: 3px 0; }
+.info-key { color: var(--sb-muted); font-size: 11px; flex-shrink: 0; }
+.info-val { font-family: var(--mono); font-size: 11px; font-weight: 600; text-align: right; overflow: hidden; text-overflow: ellipsis; white-space: nowrap; max-width: 120px; }
+.info-val.ok  { color: #4ade80; }
+.info-val.err { color: #f87171; }
+
+.filter-row { display: flex; align-items: center; gap: 6px; padding: 4px 0; font-size: 12px; color: var(--sb-muted); cursor: pointer; user-select: none; }
+.filter-row input[type=number] { width: 46px; font-size: 11px; padding: 1px 4px; border: 1px solid var(--sb-border); border-radius: 3px; font-family: var(--mono); background: #0f172a; color: var(--sb-text); }
+
+.view-btn { width: 100%; display: flex; align-items: center; gap: 10px; padding: 8px 10px; margin-bottom: 4px; border: 1px solid transparent; border-radius: 6px; background: transparent; color: var(--sb-muted); font-size: 12px; font-weight: 500; cursor: pointer; text-align: left; transition: all .1s; }
+.view-btn:hover { background: #334155; color: var(--sb-text); }
+.view-btn.active { background: #1d4ed8; border-color: #3b82f6; color: #fff; }
+.view-btn-icon { font-size: 14px; flex-shrink: 0; width: 18px; text-align: center; }
+
+/* ── Main ── */
+#main { flex: 1; display: flex; flex-direction: column; overflow: hidden; }
+
+#drop-screen { flex: 1; display: flex; flex-direction: column; align-items: center; justify-content: center; gap: 12px; padding: 40px; }
+#drop-screen.hidden { display: none; }
+.drop-box { border: 2px dashed var(--border); border-radius: 12px; padding: 48px 64px; text-align: center; background: var(--surface); cursor: pointer; transition: border-color .15s, background .15s; min-width: 300px; }
+.drop-box:hover, .drop-box.drag-over { border-color: var(--primary); background: #eff6ff; }
+.drop-title { font-size: 18px; font-weight: 600; margin-bottom: 6px; }
+.drop-sub { font-size: 13px; color: var(--muted); }
+.drop-sub b { font-family: var(--mono); font-size: 12px; color: var(--text); }
+
+.view-panel { flex: 1; display: none; flex-direction: column; overflow: hidden; }
+.view-panel.active { display: flex; }
+
+.view-toolbar { background: var(--surface); border-bottom: 1px solid var(--border); padding: 6px 14px; display: flex; align-items: center; gap: 12px; flex-shrink: 0; flex-wrap: wrap; font-size: 12px; color: var(--muted); }
+.toolbar-btn { border: 1px solid var(--border); background: var(--surface); padding: 3px 10px; border-radius: 4px; cursor: pointer; font-size: 11px; font-weight: 500; color: var(--text); transition: all .1s; }
+.toolbar-btn:hover { border-color: var(--primary); color: var(--primary); }
+
+/* ── V1: OID Tree ── */
+#v1-chart-wrap { flex: 1; overflow-y: auto; overflow-x: auto; position: relative; background: var(--surface); }
+#v1-tree-spacer { position: relative; min-width: 600px; }
+.tree-row { position: absolute; left: 0; right: 0; display: flex; align-items: center; height: 22px; padding: 0 8px; font-size: 12px; font-family: var(--mono); white-space: nowrap; cursor: default; border-bottom: 1px solid #f1f5f9; }
+.tree-row:hover { background: #f8fafc; }
+.tree-row.node { font-weight: 500; }
+.caret { width: 14px; flex-shrink: 0; cursor: pointer; color: var(--muted); user-select: none; text-align: center; }
+.caret:hover { color: var(--primary); }
+.row-label { flex: 1; overflow: hidden; text-overflow: ellipsis; }
+.row-name  { color: var(--muted); margin-left: 4px; font-size: 11px; font-weight: 400; }
+.row-count { width: 60px; text-align: center; color: var(--muted); flex-shrink: 0; border-left: 1px solid var(--border); }
+.row-rtt   { width: 80px; text-align: center; flex-shrink: 0; font-weight: 600; border-left: 1px solid var(--border); }
+.row-rtt.ok   { color: var(--ok); } .row-rtt.warn { color: var(--warn); } .row-rtt.err { color: var(--err); }
+.row-viol  { width: 60px; text-align: center; flex-shrink: 0; border-left: 1px solid var(--border); }
+.viol-badge { display: inline-block; background: #fef3c7; color: #92400e; border-radius: 3px; padding: 1px 5px; font-size: 10px; font-weight: 700; }
+.viol-badge.sev2 { background: #fee2e2; color: #991b1b; }
+.shared-tag { font-size: 9px; color: #94a3b8; margin-left: 4px; }
+
+/* ── V5: Minimap + Detail ── */
+#v5-minimap-wrap { flex-shrink: 0; background: #0f172a; border-bottom: 2px solid var(--border); position: relative; user-select: none; }
+#v5-mini-tooltip { position: absolute; background: #1e293b; color: #f1f5f9; font-size: 11px; font-family: var(--mono); padding: 4px 8px; border-radius: 4px; pointer-events: none; display: none; z-index: 10; white-space: pre; line-height: 1.5; }
+#v5-chart-wrap { flex: 1; overflow-y: auto; overflow-x: hidden; position: relative; }
+.legend-item { display: flex; align-items: center; gap: 4px; font-size: 11px; color: var(--muted); }
+.legend-dot { width: 8px; height: 8px; border-radius: 50%; flex-shrink: 0; }
+
+/* ── V7: Incident Stack ── */
+#v7-chart-wrap { flex: 1; overflow-y: auto; overflow-x: hidden; position: relative; }
+#v7-spacer { position: relative; }
+#v7-rows { position: absolute; top: 0; left: 0; right: 0; }
+.incident-row { position: absolute; left: 0; right: 0; height: 72px; display: flex; align-items: center; gap: 12px; padding: 0 16px; border-bottom: 1px solid var(--border); background: var(--surface); cursor: pointer; transition: background .1s; user-select: none; }
+.incident-row:hover { background: #f8fafc; }
+.severity-chip { flex-shrink: 0; width: 48px; height: 48px; border-radius: 10px; display: flex; flex-direction: column; align-items: center; justify-content: center; font-size: 10px; font-weight: 700; font-family: var(--mono); line-height: 1.2; }
+.severity-chip.err  { background: #fee2e2; color: #dc2626; }
+.severity-chip.warn { background: #fef3c7; color: #d97706; }
+.severity-chip.info { background: #dbeafe; color: #3b82f6; }
+.incident-title { flex: 1; min-width: 0; display: flex; flex-direction: column; gap: 3px; }
+.incident-name { font-size: 13px; font-weight: 600; white-space: nowrap; overflow: hidden; text-overflow: ellipsis; }
+.incident-sub  { font-size: 11px; color: var(--muted); font-family: var(--mono); white-space: nowrap; overflow: hidden; text-overflow: ellipsis; }
+.pos-bar-wrap  { flex-shrink: 0; width: 110px; display: flex; flex-direction: column; gap: 3px; }
+.pos-bar-title { font-size: 9px; font-weight: 700; letter-spacing: .5px; text-transform: uppercase; color: #94a3b8; }
+.pos-bar-track { width: 100%; height: 12px; border-radius: 6px; background: #e2e8f0; position: relative; overflow: hidden; }
+.pos-bar-fill  { position: absolute; top: 0; height: 100%; border-radius: 6px; min-width: 5px; }
+.pos-bar-fill.err { background: #dc2626; } .pos-bar-fill.warn { background: #d97706; } .pos-bar-fill.info { background: #3b82f6; }
+.pos-bar-ticks { display: flex; justify-content: space-between; font-size: 9px; color: #94a3b8; font-family: ui-monospace, monospace; }
+
+#v7-detail-overlay { display: none; position: fixed; inset: 0; background: rgba(15,23,42,.5); z-index: 200; align-items: center; justify-content: center; }
+#v7-detail-overlay.visible { display: flex; }
+#v7-detail-panel { background: var(--surface); border-radius: 12px; width: 760px; max-width: 95vw; max-height: 80vh; display: flex; flex-direction: column; overflow: hidden; box-shadow: 0 20px 60px rgba(0,0,0,.3); }
+.detail-hdr { background: #1e293b; color: #e2e8f0; padding: 14px 20px; display: flex; align-items: center; justify-content: space-between; flex-shrink: 0; }
+.detail-hdr h3 { font-size: 14px; font-weight: 600; }
+.detail-close { background: none; border: none; color: #94a3b8; font-size: 18px; cursor: pointer; line-height: 1; }
+.detail-close:hover { color: #f1f5f9; }
+.detail-body { overflow-y: auto; padding: 16px 20px; }
+.detail-table { width: 100%; border-collapse: collapse; font-size: 12px; font-family: var(--mono); }
+.detail-table th { text-align: left; padding: 6px 8px; border-bottom: 2px solid var(--border); color: var(--muted); font-size: 10px; text-transform: uppercase; letter-spacing: .5px; }
+.detail-table td { padding: 5px 8px; border-bottom: 1px solid var(--border); }
+.detail-table tr:hover td { background: #f8fafc; }
+.tag-viol { color: #d97706; font-weight: 600; } .tag-timeout { color: #dc2626; font-weight: 600; } .tag-retry { color: #3b82f6; font-weight: 600; }
+
+#global-tooltip { position: fixed; background: #1e293b; color: #f1f5f9; font-size: 11px; font-family: var(--mono); padding: 7px 10px; border-radius: 6px; pointer-events: none; display: none; z-index: 100; white-space: pre; line-height: 1.6; }
 </style>
 </head>
 <body>
-<div class="wrap">
-  <h1>OID<span>viz</span></h1>
-  <p class="sub">Large-scale SNMP walk visualizations</p>
-  <div class="list">
-    <a class="card" href="waterfall-v7-incident-stack.html">
-      <span class="num" style="color:#dc2626">v7</span>
-      <div class="card-text">
-        <div class="card-title">Incident Stack <span style="font-size:11px;color:#16a34a;font-weight:600;margin-left:6px">★ default</span></div>
-        <div class="card-desc">Anomaly clusters ranked worst-first — triage queue, no searching</div>
-      </div>
-      <span class="arrow">→</span>
-    </a>
-    <a class="card" href="waterfall-v5-minimap-detail.html">
-      <span class="num">v5</span>
-      <div class="card-text">
-        <div class="card-title">Minimap + Detail Waterfall</div>
-        <div class="card-desc">Full-trace overview bar + draggable zoom window into detail</div>
-      </div>
-      <span class="arrow">→</span>
-    </a>
-    <a class="card" href="waterfall-v1-oid-tree-explorer.html">
-      <span class="num">v1</span>
-      <div class="card-text">
-        <div class="card-title">OID Tree Explorer</div>
-        <div class="card-desc">Collapsible OID prefix tree — shows distribution across MIB subtrees</div>
-      </div>
-      <span class="arrow">→</span>
-    </a>
+
+<div id="sidebar">
+  <div class="sb-logo">OID<span>viz</span></div>
+
+  <div class="sb-section">
+    <div class="sb-title">Load</div>
+    <button class="load-btn" onclick="document.getElementById('file-input').click()">Open trace file…</button>
+    <div class="shortcuts">
+      <button class="shortcut-btn" onclick="loadPath('/oidviz/tools/fixtures/trace-5k.oidtrace.jsonl.gz')">trace-5k</button>
+      <button class="shortcut-btn" onclick="loadPath('/oidviz/tools/fixtures/trace-50k.oidtrace.jsonl.gz')">trace-50k</button>
+      <button class="shortcut-btn" onclick="loadPath('/oidviz/tools/fixtures/trace-100k.oidtrace.jsonl.gz')">trace-100k</button>
+      <button class="shortcut-btn" style="border-color:#d97706;color:#d97706" onclick="loadPath('/oidviz/tools/fixtures/trace-focused.oidtrace.jsonl.gz')">focused</button>
+    </div>
+    <input type="file" id="file-input" accept=".gz,.jsonl,.jsonl.gz" style="display:none" onchange="loadFile(this.files[0])">
+  </div>
+
+  <div class="sb-section" id="sb-info" style="display:none">
+    <div class="sb-title">Walk info</div>
+    <div class="info-row"><span class="info-key">Label</span><span class="info-val" id="si-label">—</span></div>
+    <div class="info-row"><span class="info-key">SNMP</span><span class="info-val" id="si-snmp">—</span></div>
+    <div class="info-row"><span class="info-key">Start OID</span><span class="info-val" id="si-oid">—</span></div>
+    <div class="info-row"><span class="info-key">Exchanges</span><span class="info-val" id="si-exchanges">—</span></div>
+    <div class="info-row"><span class="info-key">OIDs seen</span><span class="info-val" id="si-oids">—</span></div>
+    <div class="info-row"><span class="info-key">Duration</span><span class="info-val" id="si-duration">—</span></div>
+    <div class="info-row"><span class="info-key">Violations</span><span class="info-val" id="si-violations">—</span></div>
+    <div class="info-row"><span class="info-key">End reason</span><span class="info-val" id="si-end">—</span></div>
+    <div class="info-row"><span class="info-key">Parse time</span><span class="info-val" id="si-parse">—</span></div>
+  </div>
+
+  <div class="sb-section" id="sb-filters" style="display:none">
+    <div class="sb-title">Filters</div>
+    <label class="filter-row">
+      <input type="checkbox" id="f-slow" checked onchange="applyFilters()">
+      Slow &gt; <input type="number" id="slow-s" value="1" min="0.01" max="100" step="0.1"
+        onchange="SLOW_MS=Math.max(10,(+this.value||1)*1000);applyFilters()"> s
+    </label>
+    <label class="filter-row"><input type="checkbox" id="f-viol" checked onchange="applyFilters()"> Violations</label>
+    <label class="filter-row"><input type="checkbox" id="f-retry" checked onchange="applyFilters()"> Retries</label>
+    <label class="filter-row"><input type="checkbox" id="f-timeout" onchange="applyFilters()"> Timeouts</label>
+  </div>
+
+  <div class="sb-section" id="sb-views" style="display:none">
+    <div class="sb-title">View</div>
+    <button class="view-btn active" id="nav-v7" onclick="switchView('v7')">
+      <span class="view-btn-icon">⚑</span>Incident Stack
+    </button>
+    <button class="view-btn" id="nav-v5" onclick="switchView('v5')">
+      <span class="view-btn-icon">▬</span>Minimap + Detail
+    </button>
+    <button class="view-btn" id="nav-v1" onclick="switchView('v1')">
+      <span class="view-btn-icon">⊞</span>OID Tree
+    </button>
   </div>
 </div>
+
+<div id="main">
+  <div id="drop-screen">
+    <div class="drop-box" id="main-drop-box" onclick="document.getElementById('file-input').click()">
+      <div class="drop-title">Drop a trace file or click to open</div>
+      <div class="drop-sub">Accepts <b>.oidtrace.jsonl.gz</b></div>
+    </div>
+  </div>
+
+  <!-- V7: Incident Stack -->
+  <div class="view-panel" id="view-v7">
+    <div class="view-toolbar">
+      <span id="v7-count-label" style="font-weight:600;color:var(--text)"></span>
+    </div>
+    <div id="v7-chart-wrap">
+      <div id="v7-spacer"><div id="v7-rows"></div></div>
+    </div>
+  </div>
+
+  <!-- V5: Minimap + Detail -->
+  <div class="view-panel" id="view-v5">
+    <div class="view-toolbar">
+      <span style="color:var(--muted)">Window:</span>
+      <span id="v5-win-label" style="font-family:var(--mono);font-size:11px;color:var(--text)">—</span>
+      <span style="color:var(--border)">|</span>
+      <button class="toolbar-btn" onclick="V5.zoomToProblems()">Zoom to problems</button>
+      <button class="toolbar-btn" onclick="V5.resetWindowWidth()">Reset window</button>
+      <span style="margin-left:auto;display:flex;gap:10px">
+        <span class="legend-item"><span class="legend-dot" style="background:#ef4444"></span>timeout</span>
+        <span class="legend-item"><span class="legend-dot" style="background:#f59e0b"></span>violation</span>
+        <span class="legend-item"><span class="legend-dot" style="background:#93c5fd"></span>retry</span>
+        <span class="legend-item"><span class="legend-dot" style="background:#3b82f6"></span>slow</span>
+        <span class="legend-item"><span class="legend-dot" style="background:#94a3b8"></span>ok</span>
+      </span>
+    </div>
+    <div id="v5-minimap-wrap">
+      <canvas id="v5-minimap-canvas" style="display:block;cursor:crosshair"></canvas>
+      <div id="v5-mini-tooltip"></div>
+    </div>
+    <div id="v5-chart-wrap">
+      <canvas id="v5-detail-canvas" style="display:block;cursor:crosshair"></canvas>
+    </div>
+  </div>
+
+  <!-- V1: OID Tree -->
+  <div class="view-panel" id="view-v1">
+    <div class="view-toolbar">
+      <button class="toolbar-btn" onclick="V1.collapseAllAndRender()">Collapse all</button>
+      <span id="v1-count-label" style="font-size:11px"></span>
+    </div>
+    <div id="v1-chart-wrap">
+      <div style="position:sticky;top:0;z-index:1;background:var(--surface);border-bottom:1px solid var(--border);padding:0 8px;display:flex;align-items:center;height:22px;font-size:11px;color:var(--muted);font-family:var(--mono);user-select:none;">
+        <span style="flex:1;padding-left:32px">OID / Name</span>
+        <span style="width:60px;text-align:center;border-left:1px solid var(--border)">Count</span>
+        <span style="width:80px;text-align:center;border-left:1px solid var(--border)">Max RTT</span>
+        <span style="width:60px;text-align:center;border-left:1px solid var(--border)">Violations</span>
+      </div>
+      <div id="v1-tree-spacer"></div>
+    </div>
+  </div>
+</div>
+
+<!-- V7 detail overlay -->
+<div id="v7-detail-overlay" onclick="V7.closeDetail(event)">
+  <div id="v7-detail-panel">
+    <div class="detail-hdr">
+      <h3 id="v7-detail-title">Incident detail</h3>
+      <div style="display:flex;align-items:center;gap:8px">
+        <button onclick="V7.openDetail(V7.currentDetailIdx-1)" id="v7-detail-prev" style="background:none;border:1px solid #475569;color:#94a3b8;padding:2px 8px;border-radius:4px;cursor:pointer;font-size:12px">← Prev</button>
+        <span id="v7-detail-nav" style="font-size:11px;color:#64748b;min-width:60px;text-align:center"></span>
+        <button onclick="V7.openDetail(V7.currentDetailIdx+1)" id="v7-detail-next" style="background:none;border:1px solid #475569;color:#94a3b8;padding:2px 8px;border-radius:4px;cursor:pointer;font-size:12px">Next →</button>
+        <button class="detail-close" onclick="V7.closeDetail()">✕</button>
+      </div>
+    </div>
+    <div class="detail-body" id="v7-detail-body"></div>
+  </div>
+</div>
+
+<div id="global-tooltip"></div>
+
+<script>
+// ── Shared state ──
+let ALL = [], traceHeader = null, traceSummary = null;
+let SLOW_MS = 1000;
+let activeView = 'v7';
+let traceMaxT = 1;
+
+// ── Drop zone wiring ──
+const mainDropBox = document.getElementById('main-drop-box');
+mainDropBox.addEventListener('dragover', e => { e.preventDefault(); mainDropBox.classList.add('drag-over'); });
+mainDropBox.addEventListener('dragleave', () => mainDropBox.classList.remove('drag-over'));
+mainDropBox.addEventListener('drop', e => { e.preventDefault(); mainDropBox.classList.remove('drag-over'); const f = e.dataTransfer.files[0]; if (f) loadFile(f); });
+document.getElementById('sidebar').addEventListener('dragover', e => e.preventDefault());
+document.getElementById('sidebar').addEventListener('drop', e => { e.preventDefault(); const f = e.dataTransfer.files[0]; if (f) loadFile(f); });
+
+async function loadPath(path) {
+  try {
+    const resp = await fetch(path);
+    if (!resp.ok) throw new Error('HTTP ' + resp.status);
+    await parseAndShow(await resp.blob());
+  } catch(e) { alert('Could not load: ' + e.message); }
+}
+function loadFile(file) { parseAndShow(file); }
+
+// ── Parser ──
+function truncateOid(oid, depth) {
+  if (!oid) return '';
+  return oid.replace(/^\./, '').split('.').slice(0, depth).join('.');
+}
+
+async function parseAndShow(blob) {
+  const t0 = performance.now();
+  let header = null, summary = null;
+  const exchanges = [];
+  const ds = new DecompressionStream('gzip');
+  blob.stream().pipeTo(ds.writable).catch(() => {});
+  const reader = ds.readable.getReader();
+  const decoder = new TextDecoder();
+  let buf = '';
+  try {
+    while (true) {
+      const { done, value } = await reader.read();
+      if (done) break;
+      buf += decoder.decode(value, { stream: true });
+      let nl;
+      while ((nl = buf.indexOf('\n')) !== -1) {
+        const line = buf.slice(0, nl).trim(); buf = buf.slice(nl + 1);
+        if (!line) continue;
+        const rec = JSON.parse(line);
+        if (rec.type === 'header') { header = rec; }
+        else if (rec.type === 'summary') { summary = rec; }
+        else if (rec.type === 'exchange') {
+          const first = rec.attempts[0], last = rec.attempts[rec.attempts.length - 1];
+          const rtt = (last.received_at - first.sent_at) * 1000;
+          const timeoutS = header?.settings?.timeout_s ?? 2.0;
+          const varbindOids = rec.attempts.flatMap(a => (a.response?.varbinds ?? []).map(v => v.oid)).filter(Boolean);
+          const rawOids = varbindOids.length > 0 ? varbindOids : (rec.request?.oids ?? []);
+          const prefixes = [...new Set(rawOids.map(o => truncateOid(o, 7)))].filter(Boolean);
+          exchanges.push({
+            seq: rec.seq,
+            sentAtMs: first.sent_at * 1000, receivedAtMs: last.received_at * 1000, rtt,
+            violation: rec.violation ?? null,
+            timeout: rec.attempts.some(a => (a.received_at - a.sent_at) >= timeoutS - 0.001),
+            attempts: rec.attempts.map(a => ({
+              sentAtMs: a.sent_at * 1000, rtt: (a.received_at - a.sent_at) * 1000,
+              timeout: (a.received_at - a.sent_at) >= timeoutS - 0.001,
+            })),
+            oid:  rec.request?.oids?.[0] ?? '',
+            oids: prefixes.length > 0 ? prefixes : ['unknown'],
+          });
+        }
+      }
+    }
+  } catch(e) { console.error('Parse error', e); }
+
+  const parseMs = performance.now() - t0;
+  if (exchanges.length) {
+    const minT = exchanges[0].sentAtMs;
+    for (const e of exchanges) {
+      e.sentAtMs -= minT; e.receivedAtMs -= minT;
+      for (const a of e.attempts) a.sentAtMs -= minT;
+    }
+    traceMaxT = Math.max(...exchanges.map(e => e.receivedAtMs));
+  }
+  ALL = exchanges; traceHeader = header; traceSummary = summary;
+
+  // Update sidebar
+  document.getElementById('sb-info').style.display    = '';
+  document.getElementById('sb-filters').style.display = '';
+  document.getElementById('sb-views').style.display   = '';
+  updateWalkInfo(header, summary, parseMs);
+
+  // Show active view
+  document.getElementById('drop-screen').classList.add('hidden');
+  ['v7','v5','v1'].forEach(v =>
+    document.getElementById('view-' + v).classList.toggle('active', v === activeView)
+  );
+
+  V7.onData();
+  V5.onData();
+  V1.onData();
+}
+
+function updateWalkInfo(header, summary, parseMs) {
+  const $ = id => document.getElementById(id);
+  $('si-label').textContent     = header?.label ?? '—';
+  $('si-snmp').textContent      = header?.snmp?.version ?? '—';
+  $('si-oid').textContent       = header?.settings?.start_oid ?? '—';
+  $('si-exchanges').textContent = ALL.length.toLocaleString();
+  $('si-oids').textContent      = summary?.oids_seen?.toLocaleString() ?? '—';
+  const durS = traceMaxT / 1000;
+  $('si-duration').textContent  = durS >= 60
+    ? Math.floor(durS/60) + 'm ' + (durS % 60).toFixed(0) + 's'
+    : durS.toFixed(2) + 's';
+  const violTotal = summary
+    ? Object.values(summary.violation_counts || {}).reduce((a,b) => a+b, 0)
+    : ALL.filter(e => e.violation).length;
+  const vEl = $('si-violations');
+  vEl.textContent = violTotal.toLocaleString();
+  vEl.className   = 'info-val ' + (violTotal > 0 ? 'err' : 'ok');
+  $('si-end').textContent   = summary?.end_reason ?? '—';
+  $('si-parse').textContent = parseMs.toFixed(0) + 'ms';
+}
+
+function switchView(id) {
+  activeView = id;
+  ['v7','v5','v1'].forEach(v => {
+    document.getElementById('view-' + v).classList.toggle('active', v === id);
+    document.getElementById('nav-' + v).classList.toggle('active', v === id);
+  });
+  if (!ALL.length) return;
+  if (id === 'v5') V5.onActivate();
+  if (id === 'v1') V1.onActivate();
+}
+
+function getFilters() {
+  return {
+    slow:    document.getElementById('f-slow')?.checked    ?? true,
+    viol:    document.getElementById('f-viol')?.checked    ?? true,
+    retry:   document.getElementById('f-retry')?.checked   ?? true,
+    timeout: document.getElementById('f-timeout')?.checked ?? false,
+  };
+}
+
+function applyFilters() {
+  if (!ALL.length) return;
+  if (activeView === 'v7')      V7.applyFilters();
+  else if (activeView === 'v5') V5.applyFilters();
+  else                          V1.applyFilters();
+}
+
+// ═══════════════════════════════════════════════════════
+// V7 — Incident Stack
+// ═══════════════════════════════════════════════════════
+const V7 = (() => {
+  const GAP_WINDOW = 8, ROW_PX = 72;
+  let clusters = [], shownClusters = [];
+  let _detailIdx = -1;
+  const chartWrap = document.getElementById('v7-chart-wrap');
+  const spacer    = document.getElementById('v7-spacer');
+  const rowsEl    = document.getElementById('v7-rows');
+
+  function oidRegion(oid) {
+    if (!oid) return 'unknown';
+    for (const [p, n] of [
+      ['1.3.6.1.2.1.1.','system'],['1.3.6.1.2.1.2.2.1','ifTable'],
+      ['1.3.6.1.2.1.2.','interfaces'],['1.3.6.1.2.1.4.','ip'],
+      ['1.3.6.1.2.1.6.','tcp'],['1.3.6.1.2.1.11.','snmp'],
+      ['1.3.6.1.2.1.25.','hrSystem'],['1.3.6.1.4.1.','enterprises'],
+    ]) { if (oid.startsWith(p)) return n; }
+    return oid.split('.').slice(0, 8).join('.');
+  }
+
+  function detectAndCluster() {
+    if (!ALL.length) { clusters = []; return; }
+    const isAnom = new Uint8Array(ALL.length);
+    for (let i = 0; i < ALL.length; i++) {
+      const e = ALL[i];
+      if (e.rtt > SLOW_MS || e.violation != null || e.attempts.length > 1 || e.timeout) isAnom[i] = 1;
+    }
+    const result = []; let i = 0;
+    while (i < ALL.length) {
+      if (!isAnom[i]) { i++; continue; }
+      const startIdx = i, members = [i]; let lastIdx = i; i++;
+      while (i < ALL.length) {
+        if (isAnom[i]) {
+          if (i - lastIdx - 1 <= GAP_WINDOW || oidRegion(ALL[i].oid) === oidRegion(ALL[lastIdx].oid)) {
+            members.push(i); lastIdx = i; i++;
+          } else break;
+        } else { if (i - lastIdx <= GAP_WINDOW) i++; else break; }
+      }
+      let peakRtt = 0, retryCount = 0, timeoutCount = 0;
+      const violationTypes = new Set(), regionCounts = {};
+      for (const idx of members) {
+        const e = ALL[idx];
+        if (e.rtt > peakRtt) peakRtt = e.rtt;
+        if (e.attempts.length > 1) retryCount += e.attempts.length - 1;
+        if (e.timeout) timeoutCount++;
+        if (e.violation) violationTypes.add(e.violation);
+        const r = oidRegion(e.oid); regionCounts[r] = (regionCounts[r] || 0) + 1;
+      }
+      let region = 'unknown', maxC = 0;
+      for (const [r, c] of Object.entries(regionCounts)) { if (c > maxC) { maxC = c; region = r; } }
+      const score = 100 * timeoutCount + 50 * violationTypes.size + 10 * retryCount
+                  + Math.log10(Math.max(peakRtt, 1)) * 5 + members.length * 0.1;
+      result.push({ startIdx, endIdx: lastIdx, startSeq: ALL[startIdx].seq, endSeq: ALL[lastIdx].seq,
+        members, peakRtt, retryCount, timeoutCount, violationTypes, region, score });
+    }
+    clusters = result;
+  }
+
+  function sevCls(c) {
+    return c.timeoutCount > 0 ? 'err' : (c.violationTypes.size > 0 || c.peakRtt > SLOW_MS) ? 'warn' : 'info';
+  }
+
+  function applyFilters() {
+    const f = getFilters();
+    shownClusters = clusters.filter(c => {
+      if (c.timeoutCount > 0 && (f.slow || f.viol || f.retry)) return true;
+      return (f.slow && c.peakRtt > SLOW_MS) || (f.viol && c.violationTypes.size > 0) || (f.retry && c.retryCount > 0);
+    });
+    document.getElementById('v7-count-label').textContent =
+      shownClusters.length.toLocaleString() + ' incident' + (shownClusters.length !== 1 ? 's' : '');
+    spacer.style.height = (shownClusters.length * ROW_PX) + 'px';
+    if (!shownClusters.length) {
+      rowsEl.innerHTML = '<div style="padding:48px 24px;text-align:center;color:var(--muted);font-size:13px">No incidents match the current filters.</div>';
+      rowsEl.style.top = '0';
+    } else { renderVisible(); }
+  }
+
+  function escH(s) { return String(s).replace(/&/g,'&amp;').replace(/</g,'&lt;').replace(/>/g,'&gt;').replace(/"/g,'&quot;'); }
+
+  function renderVisible() {
+    const first = Math.max(0, Math.floor(chartWrap.scrollTop / ROW_PX));
+    const last  = Math.min(shownClusters.length, first + Math.ceil(chartWrap.clientHeight / ROW_PX) + 2);
+    const parts = [];
+    for (let i = first; i < last; i++) {
+      const c = shownClusters[i], cls = sevCls(c);
+      let type = c.timeoutCount > 0 ? `timeout ×${c.timeoutCount}`
+        : c.violationTypes.size > 0 ? [...c.violationTypes].join(', ')
+        : c.peakRtt > SLOW_MS ? 'slow region'
+        : `${c.retryCount} retr${c.retryCount === 1 ? 'y' : 'ies'}`;
+      const title = `${c.region} — ${type}`;
+      const seq   = c.startSeq === c.endSeq ? `seq ${c.startSeq.toLocaleString()}` : `seq ${c.startSeq.toLocaleString()}–${c.endSeq.toLocaleString()}`;
+      const sub   = `${seq} · peak ${c.peakRtt.toFixed(0)}ms · ${c.members.length} exchange${c.members.length!==1?'s':''}${c.retryCount>0?` · ${c.retryCount} retr${c.retryCount===1?'y':'ies'}`:''}`;
+      const N = ALL.length || 1;
+      const pL = (c.startIdx / N * 100).toFixed(1);
+      const pW = Math.max(0.5, (c.endIdx - c.startIdx + 1) / N * 100).toFixed(1);
+      parts.push(`<div class="incident-row" style="top:${(i-first)*ROW_PX}px" onclick="V7.openDetail(${i})">
+  <div class="severity-chip ${cls}"><span style="font-size:9px;opacity:.7">#</span><span style="font-size:16px;line-height:1">${i+1}</span></div>
+  <div class="incident-title"><div class="incident-name" title="${escH(title)}">${escH(title)}</div><div class="incident-sub">${escH(sub)}</div></div>
+  <div class="pos-bar-wrap"><div class="pos-bar-title">Walk position</div>
+    <div class="pos-bar-track"><div class="pos-bar-fill ${cls}" style="left:${pL}%;width:${pW}%"></div></div>
+    <div class="pos-bar-ticks"><span>start</span><span>${Math.round(pL)}%</span><span>end</span></div>
+  </div></div>`);
+    }
+    rowsEl.innerHTML = parts.join('');
+    rowsEl.style.top = (first * ROW_PX) + 'px';
+  }
+
+  function openDetail(idx) {
+    const c = shownClusters[idx]; if (!c) return;
+    _detailIdx = idx;
+    document.getElementById('v7-detail-title').textContent =
+      `#${idx+1} · ${c.region} · seq ${c.startSeq.toLocaleString()}–${c.endSeq.toLocaleString()}`;
+    const rows = c.members.map(mi => {
+      const e = ALL[mi];
+      const tags = [
+        e.timeout ? `<span class="tag-timeout">timeout</span>` : '',
+        e.violation ? `<span class="tag-viol">${escH(e.violation)}</span>` : '',
+        e.attempts.length > 1 ? `<span class="tag-retry">retry×${e.attempts.length-1}</span>` : '',
+      ].filter(Boolean).join(' ') || '—';
+      const oidS = e.oid.length > 50 ? e.oid.slice(0,50)+'…' : e.oid;
+      return `<tr><td>${e.seq.toLocaleString()}</td><td title="${escH(e.oid)}">${escH(oidS)}</td><td>${e.rtt.toFixed(2)}ms</td><td>${tags}</td></tr>`;
+    }).join('');
+    document.getElementById('v7-detail-body').innerHTML =
+      `<div style="display:flex;gap:16px;flex-wrap:wrap;padding:12px 0 16px;border-bottom:1px solid var(--border);margin-bottom:12px;font-size:12px;font-family:var(--mono)">
+        ${[['Peak RTT',c.peakRtt.toFixed(0)+'ms'],['Timeouts',c.timeoutCount],['Retries',c.retryCount],['Exchanges',c.members.length],['Violations',[...c.violationTypes].join(', ')||'—']]
+          .map(([k,v])=>`<div><div style="font-size:10px;color:var(--muted);text-transform:uppercase;letter-spacing:.5px;margin-bottom:2px">${k}</div><div style="font-weight:600">${v}</div></div>`).join('')}
+      </div>
+      <table class="detail-table"><thead><tr><th>Seq</th><th>OID</th><th>RTT</th><th>Flag</th></tr></thead><tbody>${rows}</tbody></table>`;
+    document.getElementById('v7-detail-nav').textContent  = (idx+1) + ' / ' + shownClusters.length;
+    document.getElementById('v7-detail-prev').disabled = idx <= 0;
+    document.getElementById('v7-detail-next').disabled = idx >= shownClusters.length - 1;
+    document.getElementById('v7-detail-overlay').classList.add('visible');
+  }
+
+  function closeDetail(e) {
+    if (e && e.target !== document.getElementById('v7-detail-overlay')) return;
+    document.getElementById('v7-detail-overlay').classList.remove('visible');
+  }
+
+  document.addEventListener('keydown', e => { if (e.key === 'Escape') closeDetail(); });
+  chartWrap.addEventListener('scroll', renderVisible, { passive: true });
+  new ResizeObserver(() => { if (ALL.length && activeView === 'v7') renderVisible(); }).observe(chartWrap);
+
+  return {
+    get currentDetailIdx() { return _detailIdx; },
+    onData()     { detectAndCluster(); applyFilters(); },
+    applyFilters, openDetail, closeDetail,
+  };
+})();
+
+// ═══════════════════════════════════════════════════════
+// V5 — Minimap + Detail
+// ═══════════════════════════════════════════════════════
+const V5 = (() => {
+  const MINI_H = 80, ML = 64, MT = 24, RH = 9, RG = 3, BH = 6;
+  const MAX_H = 32767, MAX_PX = 268_435_456, WIN_FRAC = 0.05;
+  let filtered = [], maxT = 1, winS = 0, winE = 0;
+  let buckets = [], maxCol = 1, miniW = 0;
+  let dragging = false, dragX0 = 0, dragWin0 = null;
+
+  const miniCanvas = document.getElementById('v5-minimap-canvas');
+  const miniCtx    = miniCanvas.getContext('2d');
+  const detCanvas  = document.getElementById('v5-detail-canvas');
+  const detCtx     = detCanvas.getContext('2d');
+  const chartWrap  = document.getElementById('v5-chart-wrap');
+  const miniWrap   = document.getElementById('v5-minimap-wrap');
+  const miniTip    = document.getElementById('v5-mini-tooltip');
+  const tooltip    = document.getElementById('global-tooltip');
+  const winLabel   = document.getElementById('v5-win-label');
+
+  function clr(rtt, viol, tout, ai) {
+    if (tout) return '#ef4444'; if (viol) return '#f59e0b';
+    if (ai > 0) return '#93c5fd'; if (rtt > SLOW_MS) return '#3b82f6'; return '#94a3b8';
+  }
+
+  function buildBuckets() {
+    miniW = miniCanvas.width;
+    if (!miniW || !maxT) return;
+    buckets = Array.from({length: miniW}, () => ({count:0,maxRtt:0,viol:false,timeout:false,retry:false}));
+    maxCol = 1;
+    for (const e of filtered) {
+      if (e.rtt <= SLOW_MS && !e.timeout && !e.violation && e.attempts.length === 1) continue;
+      const col = Math.min(miniW-1, Math.floor(e.sentAtMs/maxT*miniW));
+      const b = buckets[col]; b.count++;
+      if (e.rtt > b.maxRtt) b.maxRtt = e.rtt;
+      if (e.violation) b.viol = true; if (e.timeout) b.timeout = true;
+      if (e.attempts.length > 1) b.retry = true;
+      if (b.count > maxCol) maxCol = b.count;
+    }
+  }
+
+  function drawMini() {
+    const W = miniCanvas.width;
+    miniCtx.fillStyle = '#0f172a'; miniCtx.fillRect(0, 0, W, MINI_H);
+    if (!filtered.length || !W) return;
+    for (let col = 0; col < W; col++) {
+      const b = buckets[col]; if (!b || !b.count) continue;
+      const h = Math.max(1, Math.round(b.count/maxCol*(MINI_H-4)));
+      miniCtx.fillStyle = b.timeout?'#ef4444':b.viol?'#f59e0b':b.retry?'#93c5fd':'#3b82f6';
+      miniCtx.fillRect(col, MINI_H-h, 1, h);
+    }
+    if (maxT > 0) {
+      const x1 = Math.round(winS/maxT*W), x2 = Math.round(winE/maxT*W), ww = Math.max(2,x2-x1);
+      miniCtx.fillStyle = 'rgba(59,130,246,.22)'; miniCtx.fillRect(x1,0,ww,MINI_H);
+      miniCtx.strokeStyle = '#3b82f6'; miniCtx.lineWidth = 1;
+      miniCtx.strokeRect(x1+.5,.5,ww-1,MINI_H-1);
+    }
+  }
+
+  function drawDetail() {
+    if (!filtered.length) { detCanvas.width = 1; detCanvas.height = 1; return; }
+    const wx = filtered.filter(e => e.sentAtMs < winE && e.receivedAtMs > winS);
+    const rows = wx.length;
+    const W = Math.min(chartWrap.clientWidth||800, Math.floor(MAX_PX/Math.max(MT+rows*(RH+RG)+20,1)));
+    const H = Math.min(MT+rows*(RH+RG)+20, MAX_H);
+    detCanvas.width = W; detCanvas.height = H;
+    detCtx.clearRect(0,0,W,H);
+    if (!rows) {
+      detCtx.fillStyle='#64748b'; detCtx.font='13px system-ui';
+      detCtx.fillText('No exchanges in selected window', ML, MT+20);
+      updateWinLabel(wx); return;
+    }
+    const drawW = W-ML-20, mpp = Math.max(1,winE-winS)/drawW;
+    for (let i=0;i<rows;i++) {
+      const y0=MT+i*(RH+RG); if(y0>H)break;
+      if(i%2===0){detCtx.fillStyle='#f8fafc';detCtx.fillRect(0,y0,W,RH+RG);}
+    }
+    detCtx.font='9px system-ui';
+    const ticks=[0.1,0.2,0.5,1,2,5,10,20,50,100,200,500,1000,2000,5000,10000,30000];
+    const te = ticks.find(t=>t/mpp>60)||60000;
+    for (let t=Math.floor(winS/te)*te; t<=winE+te; t+=te) {
+      const x=ML+(t-winS)/mpp; if(x<ML||x>W) continue;
+      detCtx.fillStyle='#cbd5e1'; detCtx.fillRect(x,MT-4,1,H-MT+4);
+      detCtx.fillStyle='#94a3b8'; detCtx.fillText(t<1000?t.toFixed(0)+'ms':(t/1000).toFixed(2)+'s',x+2,11);
+    }
+    for (let i=0;i<rows;i++) {
+      const e=wx[i], y0=MT+i*(RH+RG); if(y0>H)break;
+      const y=y0+(RH-BH)/2;
+      detCtx.fillStyle='#94a3b8'; detCtx.font='8px system-ui'; detCtx.textAlign='right';
+      detCtx.fillText(e.seq, ML-4, y+BH-1); detCtx.textAlign='left';
+      for (let ai=0;ai<e.attempts.length;ai++) {
+        const a=e.attempts[ai], x=ML+(a.sentAtMs-winS)/mpp, w=Math.max(2,a.rtt/mpp);
+        detCtx.fillStyle=clr(a.rtt,e.violation,a.timeout,ai);
+        detCtx.beginPath(); detCtx.roundRect(x,y,w,BH,2); detCtx.fill();
+        if(w>6){detCtx.fillStyle='rgba(255,255,255,.2)';detCtx.fillRect(x+1,y+1,w-2,2);}
+      }
+      if(e.violation){const x=ML+(e.receivedAtMs-winS)/mpp;detCtx.fillStyle='#f59e0b';detCtx.font='bold 8px system-ui';detCtx.fillText('!',x+2,y+BH-1);}
+    }
+    updateWinLabel(wx); detCanvas.setAttribute('data-ready','1');
+  }
+
+  function updateWinLabel(wx) {
+    winLabel.textContent = (winS/1000).toFixed(2)+'s – '+(winE/1000).toFixed(2)+'s  ('+wx.length.toLocaleString()+')';
+  }
+
+  function ttoX(t) { return t/maxT*miniCanvas.width; }
+  function xtoT(x) { return x/miniCanvas.width*maxT; }
+  const EDGE=6;
+  function hit(x) {
+    const x1=ttoX(winS),x2=ttoX(winE);
+    if(x>=x1-EDGE&&x<=x1+EDGE)return'resize-l';
+    if(x>=x2-EDGE&&x<=x2+EDGE)return'resize-r';
+    if(x>x1&&x<x2)return'pan'; return'new';
+  }
+
+  miniCanvas.addEventListener('mousedown', e => {
+    const r=miniCanvas.getBoundingClientRect(), x=e.clientX-r.left;
+    dragging=hit(x); dragX0=x; dragWin0={s:winS,e:winE}; e.preventDefault();
+  });
+  window.addEventListener('mousemove', e => {
+    if(!dragging) return;
+    const r=miniCanvas.getBoundingClientRect(), x=e.clientX-r.left;
+    const dx=x-dragX0, dt=dx/miniCanvas.width*maxT, span=dragWin0.e-dragWin0.s;
+    if(dragging==='new'){winS=Math.max(0,xtoT(Math.min(dragX0,x)));winE=Math.min(maxT,Math.max(xtoT(Math.max(dragX0,x)),winS+1));}
+    else if(dragging==='pan'){const ns=Math.max(0,Math.min(maxT-span,dragWin0.s+dt));winS=ns;winE=ns+span;}
+    else if(dragging==='resize-l'){winS=Math.max(0,Math.min(dragWin0.e-1,dragWin0.s+dt));}
+    else{winE=Math.min(maxT,Math.max(dragWin0.s+1,dragWin0.e+dt));}
+    drawMini(); drawDetail();
+  });
+  window.addEventListener('mouseup', e => {
+    if(!dragging) return;
+    const r=miniCanvas.getBoundingClientRect(), x=e.clientX-r.left;
+    if(Math.abs(x-dragX0)<4&&dragging==='new'){
+      const t=xtoT(x),h=maxT*WIN_FRAC/2;
+      winS=Math.max(0,t-h); winE=Math.min(maxT,t+h); drawMini(); drawDetail();
+    }
+    dragging=false;
+  });
+  miniCanvas.addEventListener('mousemove', e => {
+    if(dragging) return;
+    const r=miniCanvas.getBoundingClientRect(), x=Math.floor(e.clientX-r.left);
+    if(x<0||x>=miniCanvas.width||!buckets[x]){miniTip.style.display='none';return;}
+    const b=buckets[x], t=xtoT(x);
+    miniTip.style.display='block';
+    miniTip.style.left=Math.min(x+8,miniCanvas.width-180)+'px'; miniTip.style.top='4px';
+    miniTip.textContent=`t=${t<1000?t.toFixed(0)+'ms':(t/1000).toFixed(2)+'s'}  count=${b.count}  maxRTT=${b.maxRtt.toFixed(1)}ms${b.viol?'  VIOL':''}`;
+    miniCanvas.style.cursor=hit(x)==='pan'?'grab':(hit(x).startsWith('resize')?'ew-resize':'crosshair');
+  },{passive:true});
+  miniCanvas.addEventListener('mouseleave',()=>{miniTip.style.display='none';});
+  detCanvas.addEventListener('mousemove', e => {
+    if(activeView!=='v5') return;
+    const r=detCanvas.getBoundingClientRect(), ry=e.clientY-r.top+chartWrap.scrollTop;
+    const i=Math.floor((ry-MT)/(RH+RG));
+    const wx=filtered.filter(ex=>ex.sentAtMs<winE&&ex.receivedAtMs>winS);
+    if(i<0||i>=wx.length){tooltip.style.display='none';return;}
+    const ex=wx[i];
+    tooltip.style.display='block'; tooltip.style.left=(e.clientX+14)+'px'; tooltip.style.top=(e.clientY-10)+'px';
+    tooltip.textContent=`#${ex.seq} (${ALL.length?Math.round(ex.seq/ALL.length*100):'?'}% into trace)  ${ex.violation||(ex.timeout?'timeout':'ok')}\nRTT: ${ex.rtt.toFixed(1)}ms  sent at ${(ex.sentAtMs/1000).toFixed(3)}s\nOID: ${ex.oid}`;
+  });
+  detCanvas.addEventListener('mouseleave',()=>{tooltip.style.display='none';});
+  document.addEventListener('keydown', e => {
+    if(activeView!=='v5'||!filtered.length||e.target.tagName==='INPUT') return;
+    const span=winE-winS, step=span*0.2;
+    if(e.key==='ArrowLeft'){winS=Math.max(0,winS-step);winE=winS+span;drawMini();drawDetail();}
+    if(e.key==='ArrowRight'){winE=Math.min(maxT,winE+step);winS=winE-span;drawMini();drawDetail();}
+  });
+  new ResizeObserver(()=>{
+    if(!ALL.length||activeView!=='v5') return;
+    miniCanvas.width=miniWrap.clientWidth||800; miniCanvas.height=MINI_H; miniW=miniCanvas.width;
+    buildBuckets(); drawMini(); drawDetail();
+  }).observe(miniWrap);
+
+  function autoFocus() {
+    maxT=traceMaxT;
+    if(!filtered.length||!miniW){winS=0;winE=maxT*WIN_FRAC;return;}
+    let best=0,bestS=-1;
+    for(let col=0;col<miniW;col++){const b=buckets[col];if(!b)continue;const s=(b.viol?1e9:0)+b.maxRtt*1000+b.count;if(s>bestS){bestS=s;best=col;}}
+    const ct=(best+.5)/miniW*maxT, hs=maxT*WIN_FRAC/2;
+    winS=Math.max(0,ct-hs); winE=Math.min(maxT,ct+hs);
+  }
+
+  function applyFilters(initial=false) {
+    maxT=traceMaxT;
+    const f=getFilters(), any=f.slow||f.viol||f.retry;
+    filtered=any?ALL.filter(e=>(f.slow&&e.rtt>SLOW_MS)||(f.viol&&!!e.violation)||(f.retry&&e.attempts.length>1)):ALL.slice();
+    miniCanvas.width=miniWrap.clientWidth||800; miniCanvas.height=MINI_H; miniW=miniCanvas.width;
+    buildBuckets(); if(initial) autoFocus(); drawMini(); drawDetail();
+  }
+
+  function zoomToProblems() {
+    const p=filtered.filter(e=>e.violation||e.timeout);
+    if(!p.length){autoFocus();drawMini();drawDetail();return;}
+    const mn=Math.min(...p.map(e=>e.sentAtMs)), mx=Math.max(...p.map(e=>e.receivedAtMs));
+    const pad=Math.max((mx-mn)*.1,maxT*.005);
+    const ns=Math.max(0,mn-pad), ne=Math.min(maxT,mx+pad), cs=winE-winS;
+    if(ne-ns<=cs){winS=ns;winE=ne;}
+    else{let b=0,bs=-1;for(let c=0;c<miniW;c++){const bk=buckets[c];if(!bk)continue;const s=(bk.timeout?2e9:0)+(bk.viol?1e9:0)+bk.maxRtt*1000+bk.count;if(s>bs){bs=s;b=c;}}const ct=(b+.5)/miniW*maxT;winS=Math.max(0,ct-cs/2);winE=Math.min(maxT,winS+cs);}
+    drawMini(); drawDetail();
+  }
+
+  function resetWindowWidth() {
+    const ct=(winS+winE)/2, h=maxT*WIN_FRAC/2;
+    winS=Math.max(0,ct-h); winE=Math.min(maxT,winS+maxT*WIN_FRAC);
+    drawMini(); drawDetail();
+  }
+
+  return {
+    onData()     { applyFilters(true); },
+    applyFilters: () => applyFilters(false),
+    onActivate() {
+      miniCanvas.width=miniWrap.clientWidth||800; miniCanvas.height=MINI_H; miniW=miniCanvas.width;
+      buildBuckets(); drawMini(); drawDetail();
+    },
+    zoomToProblems, resetWindowWidth,
+  };
+})();
+
+// ═══════════════════════════════════════════════════════
+// V1 — OID Tree
+// ═══════════════════════════════════════════════════════
+const V1 = (() => {
+  const ROW_H=22, OVERSCAN=4;
+  const WK = {'1.3.6.1.2.1.1':'system','1.3.6.1.2.1.2':'interfaces','1.3.6.1.2.1.4':'ip',
+    '1.3.6.1.2.1.6':'tcp','1.3.6.1.2.1.11':'snmp','1.3.6.1.2.1.25':'host',
+    '1.3.6.1.4.1.9':'cisco','1.3.6.1.6.3.16':'snmpVacm'};
+  let root=null, flatRows=[], rowEls=new Map();
+  const wrap   = document.getElementById('v1-chart-wrap');
+  const spacer = document.getElementById('v1-tree-spacer');
+
+  const mkNode = (arc, oid) => ({arc, fullOid:oid, name:WK[oid]??null, children:new Map(), leaves:[],
+    expanded:false, stats:{count:0,maxRtt:0,viol:0}, severity:0});
+
+  function buildTrie() {
+    const f=getFilters(), r=mkNode('','');
+    for (const exc of ALL) {
+      if(f.slow||f.viol||f.retry||f.timeout){
+        const ms=f.slow&&exc.rtt>SLOW_MS&&!exc.violation&&!exc.timeout;
+        const mv=f.viol&&!!exc.violation, mr=f.retry&&exc.attempts.length>1, mt=f.timeout&&exc.timeout;
+        if(!ms&&!mv&&!mr&&!mt) continue;
+      }
+      const shared=exc.oids.length>1;
+      for(const pfx of exc.oids){
+        const parts=pfx.split('.');
+        let node=r, acc='';
+        for(const arc of parts){
+          acc=acc?acc+'.'+arc:arc;
+          if(!node.children.has(arc)) node.children.set(arc,mkNode(arc,acc));
+          node=node.children.get(arc);
+        }
+        node.leaves.push({exc,shared});
+      }
+    }
+    return r;
+  }
+
+  function rollup(node) {
+    const s={count:0,maxRtt:0,viol:0}; let sev=0;
+    for(const c of node.children.values()){rollup(c);s.count+=c.stats.count;s.maxRtt=Math.max(s.maxRtt,c.stats.maxRtt);s.viol+=c.stats.viol;sev=Math.max(sev,c.severity);}
+    for(const {exc} of node.leaves){s.count++;s.maxRtt=Math.max(s.maxRtt,exc.rtt);if(exc.violation){s.viol++;sev=Math.max(sev,2);}if(exc.rtt>SLOW_MS)sev=Math.max(sev,1);}
+    node.stats=s; node.severity=sev;
+  }
+
+  function autoExpand(node) {
+    let found=false;
+    for(const c of node.children.values()){if(autoExpand(c)){found=true;node.expanded=true;}}
+    for(const {exc} of node.leaves){if(exc.rtt>SLOW_MS||exc.violation){found=true;node.expanded=true;}}
+    return found;
+  }
+
+  function collapseAll(node){node.expanded=false;for(const c of node.children.values())collapseAll(c);}
+
+  function flatten(r){const rows=[];for(const c of r.children.values())flatNode(c,0,rows);return rows;}
+  function flatNode(node,depth,rows){
+    rows.push({depth,type:'node',node});
+    if(!node.expanded) return;
+    for(const c of node.children.values())flatNode(c,depth+1,rows);
+    for(const {exc,shared} of node.leaves)rows.push({depth:depth+1,type:'leaf',exc,shared});
+  }
+
+  function paintRows() {
+    spacer.style.height=(flatRows.length*ROW_H)+'px';
+    for(const el of rowEls.values()) el.remove(); rowEls.clear();
+    renderVP();
+    const m=countLeaves(root), s=flatRows.filter(r=>r.type==='leaf').length;
+    document.getElementById('v1-count-label').textContent=m.toLocaleString()+' matching / '+s.toLocaleString()+' shown';
+  }
+
+  function countLeaves(node){let c=node.leaves.length;for(const ch of node.children.values())c+=countLeaves(ch);return c;}
+
+  function renderVP() {
+    const st=wrap.scrollTop, vh=wrap.clientHeight||600;
+    const sr=Math.max(0,Math.floor(st/ROW_H)-OVERSCAN), er=Math.min(flatRows.length,Math.ceil((st+vh)/ROW_H)+OVERSCAN);
+    for(const [i,el] of rowEls){if(i<sr||i>=er){el.remove();rowEls.delete(i);}}
+    for(let i=sr;i<er;i++){
+      if(rowEls.has(i)) continue;
+      const el=document.createElement('div'); spacer.appendChild(el);
+      buildRow(el, flatRows[i], i); rowEls.set(i,el);
+    }
+  }
+
+  function buildRow(el, row, ri) {
+    el.style.cssText=`top:${ri*ROW_H}px;display:flex;`; el.innerHTML='';
+    const indent=row.depth*16+4;
+    if(row.type==='node'){
+      const node=row.node, has=node.children.size>0||node.leaves.length>0;
+      el.className='tree-row node';
+      if(has){el.style.cursor='pointer';el.onclick=()=>{node.expanded=!node.expanded;flatRows=flatten(root);paintRows();};}
+      if(node.fullOid) el.title=node.fullOid;
+      const sp=document.createElement('span'); sp.style.cssText=`width:${indent}px;flex-shrink:0`; el.appendChild(sp);
+      const ca=document.createElement('span'); ca.className='caret'; ca.textContent=!has?'':(node.expanded?'▾':'▸'); el.appendChild(ca);
+      const lb=document.createElement('span'); lb.className='row-label'; lb.textContent=node.arc||node.fullOid||'(root)';
+      if(node.name){const ns=document.createElement('span');ns.className='row-name';ns.textContent=node.name;lb.appendChild(ns);}
+      el.appendChild(lb);
+      const ce=document.createElement('span'); ce.className='row-count'; ce.textContent=node.stats.count.toLocaleString(); el.appendChild(ce);
+      const re=document.createElement('span'); re.className='row-rtt '+(node.stats.maxRtt>SLOW_MS?'warn':'ok');
+      re.textContent=node.stats.maxRtt>=1000?(node.stats.maxRtt/1000).toFixed(1)+'s':node.stats.maxRtt.toFixed(1)+'ms'; el.appendChild(re);
+      const ve=document.createElement('span'); ve.className='row-viol';
+      if(node.stats.viol>0){const b=document.createElement('span');b.className='viol-badge'+(node.severity>=2?' sev2':'');b.textContent=node.stats.viol;ve.appendChild(b);}
+      el.appendChild(ve);
+    } else {
+      const exc=row.exc; el.className='tree-row leaf';
+      const sp=document.createElement('span'); sp.style.cssText=`width:${indent+14}px;flex-shrink:0`; el.appendChild(sp);
+      const lb=document.createElement('span'); lb.className='row-label';
+      lb.innerHTML=`<span style="color:var(--muted);font-size:11px">#${exc.seq}</span> ${exc.oids[0]||''}`;
+      if(row.shared){const st=document.createElement('span');st.className='shared-tag';st.textContent='(shared)';lb.appendChild(st);}
+      el.appendChild(lb);
+      const ce=document.createElement('span'); ce.className='row-count'; ce.textContent=exc.attempts.length>1?exc.attempts.length+'×':'—'; el.appendChild(ce);
+      const cls=exc.violation||exc.timeout?'err':exc.rtt>SLOW_MS?'warn':'ok';
+      const re=document.createElement('span'); re.className='row-rtt '+cls;
+      re.textContent=exc.rtt>=1000?(exc.rtt/1000).toFixed(2)+'s':exc.rtt.toFixed(1)+'ms'; el.appendChild(re);
+      const ve=document.createElement('span'); ve.className='row-viol';
+      if(exc.violation){const b=document.createElement('span');b.className='viol-badge sev2';b.textContent=exc.violation.split('_')[0]||exc.violation;b.title=exc.violation;ve.appendChild(b);}
+      el.appendChild(ve);
+    }
+  }
+
+  function applyFilters() { root=buildTrie(); collapseAll(root); autoExpand(root); rollup(root); flatRows=flatten(root); paintRows(); }
+
+  wrap.addEventListener('scroll', renderVP, {passive:true});
+  new ResizeObserver(()=>{if(root&&activeView==='v1')renderVP();}).observe(wrap);
+
+  return {
+    onData()     { applyFilters(); },
+    applyFilters,
+    onActivate() { renderVP(); },
+    collapseAllAndRender() { if(!root)return; collapseAll(root); flatRows=flatten(root); paintRows(); },
+  };
+})();
+</script>
 </body>
 </html>
