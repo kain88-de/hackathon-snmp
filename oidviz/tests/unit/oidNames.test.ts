@@ -20,9 +20,9 @@ describe('lookupOidName', () => {
     expect(lookupOidName(asOid('1.3.6.1.4.1.9.9.1'))).toBe('ciscoMgmt');
   });
 
-  it('returns undefined when no prefix matches', () => {
-    expect(lookupOidName(asOid('1.2.3.4.5'))).toBeUndefined();
-    expect(lookupOidName(asOid('2.5.4.3'))).toBeUndefined();
+  it('returns null when no prefix matches', () => {
+    expect(lookupOidName(asOid('1.2.3.4.5'))).toBeNull();
+    expect(lookupOidName(asOid('2.5.4.3'))).toBeNull();
   });
 
   it('does not match on a partial arc (sibling prefix)', () => {
