@@ -206,7 +206,7 @@ const collectAnomalous = (
 const needsNewCluster = (acc: ClusterAccumulator, item: AnomalousEntry): boolean => {
   const lastSeqIdx = acc.memberSeqs.length - STEP;
   const prevSeq = acc.memberSeqs[lastSeqIdx] ?? EMPTY_LENGTH;
-  const gap = item.exchange.seq - prevSeq;
+  const gap = item.exchange.seq - prevSeq - STEP;
   const currentRegion = getRegion([item.exchange.requestOid]);
   const lastOidIdx = acc.memberOids.length - STEP;
   const lastOid = acc.memberOids[lastOidIdx] ?? '';
