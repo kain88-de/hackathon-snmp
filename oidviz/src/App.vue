@@ -1,6 +1,8 @@
 <script setup lang="ts">
 import { computed, onMounted, onUnmounted, ref } from 'vue';
 import FindingsByCategory from './components/FindingsByCategory.vue';
+import IncidentModal from './components/IncidentModal.vue';
+import IncidentStack from './components/IncidentStack.vue';
 import LandingScreen from './components/LandingScreen.vue';
 import Sidebar from './components/Sidebar.vue';
 import { matchesFacets } from './lib/filters.ts';
@@ -106,6 +108,22 @@ const handleFocusExchange = (_seq: number): void => {
   activeView.value = 'minimap';
 };
 
+const modalIncidentIndex = ref<number | null>(null);
+const openIncidentModal = (index: number): void => {
+  modalIncidentIndex.value = index;
+};
+const MODAL_FIRST = 0;
+const MODAL_LAST_OFFSET = 1;
+const navigateModal = (delta: number): void => {
+  if (modalIncidentIndex.value === null) {
+    return;
+  }
+  modalIncidentIndex.value = Math.max(
+    MODAL_FIRST,
+    Math.min(incidents.value.length - MODAL_LAST_OFFSET, modalIncidentIndex.value + delta),
+  );
+};
+
 onMounted(() => {
   darkMode.value = globalThis.matchMedia('(prefers-color-scheme: dark)').matches;
   setTheme(darkMode.value);
@@ -146,10 +164,13 @@ onUnmounted(() => {
           :facetState="facetState"
           @focus-exchange="handleFocusExchange"
         />
-        <div v-else-if="activeView === 'incidents'">
-          Incidents placeholder
-          <!-- incidents passed here in next task -->
-        </div>
+        <IncidentStack
+          v-else-if="activeView === 'incidents'"
+          :incidents="incidents"
+          :facetState="facetState"
+          :exchanges="parseResult?.exchanges ?? []"
+          @open-incident="openIncidentModal"
+        />
         <div v-else-if="activeView === 'minimap'">
           Minimap placeholder
           <!-- oidFlatRows passed here in next task -->
@@ -158,4 +179,13 @@ onUnmounted(() => {
       </div>
     </main>
   </div>
+  <IncidentModal
+    v-if="modalIncidentIndex !== null"
+    :incident="incidents[modalIncidentIndex]"
+    :exchanges="parseResult?.exchanges ?? []"
+    :index="modalIncidentIndex"
+    :total="incidents.length"
+    @close="modalIncidentIndex = null"
+    @navigate="navigateModal"
+  />
 </template>
