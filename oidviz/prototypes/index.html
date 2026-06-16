@@ -211,15 +211,20 @@ body { background: var(--bg); color: var(--text); font-family: system-ui, sans-s
   </div>
 
   <div class="sb-section" id="sb-filters" style="display:none">
-    <div class="sb-title">Filters</div>
+    <div class="sb-title">Performance</div>
+    <label class="filter-row"><input type="radio" name="f-perf" value="any" checked onchange="applyFilters()"> Any</label>
+    <label class="filter-row"><input type="radio" name="f-perf" value="fast" onchange="applyFilters()"> Fast</label>
     <label class="filter-row">
-      <input type="checkbox" id="f-slow" onchange="applyFilters()">
-      Slow &gt; <input type="number" id="slow-s" value="1" min="0.01" max="100" step="0.1"
+      <input type="radio" name="f-perf" value="slow" onchange="applyFilters()"> Slow &gt;
+      <input type="number" id="slow-s" value="1" min="0.01" max="100" step="0.1"
         onchange="SLOW_MS=Math.max(10,(+this.value||1)*1000);applyFilters()"> s
     </label>
-    <label class="filter-row"><input type="checkbox" id="f-viol" onchange="applyFilters()"> Violations</label>
-    <label class="filter-row"><input type="checkbox" id="f-retry" onchange="applyFilters()"> Retries</label>
-    <label class="filter-row"><input type="checkbox" id="f-timeout" onchange="applyFilters()"> Timeouts</label>
+    <label class="filter-row"><input type="radio" name="f-perf" value="timeout" onchange="applyFilters()"> Timed out</label>
+    <div class="sb-title" style="margin-top:8px">Correctness</div>
+    <label class="filter-row"><input type="radio" name="f-corr" value="any" checked onchange="applyFilters()"> Any</label>
+    <label class="filter-row"><input type="radio" name="f-corr" value="violations" onchange="applyFilters()"> Violations only</label>
+    <div class="sb-title" style="margin-top:8px">Attributes</div>
+    <label class="filter-row"><input type="checkbox" id="f-retry" onchange="applyFilters()"> &#x21BB; Only retried</label>
   </div>
 
   <div class="sb-section" id="sb-views" style="display:none">
@@ -264,35 +269,25 @@ body { background: var(--bg); color: var(--text); font-family: system-ui, sans-s
         </div>
         <div class="findings-rows" id="vf-slow-rows"></div>
       </div>
-      <!-- VIOLATION section -->
-      <div class="findings-section" id="vf-violation-section">
-        <div class="findings-header" onclick="VF.toggleSection('violation')">
-          <div class="findings-dim-dot" style="background:var(--dim-violation)"></div>
-          <span class="findings-header-label" style="color:var(--dim-violation)">&#x26A0; Violation</span>
-          <span class="findings-count" id="vf-violation-count">0</span>
-          <span class="findings-caret" id="vf-violation-caret">&#x25B8;</span>
-        </div>
-        <div class="findings-rows" id="vf-violation-rows"></div>
-      </div>
-      <!-- RETRY section -->
-      <div class="findings-section" id="vf-retry-section">
-        <div class="findings-header" onclick="VF.toggleSection('retry')">
-          <div class="findings-dim-dot" style="background:var(--dim-retry)"></div>
-          <span class="findings-header-label" style="color:var(--dim-retry)">&#x21BB; Retry</span>
-          <span class="findings-count" id="vf-retry-count">0</span>
-          <span class="findings-caret" id="vf-retry-caret">&#x25B8;</span>
-        </div>
-        <div class="findings-rows" id="vf-retry-rows"></div>
-      </div>
-      <!-- TIMEOUT section -->
+      <!-- TIMED OUT section -->
       <div class="findings-section" id="vf-timeout-section">
         <div class="findings-header" onclick="VF.toggleSection('timeout')">
           <div class="findings-dim-dot" style="background:var(--dim-timeout)"></div>
-          <span class="findings-header-label" style="color:var(--dim-timeout)">&#x2715; Timeout</span>
+          <span class="findings-header-label" style="color:var(--dim-timeout)">&#x2715; Timed out</span>
           <span class="findings-count" id="vf-timeout-count">0</span>
           <span class="findings-caret" id="vf-timeout-caret">&#x25B8;</span>
         </div>
         <div class="findings-rows" id="vf-timeout-rows"></div>
+      </div>
+      <!-- FAST WITH VIOLATIONS section (only shown when non-empty) -->
+      <div class="findings-section" id="vf-fast-section" style="display:none">
+        <div class="findings-header" onclick="VF.toggleSection('fast')">
+          <div class="findings-dim-dot" style="background:var(--dim-violation)"></div>
+          <span class="findings-header-label" style="color:var(--dim-violation)">&#x26A0; Fast with violations</span>
+          <span class="findings-count" id="vf-fast-count">0</span>
+          <span class="findings-caret" id="vf-fast-caret">&#x25B8;</span>
+        </div>
+        <div class="findings-rows" id="vf-fast-rows"></div>
       </div>
     </div>
   </div>
@@ -522,7 +517,7 @@ function switchView(id) {
   if (!ALL.length) return;
   if (id === 'v5') V5.onActivate();
   if (id === 'v1') V1.onActivate();
-  if (id === 'vf') VF.render(ALL, getFilters());
+  if (id === 'vf') VF.render();
 }
 
 function getFilters() {
@@ -538,7 +533,7 @@ function applyFilters() {
   if (!ALL.length) return;
   if (activeView === 'v7')      V7.applyFilters();
   else if (activeView === 'v5') V5.applyFilters();
-  else if (activeView === 'vf') VF.render(ALL, getFilters());
+  else if (activeView === 'vf') VF.render();
   else                          V1.applyFilters();
 }
 
@@ -1060,70 +1055,78 @@ const VF = (() => {
 
   function escH(s) { return String(s).replace(/&/g,'&amp;').replace(/</g,'&lt;').replace(/>/g,'&gt;').replace(/"/g,'&quot;'); }
 
-  function categorise(exchanges, slowMs) {
-    const slow = [], violation = [], retry = [], timeout = [];
-    for (const ex of exchanges) {
-      if (ex.timeout) timeout.push(ex);
-      if (ex.violation) violation.push(ex);
-      if (ex.attempts.length > 1) retry.push(ex);
-      if (ex.rtt > slowMs) slow.push(ex);
-    }
-    slow.sort((a, b) => b.rtt - a.rtt);
-    violation.sort((a, b) => (b.violation ? 1 : 0) - (a.violation ? 1 : 0) || b.rtt - a.rtt);
-    retry.sort((a, b) => b.attempts.length - a.attempts.length);
-    timeout.sort((a, b) => a.seq - b.seq);
-    return { slow, violation, retry, timeout };
+  function getFacets() {
+    return {
+      perf:      document.querySelector('input[name="f-perf"]:checked')?.value    ?? 'any',
+      corr:      document.querySelector('input[name="f-corr"]:checked')?.value    ?? 'any',
+      retryOnly: document.getElementById('f-retry')?.checked ?? false,
+    };
+  }
+
+  function applyFacets(exchanges, facets) {
+    return exchanges.filter(ex => {
+      // Performance axis
+      if (facets.perf === 'fast'    && (ex.timeout || ex.rtt > SLOW_MS)) return false;
+      if (facets.perf === 'slow'    && (ex.timeout || ex.rtt <= SLOW_MS)) return false;
+      if (facets.perf === 'timeout' && !ex.timeout) return false;
+      // Correctness axis
+      if (facets.corr === 'violations' && !ex.violation) return false;
+      // Retry attribute
+      if (facets.retryOnly && ex.attempts.length <= 1) return false;
+      return true;
+    });
+  }
+
+  function fmtRtt(ex) {
+    return ex.rtt >= 1000 ? (ex.rtt/1000).toFixed(2)+'s' : Math.round(ex.rtt)+'ms';
+  }
+
+  function badges(ex) {
+    let b = '';
+    if (ex.violation) b += ' <span style="color:var(--dim-violation);font-size:10px">&#x26A0;</span>';
+    if (ex.attempts.length > 1) b += ' <span style="color:var(--dim-retry);font-size:10px">&#x21BB;&#xD7;'+ex.attempts.length+'</span>';
+    return b;
   }
 
   function makeRow(ex, metric) {
-    return `<div class="finding-row" onclick="console.log('focus exchange', ${ex.seq})">` +
-      `<span class="finding-oid" title="${escH(ex.oid)}">${escH(truncate(ex.oid, 40))}</span>` +
+    return `<div class="finding-row" onclick="console.log('focus exchange',${ex.seq})">` +
+      `<span class="finding-oid" title="${escH(ex.oid)}">${escH(truncate(ex.oid,40))}${badges(ex)}</span>` +
       `<span class="finding-seq">#${ex.seq}</span>` +
       `<span class="finding-metric">${escH(metric)}</span>` +
       `<span class="finding-secondary">t=${(ex.sentAtMs/1000).toFixed(2)}s</span>` +
       `</div>`;
   }
 
-  function fillSection(dimKey, items, metricFn) {
-    const rowsEl = document.getElementById('vf-' + dimKey + '-rows');
-    const countEl = document.getElementById('vf-' + dimKey + '-count');
+  function fillSection(dimKey, items, metricFn, hidden) {
+    const sectionEl = document.getElementById('vf-' + dimKey + '-section');
+    const rowsEl    = document.getElementById('vf-' + dimKey + '-rows');
+    const countEl   = document.getElementById('vf-' + dimKey + '-count');
+    if (hidden) { sectionEl.style.display = 'none'; return; }
+    sectionEl.style.display = '';
     countEl.textContent = items.length.toLocaleString();
-    if (!items.length) {
-      rowsEl.innerHTML = '<div class="findings-empty">No ' + dimKey + ' exchanges.</div>';
-      return;
-    }
-    rowsEl.innerHTML = items.map(ex => makeRow(ex, metricFn(ex))).join('');
+    rowsEl.innerHTML = items.length
+      ? items.map(ex => makeRow(ex, metricFn(ex))).join('')
+      : '<div class="findings-empty">No exchanges.</div>';
   }
 
-  function render(exchanges, filterState) {
-    // Apply AND filter
-    const f = filterState;
-    const anyChecked = f.slow || f.viol || f.retry || f.timeout;
-    let filtered;
-    if (!anyChecked) {
-      filtered = exchanges.slice();
-    } else {
-      filtered = exchanges.filter(ex =>
-        (f.slow && ex.rtt > SLOW_MS) ||
-        (f.viol && ex.violation) ||
-        (f.retry && ex.attempts.length > 1) ||
-        (f.timeout && ex.timeout)
-      );
-    }
+  function render() {
+    const facets   = getFacets();
+    const filtered = applyFacets(ALL, facets);
 
-    const cats = categorise(filtered, SLOW_MS);
+    const slow    = filtered.filter(ex => !ex.timeout && ex.rtt > SLOW_MS).sort((a,b) => b.rtt - a.rtt);
+    const timeout = filtered.filter(ex => ex.timeout).sort((a,b) => a.seq - b.seq);
+    const fast    = filtered.filter(ex => !ex.timeout && ex.rtt <= SLOW_MS);
 
-    fillSection('slow',      cats.slow,      ex => ex.rtt >= 1000 ? (ex.rtt/1000).toFixed(2)+'s' : ex.rtt.toFixed(0)+'ms');
-    fillSection('violation', cats.violation, ex => ex.violation || '—');
-    fillSection('retry',     cats.retry,     ex => ex.attempts.length + '× attempts');
-    fillSection('timeout',   cats.timeout,   ex => ex.rtt >= 1000 ? (ex.rtt/1000).toFixed(2)+'s' : ex.rtt.toFixed(0)+'ms');
+    fillSection('slow',    slow,    fmtRtt);
+    fillSection('timeout', timeout, fmtRtt);
+    // Fast-with-violations section: only visible when there are fast exchanges in the filtered set
+    fillSection('fast', fast, ex => ex.violation || 'no violation', !fast.length);
 
-    const label =
-      cats.slow.length.toLocaleString() + ' slow · ' +
-      cats.violation.length.toLocaleString() + ' violations · ' +
-      cats.retry.length.toLocaleString() + ' retries · ' +
-      cats.timeout.length.toLocaleString() + ' timeouts';
-    document.getElementById('vf-count-label').textContent = label;
+    const parts = [];
+    if (slow.length)    parts.push(slow.length.toLocaleString() + ' slow');
+    if (timeout.length) parts.push(timeout.length.toLocaleString() + ' timed out');
+    if (fast.length)    parts.push(fast.length.toLocaleString() + ' fast with violations');
+    document.getElementById('vf-count-label').textContent = parts.join(' · ') || 'No exchanges match';
   }
 
   function toggleSection(dim) {
@@ -1135,8 +1138,9 @@ const VF = (() => {
   }
 
   return {
-    onData()  { render(ALL, getFilters()); },
+    onData()     { render(); },
     render,
+    getFacets,
     toggleSection,
   };
 })();
