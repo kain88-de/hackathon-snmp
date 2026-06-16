@@ -1,29 +1,29 @@
 <script setup lang="ts">
-import { nextTick, onMounted, ref, useId } from 'vue'
-import type { DomainExchange, Incident } from '../lib/model'
+import { nextTick, onMounted, ref, useId } from 'vue';
+import type { DomainExchange, Incident } from '../lib/model';
 
 const props = defineProps<{
-  incident: Incident
-  exchanges: DomainExchange[]
-  index: number
-  total: number
-}>()
+  incident: Incident;
+  exchanges: DomainExchange[];
+  index: number;
+  total: number;
+}>();
 
 const emit = defineEmits<{
-  close: []
-  navigate: [delta: number]
-}>()
+  close: [];
+  navigate: [delta: number];
+}>();
 
-const headingRef = ref<HTMLElement | null>(null)
-const headingId = useId()
+const headingRef = ref<HTMLElement | null>(null);
+const headingId = useId();
 
 onMounted(() => {
-  nextTick(() => headingRef.value?.focus())
-})
+  nextTick(() => headingRef.value?.focus());
+});
 
 function truncateOid(oid: string): string {
-  if (oid.length <= 50) return oid
-  return `${oid.slice(0, 47)}…`
+  if (oid.length <= 50) return oid;
+  return `${oid.slice(0, 47)}…`;
 }
 </script>
 

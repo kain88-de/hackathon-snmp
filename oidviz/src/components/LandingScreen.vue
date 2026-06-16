@@ -1,32 +1,32 @@
 <script setup lang="ts">
-import { ref } from 'vue'
-import type { AppState } from '../lib/model'
+import { ref } from 'vue';
+import type { AppState } from '../lib/model';
 
-const props = defineProps<{ appState: AppState }>()
-const emit = defineEmits<{ 'file-selected': [buffer: ArrayBuffer] }>()
+const props = defineProps<{ appState: AppState }>();
+const emit = defineEmits<{ 'file-selected': [buffer: ArrayBuffer] }>();
 
-const isDragging = ref(false)
-const fileInputRef = ref<HTMLInputElement | null>(null)
+const isDragging = ref(false);
+const fileInputRef = ref<HTMLInputElement | null>(null);
 
 function openFilePicker() {
-  fileInputRef.value?.click()
+  fileInputRef.value?.click();
 }
 
 function onFileChange(event: Event) {
-  const input = event.target as HTMLInputElement
-  const file = input.files?.[0]
-  if (!file) return
-  isDragging.value = false
-  file.arrayBuffer().then(buf => emit('file-selected', buf))
+  const input = event.target as HTMLInputElement;
+  const file = input.files?.[0];
+  if (!file) return;
+  isDragging.value = false;
+  file.arrayBuffer().then((buf) => emit('file-selected', buf));
 }
 
 function onDrop(event: DragEvent) {
-  isDragging.value = false
-  const file = event.dataTransfer?.files[0]
-  if (!file) return
+  isDragging.value = false;
+  const file = event.dataTransfer?.files[0];
+  if (!file) return;
   // Only accept .oidtrace.jsonl.gz files
-  if (!file.name.endsWith('.oidtrace.jsonl.gz')) return
-  file.arrayBuffer().then(buf => emit('file-selected', buf))
+  if (!file.name.endsWith('.oidtrace.jsonl.gz')) return;
+  file.arrayBuffer().then((buf) => emit('file-selected', buf));
 }
 </script>
 

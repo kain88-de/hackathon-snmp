@@ -1,95 +1,103 @@
 <script setup lang="ts">
-import { computed, onMounted, onUnmounted, ref } from 'vue'
-import { clusterMatchesFilters } from '../lib/filters'
-import type { DomainExchange, FilterState, Incident } from '../lib/model'
-import IncidentModal from './IncidentModal.vue'
+import { computed, onMounted, onUnmounted, ref } from 'vue';
+import { clusterMatchesFilters } from '../lib/filters';
+import type { DomainExchange, FilterState, Incident } from '../lib/model';
+import IncidentModal from './IncidentModal.vue';
 
 const props = defineProps<{
-  incidents: Incident[]
-  filterState: FilterState
-  exchanges: DomainExchange[]
-}>()
+  incidents: Incident[];
+  filterState: FilterState;
+  exchanges: DomainExchange[];
+}>();
 
 const shownIncidents = computed(() =>
-  props.incidents.filter(i => clusterMatchesFilters(i, props.filterState))
-)
+  props.incidents.filter((i) => clusterMatchesFilters(i, props.filterState)),
+);
 
-const containerRef = ref<HTMLDivElement | null>(null)
-const scrollTop = ref(0)
-const containerHeight = ref(0)
-const ROW_H = 72
+const containerRef = ref<HTMLDivElement | null>(null);
+const scrollTop = ref(0);
+const containerHeight = ref(0);
+const ROW_H = 72;
 
 const visibleRows = computed(() => {
-  const start = Math.max(0, Math.floor(scrollTop.value / ROW_H) - 2)
+  const start = Math.max(0, Math.floor(scrollTop.value / ROW_H) - 2);
   const end = Math.min(
     shownIncidents.value.length,
-    Math.ceil((scrollTop.value + containerHeight.value) / ROW_H) + 2
-  )
+    Math.ceil((scrollTop.value + containerHeight.value) / ROW_H) + 2,
+  );
   return shownIncidents.value.slice(start, end).map((incident, i) => ({
     incident,
     index: start + i,
     top: (start + i) * ROW_H,
-  }))
-})
+  }));
+});
 
 onMounted(() => {
-  if (!containerRef.value) return
-  containerHeight.value = containerRef.value.clientHeight
-  const ro = new ResizeObserver(entries => {
-    containerHeight.value = entries[0]?.contentRect.height ?? 0
-  })
-  ro.observe(containerRef.value)
-  onUnmounted(() => ro.disconnect())
-})
+  if (!containerRef.value) return;
+  containerHeight.value = containerRef.value.clientHeight;
+  const ro = new ResizeObserver((entries) => {
+    containerHeight.value = entries[0]?.contentRect.height ?? 0;
+  });
+  ro.observe(containerRef.value);
+  onUnmounted(() => ro.disconnect());
+});
 
 function severityClass(incident: Incident): string {
-  if (incident.timeoutCount > 0) return 'severity-err'
-  if (incident.violationTypes.size > 0 || incident.peakRtt > props.filterState.slowMs) return 'severity-warn'
-  return 'severity-info'
+  if (incident.timeoutCount > 0) return 'severity-err';
+  if (
+    incident.violationTypes.size > 0 ||
+    incident.peakRtt > props.filterState.slowMs
+  )
+    return 'severity-warn';
+  return 'severity-info';
 }
 
 function severityIcon(incident: Incident): string {
-  if (incident.timeoutCount > 0) return '✕'
-  if (incident.violationTypes.size > 0 || incident.peakRtt > props.filterState.slowMs) return '⚠'
-  return 'ℹ'
+  if (incident.timeoutCount > 0) return '✕';
+  if (
+    incident.violationTypes.size > 0 ||
+    incident.peakRtt > props.filterState.slowMs
+  )
+    return '⚠';
+  return 'ℹ';
 }
 
 function incidentType(incident: Incident): string {
-  if (incident.timeoutCount > 0) return 'timeout'
-  if (incident.violationTypes.size > 0) return 'violation'
-  if (incident.retryCount > 0) return 'retry'
-  return 'slow'
+  if (incident.timeoutCount > 0) return 'timeout';
+  if (incident.violationTypes.size > 0) return 'violation';
+  if (incident.retryCount > 0) return 'retry';
+  return 'slow';
 }
 
 function walkBarStyle(incident: Incident) {
-  const total = props.exchanges.length
-  if (total === 0) return {}
-  const left = (incident.startIdx / total) * 100
-  const width = ((incident.endIdx - incident.startIdx + 1) / total) * 100
+  const total = props.exchanges.length;
+  if (total === 0) return {};
+  const left = (incident.startIdx / total) * 100;
+  const width = ((incident.endIdx - incident.startIdx + 1) / total) * 100;
   return {
     left: `${left}%`,
     width: `${Math.max(width, 0.5)}%`,
-  }
+  };
 }
 
-const selectedIndex = ref<number | null>(null)
-const lastFocusedRow = ref<HTMLElement | null>(null)
+const selectedIndex = ref<number | null>(null);
+const lastFocusedRow = ref<HTMLElement | null>(null);
 
 function openModal(index: number) {
-  selectedIndex.value = index
-  lastFocusedRow.value = document.activeElement as HTMLElement
+  selectedIndex.value = index;
+  lastFocusedRow.value = document.activeElement as HTMLElement;
 }
 
 function closeModal() {
-  selectedIndex.value = null
-  lastFocusedRow.value?.focus()
+  selectedIndex.value = null;
+  lastFocusedRow.value?.focus();
 }
 
 function navigateModal(delta: number) {
-  if (selectedIndex.value === null) return
-  const next = selectedIndex.value + delta
+  if (selectedIndex.value === null) return;
+  const next = selectedIndex.value + delta;
   if (next >= 0 && next < shownIncidents.value.length) {
-    selectedIndex.value = next
+    selectedIndex.value = next;
   }
 }
 </script>

@@ -13,7 +13,7 @@
   --sidebar-text: #f1f5f9;
   --sidebar-muted: #94a3b8;
   --sidebar-border: #334155;
-  --font-mono: 'JetBrains Mono', 'Fira Code', 'Cascadia Code', monospace;
+  --font-mono: "JetBrains Mono", "Fira Code", "Cascadia Code", monospace;
   --err-bg: #fee2e2;
   --err-text: #991b1b;
   --warn-bg: #fef3c7;
@@ -45,13 +45,16 @@
   --info-text: #93c5fd;
 }
 
-*, *::before, *::after {
+*,
+*::before,
+*::after {
   box-sizing: border-box;
   margin: 0;
   padding: 0;
 }
 
-html, body {
+html,
+body {
   height: 100%;
 }
 

@@ -1,3 +1,5 @@
+export PATH := env_var('HOME') + "/.bun/bin:" + env_var('PATH')
+
 dev:
     bun run dev
 
@@ -18,7 +20,7 @@ types:
     bunx tsc --noEmit --skipLibCheck
 
 fmt-check:
-    bunx biome format --check src/
+    bunx biome check --linter-enabled=false src/
 
 fmt:
     bunx biome format --write src/

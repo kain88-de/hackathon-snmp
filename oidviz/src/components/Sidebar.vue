@@ -1,104 +1,104 @@
 <script setup lang="ts">
-import { computed, ref } from 'vue'
-import type { AppState, FilterState, ParseResult } from '../lib/model'
+import { computed, ref } from 'vue';
+import type { AppState, FilterState, ParseResult } from '../lib/model';
 
 const props = defineProps<{
-  appState: AppState
-  result: ParseResult | null
-  filterState: FilterState
-  activeView: 'incidents' | 'minimap' | 'oidtree'
-  darkMode: boolean
-}>()
+  appState: AppState;
+  result: ParseResult | null;
+  filterState: FilterState;
+  activeView: 'incidents' | 'minimap' | 'oidtree';
+  darkMode: boolean;
+}>();
 
 const emit = defineEmits<{
-  'file-selected': [buffer: ArrayBuffer]
-  'fixture-selected': [buffer: ArrayBuffer]
-  'view-change': [view: 'incidents' | 'minimap' | 'oidtree']
-  'filter-change': [patch: Partial<FilterState>]
-  'toggle-dark-mode': []
-}>()
+  'file-selected': [buffer: ArrayBuffer];
+  'fixture-selected': [buffer: ArrayBuffer];
+  'view-change': [view: 'incidents' | 'minimap' | 'oidtree'];
+  'filter-change': [patch: Partial<FilterState>];
+  'toggle-dark-mode': [];
+}>();
 
-const fileInputRef = ref<HTMLInputElement | null>(null)
+const fileInputRef = ref<HTMLInputElement | null>(null);
 
 function openFilePicker() {
-  fileInputRef.value?.click()
+  fileInputRef.value?.click();
 }
 
 function onFileChange(event: Event) {
-  const input = event.target as HTMLInputElement
-  const file = input.files?.[0]
-  if (!file) return
-  file.arrayBuffer().then(buf => emit('file-selected', buf))
+  const input = event.target as HTMLInputElement;
+  const file = input.files?.[0];
+  if (!file) return;
+  file.arrayBuffer().then((buf) => emit('file-selected', buf));
 }
 
 async function loadFixture(name: string) {
-  const response = await fetch(`/tools/fixtures/${name}.oidtrace.jsonl.gz`)
-  const buf = await response.arrayBuffer()
-  emit('fixture-selected', buf)
+  const response = await fetch(`/tools/fixtures/${name}.oidtrace.jsonl.gz`);
+  const buf = await response.arrayBuffer();
+  emit('fixture-selected', buf);
 }
 
 function onSlowChange(e: Event) {
-  emit('filter-change', { slow: (e.target as HTMLInputElement).checked })
+  emit('filter-change', { slow: (e.target as HTMLInputElement).checked });
 }
 
 function onSlowMsChange(e: Event) {
-  const val = Number.parseFloat((e.target as HTMLInputElement).value)
+  const val = Number.parseFloat((e.target as HTMLInputElement).value);
   if (!Number.isNaN(val)) {
-    emit('filter-change', { slowMs: val * 1000 })
+    emit('filter-change', { slowMs: val * 1000 });
   }
 }
 
 const sysDescrLine1 = computed(() => {
-  const descr = String(props.result?.systemInfo?.values?.sysDescr ?? '')
-  return descr.split('\n')[0] ?? descr
-})
+  const descr = String(props.result?.systemInfo?.values?.sysDescr ?? '');
+  return descr.split('\n')[0] ?? descr;
+});
 
 const sysDescrFull = computed(() => {
-  return String(props.result?.systemInfo?.values?.sysDescr ?? '')
-})
+  return String(props.result?.systemInfo?.values?.sysDescr ?? '');
+});
 
 const sysObjectID = computed(() => {
-  return String(props.result?.systemInfo?.values?.sysObjectID ?? '')
-})
+  return String(props.result?.systemInfo?.values?.sysObjectID ?? '');
+});
 
 const sysUpTimeFormatted = computed(() => {
-  const raw = props.result?.systemInfo?.values?.sysUpTime
-  if (raw == null) return ''
+  const raw = props.result?.systemInfo?.values?.sysUpTime;
+  if (raw == null) return '';
   // sysUpTime is in centiseconds (TimeTicks)
-  const totalSecs = Math.floor(Number(raw) / 100)
-  const days = Math.floor(totalSecs / 86400)
-  const hours = Math.floor((totalSecs % 86400) / 3600)
-  const mins = Math.floor((totalSecs % 3600) / 60)
-  const secs = totalSecs % 60
-  if (days > 0) return `${days}d ${hours}h ${mins}m`
-  if (hours > 0) return `${hours}h ${mins}m ${secs}s`
-  return `${mins}m ${secs}s`
-})
+  const totalSecs = Math.floor(Number(raw) / 100);
+  const days = Math.floor(totalSecs / 86400);
+  const hours = Math.floor((totalSecs % 86400) / 3600);
+  const mins = Math.floor((totalSecs % 3600) / 60);
+  const secs = totalSecs % 60;
+  if (days > 0) return `${days}d ${hours}h ${mins}m`;
+  if (hours > 0) return `${hours}h ${mins}m ${secs}s`;
+  return `${mins}m ${secs}s`;
+});
 
 const totalViolations = computed(() => {
-  const counts = props.result?.summary?.violation_counts
-  if (!counts) return 0
-  return Object.values(counts).reduce((sum, n) => sum + n, 0)
-})
+  const counts = props.result?.summary?.violation_counts;
+  if (!counts) return 0;
+  return Object.values(counts).reduce((sum, n) => sum + n, 0);
+});
 
 const durationFormatted = computed(() => {
-  const at = props.result?.summary?.at
-  if (at == null) return ''
-  const totalSecs = Math.floor(at)
-  const days = Math.floor(totalSecs / 86400)
-  const hours = Math.floor((totalSecs % 86400) / 3600)
-  const mins = Math.floor((totalSecs % 3600) / 60)
-  const secs = totalSecs % 60
-  if (days > 0) return `${days}d ${hours}h ${mins}m`
-  if (hours > 0) return `${hours}h ${mins}m ${secs}s`
-  return `${mins}m ${secs}s`
-})
+  const at = props.result?.summary?.at;
+  if (at == null) return '';
+  const totalSecs = Math.floor(at);
+  const days = Math.floor(totalSecs / 86400);
+  const hours = Math.floor((totalSecs % 86400) / 3600);
+  const mins = Math.floor((totalSecs % 3600) / 60);
+  const secs = totalSecs % 60;
+  if (days > 0) return `${days}d ${hours}h ${mins}m`;
+  if (hours > 0) return `${hours}h ${mins}m ${secs}s`;
+  return `${mins}m ${secs}s`;
+});
 
 const viewLabels: Record<'incidents' | 'minimap' | 'oidtree', string> = {
   incidents: 'Incidents',
   minimap: 'Minimap',
   oidtree: 'OID Tree',
-}
+};
 </script>
 
 <template>

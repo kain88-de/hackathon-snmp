@@ -8,7 +8,12 @@
 /**
  * Validates one line of an .oidtrace.jsonl.gz file. Authoritative prose spec: docs/trace-format.md. Unknown extra fields are permitted everywhere (readers must ignore them); open enums (violations, event.kind, end_reason, vtype) are deliberately unconstrained strings.
  */
-export type OIDTraceRecordFormatVersion1 = Header | SystemInfo | Exchange | Event | Summary;
+export type OIDTraceRecordFormatVersion1 =
+  | Header
+  | SystemInfo
+  | Exchange
+  | Event
+  | Summary;
 export type Oid = string;
 /**
  * Seconds since walk start, monotonic clock, microsecond precision
@@ -16,7 +21,7 @@ export type Oid = string;
 export type Reltime = number;
 
 export interface Header {
-  type: "header";
+  type: 'header';
   format_version: 1;
   tool: string;
   /**
@@ -34,7 +39,7 @@ export interface Header {
     [k: string]: unknown;
   };
   snmp: {
-    version: "1" | "2c";
+    version: '1' | '2c';
     [k: string]: unknown;
   };
   settings: {
@@ -55,19 +60,19 @@ export interface Header {
   [k: string]: unknown;
 }
 export interface SystemInfo {
-  type: "system_info";
+  type: 'system_info';
   at: Reltime;
-  point: "start" | "end";
+  point: 'start' | 'end';
   values: {
     [k: string]: string | number;
   };
   [k: string]: unknown;
 }
 export interface Exchange {
-  type: "exchange";
+  type: 'exchange';
   seq: number;
   request: {
-    pdu: "get" | "getnext" | "getbulk";
+    pdu: 'get' | 'getnext' | 'getbulk';
     request_id: number;
     /**
      * @minItems 1
@@ -98,7 +103,7 @@ export interface Exchange {
        */
       error?: string;
       [k: string]: unknown;
-    }[]
+    }[],
   ];
   response?: {
     /**
@@ -138,7 +143,7 @@ export interface Varbind {
   [k: string]: unknown;
 }
 export interface Event {
-  type: "event";
+  type: 'event';
   at: Reltime;
   /**
    * Open enum; known: oid-loop-detected, walk-aborted-by-user, time-budget-exceeded
@@ -150,7 +155,7 @@ export interface Event {
   [k: string]: unknown;
 }
 export interface Summary {
-  type: "summary";
+  type: 'summary';
   at: Reltime;
   exchanges: number;
   oids_seen: number;

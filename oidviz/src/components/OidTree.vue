@@ -1,72 +1,77 @@
 <script setup lang="ts">
-import { computed, onMounted, onUnmounted, ref } from 'vue'
-import type { DomainExchange, FilterState, FlatRow, TrieNode } from '../lib/model'
+import { computed, onMounted, onUnmounted, ref } from 'vue';
+import type {
+  DomainExchange,
+  FilterState,
+  FlatRow,
+  TrieNode,
+} from '../lib/model';
 
 const props = defineProps<{
-  flatRows: FlatRow[]
-  filterState: FilterState
-  matchingCount: number
-}>()
+  flatRows: FlatRow[];
+  filterState: FilterState;
+  matchingCount: number;
+}>();
 
 const emit = defineEmits<{
-  'reflatten': []
-  'collapse-all': []
-}>()
+  reflatten: [];
+  'collapse-all': [];
+}>();
 
-const ROW_H = 22
-const OVERSCAN = 4
+const ROW_H = 22;
+const OVERSCAN = 4;
 
-const containerRef = ref<HTMLDivElement | null>(null)
-const scrollTop = ref(0)
-const containerHeight = ref(0)
+const containerRef = ref<HTMLDivElement | null>(null);
+const scrollTop = ref(0);
+const containerHeight = ref(0);
 
-const shownLeafCount = computed(() =>
-  props.flatRows.filter(r => r.kind === 'leaf').length
-)
+const shownLeafCount = computed(
+  () => props.flatRows.filter((r) => r.kind === 'leaf').length,
+);
 
 const visibleRows = computed(() => {
-  const start = Math.max(0, Math.floor(scrollTop.value / ROW_H) - OVERSCAN)
+  const start = Math.max(0, Math.floor(scrollTop.value / ROW_H) - OVERSCAN);
   const end = Math.min(
     props.flatRows.length,
-    Math.ceil((scrollTop.value + containerHeight.value) / ROW_H) + OVERSCAN
-  )
+    Math.ceil((scrollTop.value + containerHeight.value) / ROW_H) + OVERSCAN,
+  );
   return props.flatRows.slice(start, end).map((row, i) => ({
     row,
     index: start + i,
     top: (start + i) * ROW_H,
-  }))
-})
+  }));
+});
 
 onMounted(() => {
-  if (!containerRef.value) return
-  containerHeight.value = containerRef.value.clientHeight
-  const ro = new ResizeObserver(entries => {
-    containerHeight.value = entries[0]?.contentRect.height ?? 0
-  })
-  ro.observe(containerRef.value)
-  onUnmounted(() => ro.disconnect())
-})
+  if (!containerRef.value) return;
+  containerHeight.value = containerRef.value.clientHeight;
+  const ro = new ResizeObserver((entries) => {
+    containerHeight.value = entries[0]?.contentRect.height ?? 0;
+  });
+  ro.observe(containerRef.value);
+  onUnmounted(() => ro.disconnect());
+});
 
 function toggleNode(node: TrieNode) {
-  node.expanded = !node.expanded
-  emit('reflatten')
+  node.expanded = !node.expanded;
+  emit('reflatten');
 }
 
 function rttClass(node: TrieNode): string {
-  if (node.severity === 2) return 'rtt-err'
-  if (node.severity === 1) return 'rtt-warn'
-  return 'rtt-ok'
+  if (node.severity === 2) return 'rtt-err';
+  if (node.severity === 1) return 'rtt-warn';
+  return 'rtt-ok';
 }
 
 function exchangeRttClass(ex: DomainExchange): string {
-  if (ex.violations.length > 0) return 'rtt-err'
-  if (ex.rtt > props.filterState.slowMs) return 'rtt-warn'
-  return 'rtt-ok'
+  if (ex.violations.length > 0) return 'rtt-err';
+  if (ex.rtt > props.filterState.slowMs) return 'rtt-warn';
+  return 'rtt-ok';
 }
 
 function truncateOid(oid: string): string {
-  if (oid.length <= 30) return oid
-  return `…${oid.slice(-29)}`
+  if (oid.length <= 30) return oid;
+  return `…${oid.slice(-29)}`;
 }
 </script>
 

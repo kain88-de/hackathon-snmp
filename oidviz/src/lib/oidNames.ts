@@ -1,4 +1,4 @@
-import type { OidString } from './model'
+import type { OidString } from './model';
 
 // Sorted by descending prefix length so a linear scan gives longest-prefix-first.
 const OID_NAMES = [
@@ -79,13 +79,13 @@ const OID_NAMES = [
   ['1.3.6.1.4.1', 'enterprises'],
   ['1.3.6.1', 'internet'],
   ['1.3', 'identified-organization'],
-] satisfies ReadonlyArray<readonly [string, string]>
+] satisfies ReadonlyArray<readonly [string, string]>;
 
 export function lookupOidName(oid: OidString): string | null {
   for (const [prefix, name] of OID_NAMES) {
     if (oid === prefix || oid.startsWith(`${prefix}.`)) {
-      return name
+      return name;
     }
   }
-  return null
+  return null;
 }
