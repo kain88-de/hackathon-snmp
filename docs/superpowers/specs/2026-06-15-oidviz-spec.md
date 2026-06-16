@@ -134,23 +134,24 @@ Changing a filter or threshold immediately re-renders the active view.
 
 #### Filter compose rule
 
-Filters combine with **AND**: an exchange passes the filter only if it satisfies **every** checked criterion. An unchecked criterion is ignored (vacuously true). When no filter is checked, all exchanges are shown.
+Each checkbox means "include this category". Filters combine with **OR**: an exchange passes if it satisfies **any** checked criterion. When no filter is checked, all exchanges are shown (unfiltered).
 
 ```
-passes = (!slow      || rtt > slowMs)         &&
-         (!violations|| violations.length > 0) &&
-         (!retries   || attemptCount > 1)      &&
-         (!timeouts  || isTimeout)
+passes = none_checked
+      || (slow      && rtt > slowMs)
+      || (violations && violations.length > 0)
+      || (retries   && attemptCount > 1)
+      || (timeouts  && isTimeout)
 ```
 
-| View | Unit filtered | What AND means |
+Checking "Slow" and "Violation" together means: *show everything that is slow, and also show everything that has violations* — the visible set grows with each additional checkbox. This is why the UI reads as additive even though the implementation is OR.
+
+| View | Unit filtered | What OR means |
 |---|---|---|
 | Findings | Exchange | Each section shows exchanges from the filtered set that also match that section's dimension |
-| Incident Stack | Cluster | Show cluster if it has at least one member satisfying all checked criteria (aggregated: `peakRtt > slowMs`, `violationTypes.size > 0`, `retryCount > 0`, `timeoutCount > 0`) |
+| Incident Stack | Cluster | Show cluster if it has at least one member matching any checked criterion (`peakRtt > slowMs`, `violationTypes.size > 0`, `retryCount > 0`, `timeoutCount > 0`) |
 | Minimap + Detail | Exchange | Only filtered exchanges appear in buckets and detail bars |
 | OID Tree | Exchange | Only filtered exchanges enter the trie |
-
-**"All four checked" edge case**: the filtered set is exchanges that are simultaneously slow, violating, retried, and timed out — likely empty on real traces. Show an explicit empty state: *"No exchanges match all four filters. Uncheck a filter to widen."*
 
 **"Timeout filter active, OID Tree"**: timeout exchanges have no response OIDs and produce no trie leaves. The OID Tree shows empty with the message: *"Timeouts have no response OIDs — see the Minimap view."*
 

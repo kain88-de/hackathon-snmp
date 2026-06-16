@@ -882,11 +882,11 @@ const V5 = (() => {
     maxT=traceMaxT;
     const f=getFilters(), any=f.slow||f.viol||f.retry||f.timeout;
     filtered=any?ALL.filter(e=>{
-      if(f.slow&&e.rtt<=SLOW_MS)return false;
-      if(f.viol&&!e.violation)return false;
-      if(f.retry&&e.attempts.length<=1)return false;
-      if(f.timeout&&!e.timeout)return false;
-      return true;
+      if(f.slow&&e.rtt>SLOW_MS)return true;
+      if(f.viol&&e.violation)return true;
+      if(f.retry&&e.attempts.length>1)return true;
+      if(f.timeout&&e.timeout)return true;
+      return !(f.slow||f.viol||f.retry||f.timeout);
     }):ALL.slice();
     miniCanvas.width=miniWrap.clientWidth||800; miniCanvas.height=MINI_H; miniW=miniCanvas.width;
     buildBuckets(); if(initial) autoFocus(); drawMini(); drawDetail();
@@ -940,10 +940,8 @@ const V1 = (() => {
     const anyChecked=f.slow||f.viol||f.retry||f.timeout;
     for (const exc of ALL) {
       if(anyChecked){
-        if(f.slow&&exc.rtt<=SLOW_MS)continue;
-        if(f.viol&&!exc.violation)continue;
-        if(f.retry&&exc.attempts.length<=1)continue;
-        if(f.timeout&&!exc.timeout)continue;
+        const match=(f.slow&&exc.rtt>SLOW_MS)||(f.viol&&exc.violation)||(f.retry&&exc.attempts.length>1)||(f.timeout&&exc.timeout);
+        if(!match)continue;
       }
       const shared=exc.oids.length>1;
       for(const pfx of exc.oids){
@@ -1105,13 +1103,12 @@ const VF = (() => {
     if (!anyChecked) {
       filtered = exchanges.slice();
     } else {
-      filtered = exchanges.filter(ex => {
-        if (f.slow && ex.rtt <= SLOW_MS) return false;
-        if (f.viol && !ex.violation) return false;
-        if (f.retry && ex.attempts.length <= 1) return false;
-        if (f.timeout && !ex.timeout) return false;
-        return true;
-      });
+      filtered = exchanges.filter(ex =>
+        (f.slow && ex.rtt > SLOW_MS) ||
+        (f.viol && ex.violation) ||
+        (f.retry && ex.attempts.length > 1) ||
+        (f.timeout && ex.timeout)
+      );
     }
 
     const cats = categorise(filtered, SLOW_MS);

@@ -62,19 +62,20 @@ A review of the existing implementation found 12 inconsistencies between the fil
 
 ## 1. Filter model — AND semantics
 
-### New composition rule
+### Composition rule — OR (original logic is correct)
 
-An exchange **passes the filter** iff it satisfies **every checked** dimension:
+Each checkbox means "include this category". An exchange **passes the filter** if it satisfies **any checked** dimension:
 
 ```
 matchesFilters(ex, state) =
-  (!state.slow       || ex.rtt > state.slowMs)        &&
-  (!state.violations || ex.violations.length > 0)     &&
-  (!state.retries    || ex.attemptCount > 1)          &&
-  (!state.timeouts   || ex.isTimeout)
+  none_checked
+  || (state.slow       && ex.rtt > state.slowMs)
+  || (state.violations && ex.violations.length > 0)
+  || (state.retries    && ex.attemptCount > 1)
+  || (state.timeouts   && ex.isTimeout)
 ```
 
-Each unchecked box contributes a vacuously-true clause and never narrows. This is the exact inverse of today's early-return-true OR logic.
+Checking "Slow" and "Violation" together shows everything that is slow plus everything that has violations — the set grows with each additional checkbox. This is why the UI reads as additive even though the implementation is OR. The original implementation was correct; no change to `matchesFilters` is needed.
 
 ### "All unchecked" = show everything
 
@@ -91,9 +92,10 @@ With no boxes checked every clause is vacuously true → returns `true` for all 
 
 ### Code changes
 
-- **Rewrite** `matchesFilters` in `filters.ts` to AND (invert early-returns).
+- **No change** to `matchesFilters` — OR semantics are correct as-is.
 - **Keep** `clusterMatchesFilters` — still used by Incident Stack.
-- **Rewrite** `filters.test.ts`: replace OR-composition tests with AND-composition tests. The "all unchecked → true" case stays. Add: "slow+retries checked, exchange only slow → false"; "both satisfied → true".
+- **Change default filter state** in `App.vue`: all four checkboxes default to `false` so Findings shows all anomalous exchanges on first load.
+- `filters.test.ts` stays as-is.
 
 ---
 
