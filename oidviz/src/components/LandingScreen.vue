@@ -135,9 +135,9 @@ function onDrop(event: DragEvent) {
 .open-btn {
   margin-top: 0.5rem;
   padding: 0.5rem 1.25rem;
-  border: 1px solid var(--primary);
-  background: var(--primary);
-  color: white;
+  border: 1.5px solid var(--primary);
+  background: transparent;
+  color: var(--primary);
   border-radius: 6px;
   cursor: pointer;
   font-size: 0.875rem;

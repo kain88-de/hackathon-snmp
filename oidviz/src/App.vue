@@ -116,6 +116,7 @@ function countLeaves(node: TrieNode): number {
 </script>
 
 <template>
+  <h1 class="sr-only">OIDviz</h1>
   <Sidebar
     :appState="appState"
     :result="viewerResult"
