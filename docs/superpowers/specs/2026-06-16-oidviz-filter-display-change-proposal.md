@@ -60,42 +60,47 @@ A review of the existing implementation found 12 inconsistencies between the fil
 
 ---
 
-## 1. Filter model — AND semantics
+## 1. Filter model — facet model replaces checkboxes
 
-### Composition rule — OR (original logic is correct)
+### Design journey (read this to understand the final decision)
 
-Each checkbox means "include this category". An exchange **passes the filter** if it satisfies **any checked** dimension:
+The original implementation used four independent **checkboxes** with OR semantics: checking "Slow" showed slow exchanges, checking "Slow + Violations" showed slow OR violating exchanges. This was logically correct for checkboxes.
+
+During the redesign we initially attempted AND checkbox semantics (each checked box narrows the set). This turned out wrong: with three boxes checked by default, the Findings view was empty because the intersection of slow AND violating AND retried is near-zero on real traces.
+
+The root issue was the sidebar control, not the logic. **The checkbox model was replaced entirely with a radio-group facet model.** OR vs AND is no longer the question; the performance axis is now a mutually exclusive radio group, correctness is a separate radio group, and retry is an independent checkbox. AND across the three axes is the natural consequence.
+
+### Final facet model
+
+```ts
+interface FacetState {
+  perf: 'any' | 'fast' | 'slow' | 'timeout'; // radio, default 'any'
+  corr: 'any' | 'violations';                 // radio, default 'any'
+  retryOnly: boolean;                         // checkbox, default false
+  slowMs: number;                             // threshold for Slow (ms)
+}
+```
+
+An exchange passes if it satisfies **all three** constraints (AND across axes):
 
 ```
-matchesFilters(ex, state) =
-  none_checked
-  || (state.slow       && ex.rtt > state.slowMs)
-  || (state.violations && ex.violations.length > 0)
-  || (state.retries    && ex.attemptCount > 1)
-  || (state.timeouts   && ex.isTimeout)
+passes =
+  perf_matches(exchange)   &&   // 'any' always matches
+  corr_matches(exchange)   &&   // 'any' always matches
+  (!retryOnly || attemptCount > 1)
 ```
 
-Checking "Slow" and "Violation" together shows everything that is slow plus everything that has violations — the set grows with each additional checkbox. This is why the UI reads as additive even though the implementation is OR. The original implementation was correct; no change to `matchesFilters` is needed.
+Performance states are mutually exclusive — every exchange is exactly one of Fast (`!isTimeout && rtt ≤ slowMs`), Slow (`!isTimeout && rtt > slowMs`), or Timed out (`isTimeout`). Selecting Slow + Violations only shows slow exchanges that also have violations — the AND is correct and intuitive.
 
-### "All unchecked" = show everything
-
-With no boxes checked every clause is vacuously true → returns `true` for all exchanges. Preserves today's "no filter = unfiltered firehose" identity and is the natural identity element of AND.
-
-### Edge cases
-
-| Case | Behaviour |
-|---|---|
-| All four checked | Only exchanges that are slow AND violating AND retried AND timed out. Likely empty — show explicit empty state: *"No exchanges match all four filters. Uncheck a filter to widen."* |
-| Timeout + Slow | A timed-out exchange has an RTT (timeout budget). Both clauses evaluated independently and ANDed; no special-casing. |
-| Timeout filter active → OID tree | The filtered set is timeout exchanges → `responseOids` empty → **tree is empty**. Empty state must say: *"Timeouts have no response OIDs — see the Minimap view."* |
-| `slowMs = 0` | Slow clause becomes `rtt > 0`, matches almost everything. Allowed. |
+**Default state (all Any, retryOnly false)**: every exchange passes — the Findings view shows all exchanges on first load.
 
 ### Code changes
 
-- **No change** to `matchesFilters` — OR semantics are correct as-is.
-- **Keep** `clusterMatchesFilters` — still used by Incident Stack.
-- **Change default filter state** in `App.vue`: all four checkboxes default to `false` so Findings shows all anomalous exchanges on first load.
-- `filters.test.ts` stays as-is.
+- **Replace** `FilterState` with `FacetState` in `model.ts`.
+- **Replace** `matchesFilters` with `matchesFacets`; **replace** `clusterMatchesFilters` with `clusterMatchesFacets` in `filters.ts`.
+- **Rename** all `filterState`/`FilterState` identifiers to `facetState`/`FacetState` in all components and `App.vue`.
+- **Rewrite** `filters.test.ts` for the new predicate semantics.
+- `clusterMatchesFacets` is kept — still used by Incident Stack.
 
 ---
 
