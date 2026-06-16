@@ -20,37 +20,37 @@ Bun executes TypeScript natively — no separate transpile step.
 
 ---
 
-## Linting: Oxlint
+## Linting: Oxlint — all rules on
 
-Oxlint (Rust) replaces ESLint. Runs in under 50ms on the full codebase.
+Oxlint (Rust) replaces ESLint. Runs under 50ms. **All rules are enabled via `-D all`** with a project config file that disables false positives.
 
 ```sh
-bunx oxlint          # lint everything
-bunx oxlint --deny jsx-a11y/alt-text src/
+bunx oxlint -D all -c .oxlintrc.json --ignore-pattern "src/lib/types.gen.ts" src/
 ```
 
-Add to `package.json`:
-```json
-{
-  "scripts": {
-    "lint": "oxlint src/"
-  }
-}
-```
+The `.oxlintrc.json` file in the project root disables noise rules and configures:
+- `no-magic-numbers` with `ignoreEnums: true` and `ignoreArrayIndexes: true`
+- `max-lines` capped at 500
+- false positives off: `no-optional-chaining`, `no-ternary`, `no-continue`, `unicorn/no-null`, `unicorn/filename-case`, `explicit-function-return-type`, `sort-*`
 
-Do **not** install ESLint.
+Do **not** install ESLint. Do **not** run `bunx oxlint src/` without `-D all` — that skips most rules.
 
 ---
 
-## Formatting + supplementary lint: Biome
+## Formatting + linting: Biome — all rule groups on
 
-Biome (Rust) handles formatting and catches things Oxlint misses, including a dedicated `a11y` rule group.
+Biome (Rust) handles formatting **and** linting. **All rule groups are enabled**: `a11y`, `complexity`, `correctness`, `performance`, `security`, `style`, `suspicious`.
 
 ```sh
-bunx biome check src/                       # lint + format check
-bunx biome check --formatter-enabled=false  # lint only (agent feedback loop)
-bunx biome format --write src/              # auto-format
+bunx biome check --formatter-enabled=false src/   # lint only (fastest feedback)
+bunx biome check --linter-enabled=false src/       # format check only
+bunx biome format --write src/                     # auto-format
 ```
+
+`biome.json` enables all rule groups with targeted overrides:
+- `useImportExtensions: off` — Vite handles extensions
+- `noDefaultExport: off` in `*.vue` — Vue SFCs require default export
+- `useNamingConvention: off` in `src/lib/types.gen.ts` — generated file, do not edit
 
 Notable a11y rules Biome enforces:
 - `useHtmlLang` — `<html lang="en">` required
@@ -67,37 +67,54 @@ Run `tsc` without emitting; skip lib-checking to keep it fast.
 bunx tsc --noEmit --skipLibCheck
 ```
 
-This is the slowest step (~1–2s) but catches hallucinated imports and wrong types. Run it last in the feedback loop.
+This is the slowest step (~1–2s) but catches hallucinated imports and wrong types.
+
+`tsconfig.json` must include `strict: true`, `noUncheckedIndexedAccess: true`, and `exactOptionalPropertyTypes: true`.
 
 ---
 
-## Accessibility: axe-core CLI (dynamic check)
+## Accessibility: axe-core CLI (rendered check)
 
-Static linting misses rendered accessibility issues (contrast, ARIA states, semantic DOM). Run axe against the live dev server.
+Static linting misses rendered accessibility issues (contrast, ARIA states, semantic DOM). Run axe against the built app via `vite preview` — **not** the dev server, so `just a11y` is self-contained.
 
 ```sh
-bunx @axe-core/cli --stdout http://localhost:5173 > a11y-report.json
+just a11y    # builds, serves on :4173, runs axe, kills server
 ```
 
-Output is structured JSON — `target` is the failing DOM node, `failureSummary` is the fix description. Parse and feed directly back to the agent.
+Zero WCAG 2.1 AA violations in DOM content is a hard gate before merge. Canvas views are validated manually.
 
 ---
 
-## Agent feedback loop (lint and types first)
+## Agent feedback loop
 
-Lint and types run first — they are the fastest checks and catch the most issues. Run in order on every file save. Stop
-at the first failure and feed the output back as a prompt.
+Run in this order. Stop at the first failure and fix before continuing.
 
 ```
-1. bunx oxlint src/                            (<50ms)   syntax + basic a11y
-2. bunx tsc --noEmit --skipLibCheck           (~1-2s)   types
-3. bunx biome check src/                      (<200ms)  a11y + style + format check
-4. bun test                                   (<100ms)  logic
-5. just a11y                                  (~10s)    rendered a11y (builds + serves via vite preview)
+1. bunx oxlint -D all -c .oxlintrc.json --ignore-pattern "src/lib/types.gen.ts" src/   (<50ms)   syntax + all rules
+2. bunx biome check --formatter-enabled=false src/                                      (<50ms)   all biome lint rules
+3. bunx tsc --noEmit --skipLibCheck                                                     (~1-2s)   types
+4. bunx biome check --linter-enabled=false src/                                         (<50ms)   format check
+5. bun test                                                                             (<100ms)  logic
+6. just a11y                                                                            (~10s)    rendered a11y (build + vite preview)
 ```
 
-Steps 1–4 run without a browser. Step 5 builds the app and serves it via `vite preview` — no separate dev server needed.
-Use `just ci` to run all five steps in sequence.
+Steps 1–5 run without a browser. Use `just ci` to run steps 1–5 in sequence (`lint → types → fmt-check → test`). Run `just a11y` separately before merging.
+
+---
+
+## Justfile targets
+
+| Target      | Command                                                                                             |
+|-------------|-----------------------------------------------------------------------------------------------------|
+| `lint`      | oxlint (`-D all -c .oxlintrc.json --ignore-pattern`) + biome check (`--formatter-enabled=false`)   |
+| `types`     | `bunx tsc --noEmit --skipLibCheck`                                                                  |
+| `fmt-check` | `bunx biome check --linter-enabled=false src/`                                                      |
+| `test`      | `bun test`                                                                                          |
+| `ci`        | `lint → types → fmt-check → test`                                                                   |
+| `a11y`      | build + `bunx vite preview --port 4173` + `bunx @axe-core/cli` + kill                              |
+| `fmt`       | `bunx biome format --write src/`                                                                    |
+| `dev`       | `bun run dev`                                                                                       |
+| `gen-types` | `bunx json-schema-to-typescript ../docs/trace-format.schema.json -o src/lib/types.gen.ts`          |
 
 ---
 
@@ -107,9 +124,12 @@ Use `just ci` to run all five steps in sequence.
 |---|---|
 | `npm install` | `bun install` |
 | `npx tsc` | `bunx tsc` |
-| Install ESLint | Use Oxlint |
+| Install ESLint | Use Oxlint with `-D all` |
+| `bunx oxlint src/` without `-D all` | Always pass `-D all -c .oxlintrc.json` |
 | Run `tsc --build` for feedback | `tsc --noEmit --skipLibCheck` |
-| Skip step 5 for UI changes | Always axe-check pages agents touch — `just a11y` is self-contained |
+| `bunx biome check src/` for lint only | `bunx biome check --formatter-enabled=false src/` |
+| Skip `just a11y` for UI changes | Always axe-check pages agents touch |
+| Hard-code hex colours in canvas | Read `--dim-*` tokens via `getComputedStyle` at draw time |
 
 ---
 
@@ -119,8 +139,9 @@ The trace format schema lives at `../docs/trace-format.schema.json`.
 Generate TypeScript types once at setup and after schema changes:
 
 ```sh
-bunx json-schema-to-typescript ../docs/trace-format.schema.json \
-  -o src/types.gen.ts
+just gen-types
+# expands to:
+bunx json-schema-to-typescript ../docs/trace-format.schema.json -o src/lib/types.gen.ts
 ```
 
-Do not hand-write types for trace records — use the generated file.
+Do not hand-write types for trace records — use the generated file. The generated file is excluded from linting via `--ignore-pattern` in Oxlint and a `biome.json` override.
