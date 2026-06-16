@@ -192,9 +192,9 @@ const readAllChunks = (
   return step();
 };
 
-const buildResult = (cs: ChunkState, parseMs: number): ParseResult => {
+const buildResult = (cs: ChunkState, parseMs: number): ParseResult | null => {
   if (cs.parseState.header === null) {
-    throw new Error('No header record found in trace file');
+    return null;
   }
   return {
     exchanges: cs.parseState.exchanges,
@@ -206,7 +206,7 @@ const buildResult = (cs: ChunkState, parseMs: number): ParseResult => {
   };
 };
 
-const parseBuffer = (buffer: ArrayBuffer): Promise<ParseResult> => {
+const parseBuffer = (buffer: ArrayBuffer): Promise<void> => {
   const startTime = performance.now();
   const stream = new DecompressionStream('gzip');
   const writer = stream.writable.getWriter();
@@ -225,13 +225,18 @@ const parseBuffer = (buffer: ArrayBuffer): Promise<ParseResult> => {
     .then(() => readAllChunks(reader, cs))
     .then(() => {
       finalizeDecoder(cs);
-      return buildResult(cs, performance.now() - startTime);
+      const result = buildResult(cs, performance.now() - startTime);
+      if (result === null) {
+        const response: WorkerResponse = {
+          message: 'No header record found in trace file',
+          type: 'error',
+        };
+        globalThis.postMessage(response, globalThis.location.origin);
+        return;
+      }
+      const successResponse: WorkerResponse = { data: result, type: 'result' };
+      globalThis.postMessage(successResponse, globalThis.location.origin);
     });
-};
-
-const postResult = (data: ParseResult): void => {
-  const response: WorkerResponse = { data, type: 'result' };
-  globalThis.postMessage(response, globalThis.location.origin);
 };
 
 const postError = (message: string): void => {
@@ -249,5 +254,5 @@ const handleError = (error: unknown): void => {
 
 globalThis.addEventListener('message', (event: MessageEvent<WorkerRequest>) => {
   const { buffer } = event.data;
-  parseBuffer(buffer).then(postResult).catch(handleError);
+  parseBuffer(buffer).catch(handleError);
 });
