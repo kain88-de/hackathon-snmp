@@ -213,12 +213,12 @@ body { background: var(--bg); color: var(--text); font-family: system-ui, sans-s
   <div class="sb-section" id="sb-filters" style="display:none">
     <div class="sb-title">Filters</div>
     <label class="filter-row">
-      <input type="checkbox" id="f-slow" checked onchange="applyFilters()">
+      <input type="checkbox" id="f-slow" onchange="applyFilters()">
       Slow &gt; <input type="number" id="slow-s" value="1" min="0.01" max="100" step="0.1"
         onchange="SLOW_MS=Math.max(10,(+this.value||1)*1000);applyFilters()"> s
     </label>
-    <label class="filter-row"><input type="checkbox" id="f-viol" checked onchange="applyFilters()"> Violations</label>
-    <label class="filter-row"><input type="checkbox" id="f-retry" checked onchange="applyFilters()"> Retries</label>
+    <label class="filter-row"><input type="checkbox" id="f-viol" onchange="applyFilters()"> Violations</label>
+    <label class="filter-row"><input type="checkbox" id="f-retry" onchange="applyFilters()"> Retries</label>
     <label class="filter-row"><input type="checkbox" id="f-timeout" onchange="applyFilters()"> Timeouts</label>
   </div>
 
@@ -527,9 +527,9 @@ function switchView(id) {
 
 function getFilters() {
   return {
-    slow:    document.getElementById('f-slow')?.checked    ?? true,
-    viol:    document.getElementById('f-viol')?.checked    ?? true,
-    retry:   document.getElementById('f-retry')?.checked   ?? true,
+    slow:    document.getElementById('f-slow')?.checked    ?? false,
+    viol:    document.getElementById('f-viol')?.checked    ?? false,
+    retry:   document.getElementById('f-retry')?.checked   ?? false,
     timeout: document.getElementById('f-timeout')?.checked ?? false,
   };
 }
