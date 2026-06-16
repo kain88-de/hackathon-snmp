@@ -1,5 +1,6 @@
 <script setup lang="ts">
 import { computed, onMounted, onUnmounted, ref } from 'vue';
+import LandingScreen from './components/LandingScreen.vue';
 import Sidebar from './components/Sidebar.vue';
 import { matchesFacets } from './lib/filters.ts';
 import { buildIncidents } from './lib/incidentStack.ts';
@@ -128,12 +129,11 @@ onUnmounted(() => {
       @toggle-dark-mode="toggleDarkMode"
     />
     <main class="main-content">
-      <div v-if="appState.phase === 'landing'">
-        Landing screen placeholder
-        <!-- handleFileSelected wired here in next task -->
-      </div>
-      <div v-else-if="appState.phase === 'loading'">Loading...</div>
-      <div v-else-if="appState.phase === 'error'">Error: {{ appState.message }}</div>
+      <LandingScreen
+        v-if="appState.phase === 'landing' || appState.phase === 'loading' || appState.phase === 'error'"
+        :appState="appState"
+        @file-selected="handleFileSelected"
+      />
       <div v-else-if="appState.phase === 'viewer'">
         <div v-if="activeView === 'findings'">Findings placeholder</div>
         <div v-else-if="activeView === 'incidents'">
