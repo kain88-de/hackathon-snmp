@@ -7,9 +7,12 @@
     "no-continue": "off",
     "unicorn/no-null": "off",
     "unicorn/filename-case": "off",
+    "unicorn/prefer-ternary": "off",
     "explicit-function-return-type": "off",
+    "prefer-object-spread": "off",
     "sort-imports": "off",
     "sort-keys": "off",
-    "sort-vars": "off"
+    "sort-vars": "off",
+    "no-underscore-dangle": "off"
   }
 }
