@@ -30,7 +30,7 @@ Secondary user: SNMP expert drilling into a specific exchange to debug device ag
 
 ## Tech stack
 
-Svelte 5 · TypeScript · Bun · Vite · see `oidviz/docs/web-guardrails.md` for toolchain guardrails.
+Vue 3 · TypeScript · Bun · Vite · `@vitejs/plugin-vue` · see `oidviz/docs/web-guardrails.md` for toolchain guardrails.
 
 Types are generated from `../docs/trace-format.schema.json` (path relative to `oidviz/`):
 ```sh
@@ -193,7 +193,13 @@ Matching is longest-prefix-first. Unknown OIDs use the first 8 arcs as the regio
 This list is intentionally separate from the OID Tree's well-known name map (which is for display labels) and from the build-time resolution map (which covers ~2k prefixes for tooltips). Each list is sized to its purpose.
 
 ### Incident scoring
-Score prioritises: timeouts > distinct violation types > retries > peak RTT > member count. `distinctViolationTypes` is the count of unique violation strings across all member exchanges. See prototype for exact weights.
+Score prioritises: timeouts > distinct violation types > retries > peak RTT > member count. `distinctViolationTypes` is the count of unique violation strings across all member exchanges.
+
+Weights (implemented as named constants):
+```
+score = 100 × timeoutCount + 50 × violationTypes.size + 10 × retryCount
+      + log10(max(peakRtt, 1)) × 5 + members.length × 0.1
+```
 
 ### Row layout
 Each incident row:
@@ -257,7 +263,7 @@ Active sidebar filters determine which exchanges are included in the minimap buc
 Trie built from exchange response varbind OIDs (up to 7 prefix levels). Stats rolled up per node.
 
 ### Data model
-Each node: arc label, full OID, optional well-known name, children map, leaf exchanges, stats (count, maxRtt, violationCount), severity (0 = ok, 1 = slow, 2 = violation).
+Each node: arc label, full OID, optional well-known name, children map, leaf exchanges, stats (count, maxRtt, violationCount), severity (`Severity` enum: `Ok = 0`, `Slow = 1`, `Violation = 2`).
 
 Leaves are individual filtered exchanges attached to the deepest matching prefix node.
 
