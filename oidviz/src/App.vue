@@ -1,11 +1,12 @@
 <script setup lang="ts">
-import { computed, onMounted, onUnmounted, ref } from 'vue'
+import { computed, onMounted, onUnmounted, ref, watch } from 'vue'
 import IncidentStack from './components/IncidentStack.vue'
 import LandingScreen from './components/LandingScreen.vue'
 import MinimapDetail from './components/MinimapDetail.vue'
+import OidTree from './components/OidTree.vue'
 import Sidebar from './components/Sidebar.vue'
 import { buildIncidents } from './lib/incidentStack'
-import type { AppState, FilterState, ParseResult, WorkerRequest, WorkerResponse } from './lib/model'
+import type { AppState, FilterState, FlatRow, ParseResult, TrieNode, WorkerRequest, WorkerResponse } from './lib/model'
 import { autoExpand, buildTrie, flatten, rollup } from './lib/oidTrie'
 
 const appState = ref<AppState>({ phase: 'landing' })
@@ -69,17 +70,49 @@ const incidents = computed(() => {
   return buildIncidents(result.exchanges, filterState.value.slowMs)
 })
 
-const flatRows = computed(() => {
-  const result = viewerResult.value
-  if (!result) return []
-  const root = buildTrie(result.exchanges, filterState.value)
-  rollup(root, filterState.value.slowMs)
-  autoExpand(root)
-  return flatten(root)
+let oidRoot: TrieNode | null = null
+
+const flatRows = ref<FlatRow[]>([])
+
+watch(
+  [viewerResult, filterState],
+  () => {
+    const result = viewerResult.value
+    if (!result) { flatRows.value = []; return }
+    const root = buildTrie(result.exchanges, filterState.value)
+    rollup(root, filterState.value.slowMs)
+    autoExpand(root)
+    oidRoot = root
+    flatRows.value = flatten(root)
+  },
+  { deep: false, immediate: true }
+)
+
+function reflattenOidTree() {
+  if (oidRoot) flatRows.value = flatten(oidRoot)
+}
+
+function collapseAllNodes() {
+  if (!oidRoot) return
+  collapseAll(oidRoot)
+  flatRows.value = flatten(oidRoot)
+}
+
+function collapseAll(node: TrieNode) {
+  node.expanded = false
+  for (const child of node.children.values()) collapseAll(child)
+}
+
+const oidMatchingCount = computed(() => {
+  if (!oidRoot) return 0
+  return countLeaves(oidRoot)
 })
 
-// Suppress unused variable warnings for computed values used by child components
-void flatRows
+function countLeaves(node: TrieNode): number {
+  let count = node.leaves.length
+  for (const child of node.children.values()) count += countLeaves(child)
+  return count
+}
 </script>
 
 <template>
@@ -115,7 +148,14 @@ void flatRows
           :exchanges="viewerResult?.exchanges ?? []"
           :filterState="filterState"
         />
-        <div v-else>OID Tree view (placeholder)</div>
+        <OidTree
+          v-else-if="activeView === 'oidtree'"
+          :flatRows="flatRows"
+          :filterState="filterState"
+          :matchingCount="oidMatchingCount"
+          @reflatten="reflattenOidTree"
+          @collapse-all="collapseAllNodes"
+        />
       </div>
     </template>
   </main>
