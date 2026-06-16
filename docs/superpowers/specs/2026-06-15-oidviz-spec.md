@@ -30,7 +30,7 @@ Secondary user: SNMP expert drilling into a specific exchange to debug device ag
 
 ## Tech stack
 
-Vue 3 · TypeScript · Bun · Vite · `@vitejs/plugin-vue` · see `oidviz/docs/web-guardrails.md` for toolchain guardrails.
+Vue 3 · TypeScript · Bun · Vite · `@vitejs/plugin-vue` · see `docs/dev-guidelines/web-guardrails.md` for toolchain guardrails.
 
 Types are generated from `../docs/trace-format.schema.json` (path relative to `oidviz/`):
 ```sh
