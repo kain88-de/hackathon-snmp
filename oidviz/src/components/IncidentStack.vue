@@ -162,7 +162,7 @@ function navigateModal(delta: number) {
   padding: 0.5rem 1rem;
   font-size: 0.85rem;
   opacity: 0.7;
-  border-bottom: 1px solid var(--border, #eee);
+  border-bottom: 1px solid var(--border);
   flex-shrink: 0;
 }
 
@@ -192,13 +192,13 @@ function navigateModal(delta: number) {
   gap: 0.75rem;
   padding: 0 1rem;
   cursor: pointer;
-  border-bottom: 1px solid var(--border, #eee);
+  border-bottom: 1px solid var(--border);
   box-sizing: border-box;
 }
 
 .incident-row:hover,
 .incident-row:focus {
-  background: var(--surface-alt, #f5f5f5);
+  background: var(--surface-alt);
   outline: none;
 }
 
@@ -214,18 +214,18 @@ function navigateModal(delta: number) {
 }
 
 .severity-err {
-  background: #fee2e2;
-  color: #991b1b;
+  background: var(--err-bg);
+  color: var(--err-text);
 }
 
 .severity-warn {
-  background: #fef3c7;
-  color: #92400e;
+  background: var(--warn-bg);
+  color: var(--warn-text);
 }
 
 .severity-info {
-  background: #dbeafe;
-  color: #1e40af;
+  background: var(--info-bg);
+  color: var(--info-text);
 }
 
 .row-content {
@@ -253,7 +253,7 @@ function navigateModal(delta: number) {
 .walk-bar-track {
   position: relative;
   height: 4px;
-  background: var(--border, #eee);
+  background: var(--border);
   border-radius: 2px;
   margin-top: 0.35rem;
 }
@@ -262,7 +262,7 @@ function navigateModal(delta: number) {
   position: absolute;
   top: 0;
   height: 100%;
-  background: var(--accent, #3b82f6);
+  background: var(--primary);
   border-radius: 2px;
 }
 </style>

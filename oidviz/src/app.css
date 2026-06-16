@@ -1,6 +1,7 @@
 :root {
   --bg: #f8fafc;
   --surface: #ffffff;
+  --surface-alt: #f1f5f9;
   --border: #e2e8f0;
   --primary: #3b82f6;
   --ok: #22c55e;
@@ -13,11 +14,18 @@
   --sidebar-muted: #94a3b8;
   --sidebar-border: #334155;
   --font-mono: 'JetBrains Mono', 'Fira Code', 'Cascadia Code', monospace;
+  --err-bg: #fee2e2;
+  --err-text: #991b1b;
+  --warn-bg: #fef3c7;
+  --warn-text: #92400e;
+  --info-bg: #dbeafe;
+  --info-text: #1e40af;
 }
 
 [data-theme="dark"] {
   --bg: #0f172a;
   --surface: #1e293b;
+  --surface-alt: #263348;
   --border: #334155;
   --primary: #60a5fa;
   --ok: #4ade80;
@@ -29,6 +37,12 @@
   --sidebar-text: #f1f5f9;
   --sidebar-muted: #64748b;
   --sidebar-border: #1e293b;
+  --err-bg: #450a0a;
+  --err-text: #fca5a5;
+  --warn-bg: #451a03;
+  --warn-text: #fcd34d;
+  --info-bg: #1e3a5f;
+  --info-text: #93c5fd;
 }
 
 *, *::before, *::after {

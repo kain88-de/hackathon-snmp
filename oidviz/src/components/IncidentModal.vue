@@ -106,7 +106,7 @@ function truncateOid(oid: string): string {
 }
 
 .modal-panel {
-  background: var(--surface, #fff);
+  background: var(--surface);
   border-radius: 8px;
   max-width: 700px;
   width: 90%;
@@ -139,8 +139,8 @@ function truncateOid(oid: string): string {
 .modal-nav button {
   padding: 0.25rem 0.5rem;
   cursor: pointer;
-  border: 1px solid var(--border, #ccc);
-  background: var(--surface, #fff);
+  border: 1px solid var(--border);
+  background: var(--surface);
   border-radius: 4px;
 }
 
@@ -158,7 +158,7 @@ function truncateOid(oid: string): string {
 }
 
 .stats-grid > div {
-  background: var(--surface-alt, #f5f5f5);
+  background: var(--surface-alt);
   border-radius: 4px;
   padding: 0.5rem;
 }
@@ -190,12 +190,12 @@ function truncateOid(oid: string): string {
 .exchange-table td {
   text-align: left;
   padding: 0.35rem 0.5rem;
-  border-bottom: 1px solid var(--border, #eee);
+  border-bottom: 1px solid var(--border);
 }
 
 .exchange-table th {
   font-weight: 600;
-  background: var(--surface-alt, #f5f5f5);
+  background: var(--surface-alt);
 }
 
 .oid-cell {
@@ -212,17 +212,17 @@ function truncateOid(oid: string): string {
 }
 
 .flag.timeout {
-  background: #fee2e2;
-  color: #991b1b;
+  background: var(--err-bg);
+  color: var(--err-text);
 }
 
 .flag.violation {
-  background: #fef3c7;
-  color: #92400e;
+  background: var(--warn-bg);
+  color: var(--warn-text);
 }
 
 .flag.retry {
-  background: #dbeafe;
-  color: #1e40af;
+  background: var(--info-bg);
+  color: var(--info-text);
 }
 </style>
