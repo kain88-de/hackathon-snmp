@@ -1,5 +1,6 @@
 <script setup lang="ts">
 import { computed, onMounted, onUnmounted, ref } from 'vue';
+import FindingsByCategory from './components/FindingsByCategory.vue';
 import LandingScreen from './components/LandingScreen.vue';
 import Sidebar from './components/Sidebar.vue';
 import { matchesFacets } from './lib/filters.ts';
@@ -101,6 +102,10 @@ const handleViewChange = (view: ActiveView): void => {
   activeView.value = view;
 };
 
+const handleFocusExchange = (_seq: number): void => {
+  activeView.value = 'minimap';
+};
+
 onMounted(() => {
   darkMode.value = globalThis.matchMedia('(prefers-color-scheme: dark)').matches;
   setTheme(darkMode.value);
@@ -135,7 +140,12 @@ onUnmounted(() => {
         @file-selected="handleFileSelected"
       />
       <div v-else-if="appState.phase === 'viewer'">
-        <div v-if="activeView === 'findings'">Findings placeholder</div>
+        <FindingsByCategory
+          v-if="activeView === 'findings'"
+          :exchanges="filteredExchanges"
+          :facetState="facetState"
+          @focus-exchange="handleFocusExchange"
+        />
         <div v-else-if="activeView === 'incidents'">
           Incidents placeholder
           <!-- incidents passed here in next task -->
