@@ -22,11 +22,14 @@ test:
 ci: lint types fmt-check test
 
 a11y:
+    #!/usr/bin/env bash
+    set -e
     bun run build
     bunx vite preview --port 4173 &
+    SERVER_PID=$!
     sleep 2
-    bunx @axe-core/cli http://localhost:4173 || true
-    kill %1
+    bunx @axe-core/cli http://localhost:4173
+    kill $SERVER_PID
 
 dev:
     bun run dev

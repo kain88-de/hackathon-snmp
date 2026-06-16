@@ -8,7 +8,7 @@
     "build": "vite build",
     "preview": "vite preview",
     "test": "bun test",
-    "lint": "bunx oxlint -D all -c .oxlintrc.json --ignore-pattern \"src/lib/types.gen.ts\" src/ && bunx biome check --formatter-enabled=false src/",
+    "lint": "bunx oxlint -D all -c .oxlintrc.json --ignore-pattern \"src/lib/types.gen.ts\" -A \"unicorn/filename-case\" -A \"sort-imports\" src/ && bunx biome check --formatter-enabled=false src/",
     "check": "bunx tsc --noEmit --skipLibCheck"
   },
   "dependencies": {
