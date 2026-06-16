@@ -3,13 +3,36 @@ import { computed, onMounted, onUnmounted, ref, watch } from 'vue';
 import { matchesFilters } from '../lib/filters';
 import type { DomainExchange, FilterState } from '../lib/model';
 
+// Canvas layout constants
 const MINI_H = 80;
 const ML = 64;
 const MT = 24;
 const RH = 9;
 const RG = 3;
 const BH = 6;
-const MAX_H = 32767;
+const MAX_H = 32_767;
+const MINI_BAR_MARGIN = 4;
+const SEL_MIN_W = 2;
+const HALF_DIV = 2;
+const DETAIL_BOTTOM_PADDING = 20;
+const TICK_LABEL_Y = 12;
+const MIN_BAR_W = 2;
+const BAR_VERT_CENTER_DIV = 2;
+const SEQ_RIGHT_MARGIN = 2;
+const VIOL_MARKER_GAP = 2;
+// Timing and window constants
+const MS_PER_S = 1000;
+const DEFAULT_CANVAS_WIDTH = 400;
+const RESIZE_REDRAW_DELAY_MS = 50;
+const INITIAL_WINDOW_FRACTION = 0.05;
+const AUTOFOCUS_HALF_SPAN_FRACTION = 0.025;
+const PAN_FRACTION = 0.2;
+const VIOL_SCORE_WEIGHT = 1e9;
+/* eslint-disable no-magic-numbers -- well-known time axis tick intervals in seconds */
+const TICK_INTERVALS = [
+  0.1, 0.2, 0.5, 1, 2, 5, 10, 20, 50, 100, 200, 500, 1000,
+] as const;
+/* eslint-enable no-magic-numbers */
 
 const props = defineProps<{
   exchanges: DomainExchange[];
@@ -34,8 +57,16 @@ const dragging = ref<null | {
 }>(null);
 
 const maxT = computed(() => {
-  if (props.exchanges.length === 0) return 1;
-  return props.exchanges.reduce((m, e) => Math.max(m, e.receivedAtMs), 0);
+  if (props.exchanges.length === 0) {
+    return 1;
+  }
+  let max = 0;
+  for (const e of props.exchanges) {
+    if (e.receivedAtMs > max) {
+      max = e.receivedAtMs;
+    }
+  }
+  return max;
 });
 
 const filteredExchanges = computed(() =>
@@ -60,18 +91,28 @@ function buildBuckets(canvasWidth: number): MiniMapBucket[] {
   }));
   const mT = maxT.value;
   for (const ex of filteredExchanges.value) {
-    if (!isAnomalous(ex)) continue;
+    if (!isAnomalous(ex)) {
+      continue;
+    }
     const col = Math.min(
       Math.floor((ex.sentAtMs / mT) * canvasWidth),
       canvasWidth - 1,
     );
     const b = buckets[col];
-    if (!b) continue;
-    b.count++;
+    if (!b) {
+      continue;
+    }
+    b.count += 1;
     b.maxRtt = Math.max(b.maxRtt, ex.rtt);
-    if (ex.violations.length > 0) b.viol = true;
-    if (ex.isTimeout) b.timeout = true;
-    if (ex.attemptCount > 1) b.retry = true;
+    if (ex.violations.length > 0) {
+      b.viol = true;
+    }
+    if (ex.isTimeout) {
+      b.timeout = true;
+    }
+    if (ex.attemptCount > 1) {
+      b.retry = true;
+    }
   }
   return buckets;
 }
@@ -84,37 +125,64 @@ function isAnomalous(ex: DomainExchange): boolean {
     ex.isTimeout
   );
 }
+function bucketColor(b: MiniMapBucket): string {
+  if (b.timeout) {
+    return '#ef4444';
+  }
+  if (b.viol) {
+    return '#f59e0b';
+  }
+  return b.retry ? '#93c5fd' : '#3b82f6';
+}
+function exchangeBarColor(ex: DomainExchange): string {
+  if (ex.isTimeout) {
+    return '#ef4444';
+  }
+  if (ex.violations.length > 0) {
+    return '#f59e0b';
+  }
+  return ex.rtt > props.filterState.slowMs ? '#3b82f6' : '#94a3b8';
+}
 
 function drawMini() {
   const canvas = miniCanvasRef.value;
-  if (!canvas) return;
+  if (!canvas) {
+    return;
+  }
   const ctx = canvas.getContext('2d');
-  if (!ctx) return;
+  if (!ctx) {
+    return;
+  }
   const W = canvas.width;
   const H = MINI_H;
 
   ctx.clearRect(0, 0, W, H);
 
   const buckets = buildBuckets(W);
-  const maxCount = buckets.reduce((m, b) => Math.max(m, b.count), 1);
-  const barMaxH = H - 4;
+  let maxCount = 1;
+  for (const b of buckets) {
+    if (b.count > maxCount) {
+      maxCount = b.count;
+    }
+  }
+  const barMaxH = H - MINI_BAR_MARGIN;
 
-  buckets.forEach((b, col) => {
-    if (b.count === 0) return;
+  for (let col = 0; col < buckets.length; col += 1) {
+    const b = buckets[col];
+    if (!b || b.count === 0) {
+      continue;
+    }
     const barH = Math.max(1, Math.round((b.count / maxCount) * barMaxH));
-    ctx.fillStyle = b.timeout
-      ? '#ef4444'
-      : b.viol
-        ? '#f59e0b'
-        : b.retry
-          ? '#93c5fd'
-          : '#3b82f6';
+    ctx.fillStyle = bucketColor(b);
     ctx.fillRect(col, H - barH, 1, barH);
-  });
+  }
 
   const mT = maxT.value;
   const selX = Math.floor((winS.value / mT) * W);
-  const selW = Math.max(2, Math.floor(((winE.value - winS.value) / mT) * W));
+  const selW = Math.max(
+    SEL_MIN_W,
+    Math.floor(((winE.value - winS.value) / mT) * W),
+  );
   ctx.fillStyle = 'rgba(59,130,246,0.22)';
   ctx.fillRect(selX, 0, selW, H);
   ctx.strokeStyle = '#3b82f6';
@@ -124,9 +192,13 @@ function drawMini() {
 
 function drawDetail() {
   const canvas = detailCanvasRef.value;
-  if (!canvas) return;
+  if (!canvas) {
+    return;
+  }
   const ctx = canvas.getContext('2d');
-  if (!ctx) return;
+  if (!ctx) {
+    return;
+  }
 
   const W = canvas.width;
   const wS = winS.value;
@@ -139,17 +211,20 @@ function drawDetail() {
     .sort((a, b) => a.sentAtMs - b.sentAtMs);
 
   const rowCount = visible.length;
-  const detailH = Math.min(MAX_H, MT + rowCount * (RH + RG) + 20);
-  if (canvas.height !== detailH) canvas.height = detailH;
+  const detailH = Math.min(
+    MAX_H,
+    MT + rowCount * (RH + RG) + DETAIL_BOTTOM_PADDING,
+  );
+  if (canvas.height !== detailH) {
+    canvas.height = detailH;
+  }
 
   ctx.clearRect(0, 0, W, detailH);
 
-  const TICK_INTERVALS = [
-    0.1, 0.2, 0.5, 1, 2, 5, 10, 20, 50, 100, 200, 500, 1000,
-  ];
   const minTickPx = 60;
   const tickIntervalMs =
-    (TICK_INTERVALS.find((t) => (t * 1000) / mpp >= minTickPx) ?? 1000) * 1000;
+    (TICK_INTERVALS.find((t) => (t * MS_PER_S) / mpp >= minTickPx) ??
+      MS_PER_S) * MS_PER_S;
 
   ctx.fillStyle = '#64748b';
   ctx.font = '10px monospace';
@@ -158,79 +233,88 @@ function drawDetail() {
   let tick = Math.ceil(wS / tickIntervalMs) * tickIntervalMs;
   while (tick < wE) {
     const x = ML + (tick - wS) / mpp;
-    ctx.fillText(`${(tick / 1000).toFixed(1)}s`, x, 12);
+    ctx.fillText(`${(tick / MS_PER_S).toFixed(1)}s`, x, TICK_LABEL_Y);
     ctx.strokeStyle = '#e2e8f0';
     ctx.lineWidth = 1;
     ctx.beginPath();
-    ctx.moveTo(x, MT - 4);
+    ctx.moveTo(x, MT - MINI_BAR_MARGIN);
     ctx.lineTo(x, detailH);
     ctx.stroke();
     tick += tickIntervalMs;
   }
 
-  visible.forEach((ex, row) => {
+  for (let row = 0; row < visible.length; row += 1) {
+    const ex = visible[row];
+    if (!ex) {
+      continue;
+    }
     const y = MT + row * (RH + RG);
     const barX = ML + (ex.sentAtMs - wS) / mpp;
-    const barW = Math.max(2, ex.rtt / mpp);
+    const barW = Math.max(MIN_BAR_W, ex.rtt / mpp);
 
-    ctx.fillStyle = ex.isTimeout
-      ? '#ef4444'
-      : ex.violations.length > 0
-        ? '#f59e0b'
-        : ex.rtt > props.filterState.slowMs
-          ? '#3b82f6'
-          : '#94a3b8';
-    ctx.fillRect(barX, y + (RH - BH) / 2, barW, BH);
+    ctx.fillStyle = exchangeBarColor(ex);
+    ctx.fillRect(barX, y + (RH - BH) / BAR_VERT_CENTER_DIV, barW, BH);
 
     ctx.fillStyle = '#64748b';
     ctx.textAlign = 'right';
     ctx.font = '9px monospace';
-    ctx.fillText(String(ex.seq), ML - 2, y + RH - 1);
+    ctx.fillText(String(ex.seq), ML - SEQ_RIGHT_MARGIN, y + RH - 1);
 
     if (ex.violations.length > 0) {
       ctx.fillStyle = '#f59e0b';
       ctx.textAlign = 'left';
-      ctx.fillText('!', barX + barW + 2, y + RH - 1);
+      ctx.fillText('!', barX + barW + VIOL_MARKER_GAP, y + RH - 1);
     }
-  });
+  }
 }
 
 function initWindow() {
   const mT = maxT.value;
   winS.value = 0;
-  winE.value = mT * 0.05;
+  winE.value = mT * INITIAL_WINDOW_FRACTION;
 }
 
 function autoFocus() {
-  if (!miniCanvasRef.value) return;
-  const W = miniCanvasRef.value.width || 400;
+  if (!miniCanvasRef.value) {
+    return;
+  }
+  const W = miniCanvasRef.value.width || DEFAULT_CANVAS_WIDTH;
   const buckets = buildBuckets(W);
   let bestScore = -1;
   let bestCol = 0;
-  buckets.forEach((b, col) => {
-    const score = (b.viol ? 1e9 : 0) + b.maxRtt * 1000 + b.count;
+  for (let col = 0; col < buckets.length; col += 1) {
+    const b = buckets[col];
+    if (!b) {
+      continue;
+    }
+    const score =
+      (b.viol ? VIOL_SCORE_WEIGHT : 0) + b.maxRtt * MS_PER_S + b.count;
     if (score > bestScore) {
       bestScore = score;
       bestCol = col;
     }
-  });
+  }
   const mT = maxT.value;
   const centerMs = (bestCol / W) * mT;
-  const halfSpan = mT * 0.025;
+  const halfSpan = mT * AUTOFOCUS_HALF_SPAN_FRACTION;
   winS.value = Math.max(0, centerMs - halfSpan);
   winE.value = Math.min(mT, centerMs + halfSpan);
 }
 
 function getMiniMs(x: number): number {
   const canvas = miniCanvasRef.value;
-  if (!canvas) return 0;
+  if (!canvas) {
+    return 0;
+  }
   return (x / canvas.width) * maxT.value;
 }
 
 function onMiniClick(event: MouseEvent) {
-  if (dragging.value) return;
+  if (dragging.value) {
+    return;
+  }
   const ms = getMiniMs(event.offsetX);
-  const halfSpan = (winE.value - winS.value) / 2;
+  const halfSpan = (winE.value - winS.value) / HALF_DIV;
   winS.value = Math.max(0, ms - halfSpan);
   winE.value = Math.min(maxT.value, ms + halfSpan);
 }
@@ -238,21 +322,23 @@ function onMiniClick(event: MouseEvent) {
 function onMiniMousedown(event: MouseEvent) {
   const mT = maxT.value;
   const canvas = miniCanvasRef.value;
-  if (!canvas) return;
+  if (!canvas) {
+    return;
+  }
   const x = event.offsetX;
   const W = canvas.width;
   const selX = (winS.value / mT) * W;
   const selE = (winE.value / mT) * W;
-  const EDGE = 4;
+  const edge = 4;
 
-  if (x >= selX - EDGE && x <= selX + EDGE) {
+  if (x >= selX - edge && x <= selX + edge) {
     dragging.value = {
       kind: 'resize-left',
       startX: x,
       startWinS: winS.value,
       startWinE: winE.value,
     };
-  } else if (x >= selE - EDGE && x <= selE + EDGE) {
+  } else if (x >= selE - edge && x <= selE + edge) {
     dragging.value = {
       kind: 'resize-right',
       startX: x,
@@ -277,10 +363,14 @@ function onMiniMousedown(event: MouseEvent) {
 }
 
 function onMiniMousemove(event: MouseEvent) {
-  if (!dragging.value) return;
+  if (!dragging.value) {
+    return;
+  }
   const mT = maxT.value;
   const canvas = miniCanvasRef.value;
-  if (!canvas) return;
+  if (!canvas) {
+    return;
+  }
   const dx = event.offsetX - dragging.value.startX;
   const dms = (dx / canvas.width) * mT;
 
@@ -295,7 +385,7 @@ function onMiniMousemove(event: MouseEvent) {
       winE.value = dragging.value.startWinS + clampedDms + span;
       break;
     }
-    case 'create':
+    case 'create': {
       winS.value = Math.min(
         getMiniMs(dragging.value.startX),
         getMiniMs(event.offsetX),
@@ -305,18 +395,22 @@ function onMiniMousemove(event: MouseEvent) {
         getMiniMs(event.offsetX),
       );
       break;
-    case 'resize-left':
+    }
+    case 'resize-left': {
       winS.value = Math.max(
         0,
         Math.min(dragging.value.startWinS + dms, winE.value - 1),
       );
       break;
-    case 'resize-right':
+    }
+    case 'resize-right': {
       winE.value = Math.min(
         mT,
         Math.max(dragging.value.startWinE + dms, winS.value + 1),
       );
       break;
+    }
+    default: // no action needed for other drag kinds
   }
 }
 
@@ -325,10 +419,12 @@ function onMiniMouseup() {
 }
 
 function onMiniKeydown(event: KeyboardEvent) {
-  if (event.key !== 'ArrowLeft' && event.key !== 'ArrowRight') return;
+  if (event.key !== 'ArrowLeft' && event.key !== 'ArrowRight') {
+    return;
+  }
   event.preventDefault();
   const span = winE.value - winS.value;
-  const shift = span * 0.2;
+  const shift = span * PAN_FRACTION;
   const mT = maxT.value;
   if (event.key === 'ArrowLeft') {
     winS.value = Math.max(0, winS.value - shift);
@@ -339,14 +435,6 @@ function onMiniKeydown(event: KeyboardEvent) {
   }
 }
 
-function zoomToProblems() {
-  autoFocus();
-}
-
-function resetWindow() {
-  initWindow();
-}
-
 function redraw() {
   drawMini();
   drawDetail();
@@ -354,12 +442,14 @@ function redraw() {
 
 onMounted(() => {
   const miniWrap = miniWrapRef.value;
-  if (!miniWrap) return;
+  if (!miniWrap) {
+    return;
+  }
 
   initWindow();
 
   const ro = new ResizeObserver((entries) => {
-    const width = entries[0]?.contentRect.width ?? 400;
+    const width = entries[0]?.contentRect.width ?? DEFAULT_CANVAS_WIDTH;
     const miniCanvas = miniCanvasRef.value;
     if (miniCanvas && miniCanvas.width !== Math.floor(width)) {
       miniCanvas.width = Math.floor(width);
@@ -388,14 +478,12 @@ watch(
       setTimeout(() => {
         autoFocus();
         redraw();
-      }, 50);
+      }, RESIZE_REDRAW_DELAY_MS);
     }
   },
 );
 
-// Suppress unused variable warnings
-void tooltipStyle;
-void tooltipText;
+// tooltipStyle and tooltipText are used in the template below
 </script>
 
 <template>
@@ -405,8 +493,8 @@ void tooltipText;
       <span class="window-label">
         {{ (winS / 1000).toFixed(2) }}s – {{ (winE / 1000).toFixed(2) }}s
       </span>
-      <button @click="zoomToProblems">Zoom to problems</button>
-      <button @click="resetWindow">Reset window</button>
+      <button @click="autoFocus">Zoom to problems</button>
+      <button @click="initWindow">Reset window</button>
     </div>
 
     <!-- Minimap canvas wrapper -->

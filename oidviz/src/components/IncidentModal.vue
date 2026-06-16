@@ -21,9 +21,15 @@ onMounted(() => {
   nextTick(() => headingRef.value?.focus());
 });
 
+const OID_MAX_DISPLAY_LEN = 50;
+const ELLIPSIS_LEN = 3;
+const OID_SLICE_LEN = OID_MAX_DISPLAY_LEN - ELLIPSIS_LEN; // 47, leaving room for ellipsis
+
 function truncateOid(oid: string): string {
-  if (oid.length <= 50) return oid;
-  return `${oid.slice(0, 47)}…`;
+  if (oid.length <= OID_MAX_DISPLAY_LEN) {
+    return oid;
+  }
+  return `${oid.slice(0, OID_SLICE_LEN)}…`;
 }
 </script>
 

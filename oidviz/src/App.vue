@@ -1,10 +1,5 @@
 <script setup lang="ts">
 import { computed, onMounted, onUnmounted, ref, watch } from 'vue';
-import IncidentStack from './components/IncidentStack.vue';
-import LandingScreen from './components/LandingScreen.vue';
-import MinimapDetail from './components/MinimapDetail.vue';
-import OidTree from './components/OidTree.vue';
-import Sidebar from './components/Sidebar.vue';
 import { buildIncidents } from './lib/incidentStack';
 import type {
   AppState,
@@ -35,17 +30,20 @@ onMounted(() => {
   worker = new Worker(new URL('./lib/parser.worker.ts', import.meta.url), {
     type: 'module',
   });
-  worker.onmessage = (event: MessageEvent) => {
+  worker.addEventListener('message', (event: MessageEvent) => {
     const msg = event.data as WorkerResponse;
     switch (msg.type) {
-      case 'result':
+      case 'result': {
         appState.value = { phase: 'viewer', result: msg.data };
         break;
-      case 'error':
+      }
+      case 'error': {
         appState.value = { phase: 'error', message: msg.message };
         break;
+      }
+      default: // silently ignore unknown message types
     }
-  };
+  });
 });
 
 function updateTheme() {
@@ -70,13 +68,17 @@ function handleFile(buffer: ArrayBuffer) {
 }
 
 const viewerResult = computed<ParseResult | null>(() => {
-  if (appState.value.phase === 'viewer') return appState.value.result;
+  if (appState.value.phase === 'viewer') {
+    return appState.value.result;
+  }
   return null;
 });
 
 const incidents = computed(() => {
   const result = viewerResult.value;
-  if (!result) return [];
+  if (!result) {
+    return [];
+  }
   return buildIncidents(result.exchanges, filterState.value.slowMs);
 });
 
@@ -102,28 +104,38 @@ watch(
 );
 
 function reflattenOidTree() {
-  if (oidRoot) flatRows.value = flatten(oidRoot);
+  if (oidRoot) {
+    flatRows.value = flatten(oidRoot);
+  }
 }
 
 function collapseAllNodes() {
-  if (!oidRoot) return;
+  if (!oidRoot) {
+    return;
+  }
   collapseAll(oidRoot);
   flatRows.value = flatten(oidRoot);
 }
 
 function collapseAll(node: TrieNode) {
   node.expanded = false;
-  for (const child of node.children.values()) collapseAll(child);
+  for (const child of node.children.values()) {
+    collapseAll(child);
+  }
 }
 
 const oidMatchingCount = computed(() => {
-  if (!oidRoot) return 0;
+  if (!oidRoot) {
+    return 0;
+  }
   return countLeaves(oidRoot);
 });
 
 function countLeaves(node: TrieNode): number {
   let count = node.leaves.length;
-  for (const child of node.children.values()) count += countLeaves(child);
+  for (const child of node.children.values()) {
+    count += countLeaves(child);
+  }
   return count;
 }
 </script>

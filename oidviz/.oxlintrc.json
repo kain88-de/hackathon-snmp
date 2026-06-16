@@ -1,0 +1,17 @@
+{
+  "ignorePatterns": ["src/lib/types.gen.ts"],
+  "rules": {
+    "no-optional-chaining": "off",
+    "no-ternary": "off",
+    "no-continue": "off",
+    "no-undefined": "off",
+    "sort-keys": "off",
+    "sort-imports": "off",
+    "unicorn/no-null": "off",
+    "unicorn/filename-case": "off",
+    "typescript-eslint/explicit-function-return-type": "off",
+    "@typescript-eslint/explicit-function-return-type": "off",
+    "max-lines": ["error", { "max": 500 }],
+    "no-magic-numbers": ["error", { "ignore": [0, 1], "ignoreArrayIndexes": true, "ignoreEnums": true }]
+  }
+}

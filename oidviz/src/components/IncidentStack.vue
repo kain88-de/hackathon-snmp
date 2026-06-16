@@ -2,7 +2,6 @@
 import { computed, onMounted, onUnmounted, ref } from 'vue';
 import { clusterMatchesFilters } from '../lib/filters';
 import type { DomainExchange, FilterState, Incident } from '../lib/model';
-import IncidentModal from './IncidentModal.vue';
 
 const props = defineProps<{
   incidents: Incident[];
@@ -19,11 +18,15 @@ const scrollTop = ref(0);
 const containerHeight = ref(0);
 const ROW_H = 72;
 
+const OVERSCAN = 2;
+const PCT = 100;
+const MIN_BAR_WIDTH_PCT = 0.5;
+
 const visibleRows = computed(() => {
-  const start = Math.max(0, Math.floor(scrollTop.value / ROW_H) - 2);
+  const start = Math.max(0, Math.floor(scrollTop.value / ROW_H) - OVERSCAN);
   const end = Math.min(
     shownIncidents.value.length,
-    Math.ceil((scrollTop.value + containerHeight.value) / ROW_H) + 2,
+    Math.ceil((scrollTop.value + containerHeight.value) / ROW_H) + OVERSCAN,
   );
   return shownIncidents.value.slice(start, end).map((incident, i) => ({
     incident,
@@ -33,7 +36,9 @@ const visibleRows = computed(() => {
 });
 
 onMounted(() => {
-  if (!containerRef.value) return;
+  if (!containerRef.value) {
+    return;
+  }
   containerHeight.value = containerRef.value.clientHeight;
   const ro = new ResizeObserver((entries) => {
     containerHeight.value = entries[0]?.contentRect.height ?? 0;
@@ -43,40 +48,54 @@ onMounted(() => {
 });
 
 function severityClass(incident: Incident): string {
-  if (incident.timeoutCount > 0) return 'severity-err';
+  if (incident.timeoutCount > 0) {
+    return 'severity-err';
+  }
   if (
     incident.violationTypes.size > 0 ||
     incident.peakRtt > props.filterState.slowMs
-  )
+  ) {
     return 'severity-warn';
+  }
   return 'severity-info';
 }
 
 function severityIcon(incident: Incident): string {
-  if (incident.timeoutCount > 0) return '✕';
+  if (incident.timeoutCount > 0) {
+    return '✕';
+  }
   if (
     incident.violationTypes.size > 0 ||
     incident.peakRtt > props.filterState.slowMs
-  )
+  ) {
     return '⚠';
+  }
   return 'ℹ';
 }
 
 function incidentType(incident: Incident): string {
-  if (incident.timeoutCount > 0) return 'timeout';
-  if (incident.violationTypes.size > 0) return 'violation';
-  if (incident.retryCount > 0) return 'retry';
+  if (incident.timeoutCount > 0) {
+    return 'timeout';
+  }
+  if (incident.violationTypes.size > 0) {
+    return 'violation';
+  }
+  if (incident.retryCount > 0) {
+    return 'retry';
+  }
   return 'slow';
 }
 
 function walkBarStyle(incident: Incident) {
   const total = props.exchanges.length;
-  if (total === 0) return {};
-  const left = (incident.startIdx / total) * 100;
-  const width = ((incident.endIdx - incident.startIdx + 1) / total) * 100;
+  if (total === 0) {
+    return {};
+  }
+  const left = (incident.startIdx / total) * PCT;
+  const width = ((incident.endIdx - incident.startIdx + 1) / total) * PCT;
   return {
     left: `${left}%`,
-    width: `${Math.max(width, 0.5)}%`,
+    width: `${Math.max(width, MIN_BAR_WIDTH_PCT)}%`,
   };
 }
 
@@ -94,7 +113,9 @@ function closeModal() {
 }
 
 function navigateModal(delta: number) {
-  if (selectedIndex.value === null) return;
+  if (selectedIndex.value === null) {
+    return;
+  }
   const next = selectedIndex.value + delta;
   if (next >= 0 && next < shownIncidents.value.length) {
     selectedIndex.value = next;

@@ -6,6 +6,7 @@ import type {
   FlatRow,
   TrieNode,
 } from '../lib/model';
+import { Severity } from '../lib/model';
 
 const props = defineProps<{
   flatRows: FlatRow[];
@@ -43,7 +44,9 @@ const visibleRows = computed(() => {
 });
 
 onMounted(() => {
-  if (!containerRef.value) return;
+  if (!containerRef.value) {
+    return;
+  }
   containerHeight.value = containerRef.value.clientHeight;
   const ro = new ResizeObserver((entries) => {
     containerHeight.value = entries[0]?.contentRect.height ?? 0;
@@ -58,20 +61,33 @@ function toggleNode(node: TrieNode) {
 }
 
 function rttClass(node: TrieNode): string {
-  if (node.severity === 2) return 'rtt-err';
-  if (node.severity === 1) return 'rtt-warn';
+  if (node.severity === Severity.Violation) {
+    return 'rtt-err';
+  }
+  if (node.severity === Severity.Slow) {
+    return 'rtt-warn';
+  }
   return 'rtt-ok';
 }
 
 function exchangeRttClass(ex: DomainExchange): string {
-  if (ex.violations.length > 0) return 'rtt-err';
-  if (ex.rtt > props.filterState.slowMs) return 'rtt-warn';
+  if (ex.violations.length > 0) {
+    return 'rtt-err';
+  }
+  if (ex.rtt > props.filterState.slowMs) {
+    return 'rtt-warn';
+  }
   return 'rtt-ok';
 }
 
+const OID_MAX_DISPLAY_LEN = 30;
+const OID_TAIL_LEN = -(OID_MAX_DISPLAY_LEN - 1); // -29
+
 function truncateOid(oid: string): string {
-  if (oid.length <= 30) return oid;
-  return `…${oid.slice(-29)}`;
+  if (oid.length <= OID_MAX_DISPLAY_LEN) {
+    return oid;
+  }
+  return `…${oid.slice(OID_TAIL_LEN)}`;
 }
 </script>
 

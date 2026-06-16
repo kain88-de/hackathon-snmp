@@ -14,13 +14,26 @@ import type {
   Varbind,
 } from './types.gen';
 
-self.onmessage = (event: MessageEvent<WorkerRequest>) => {
+self.addEventListener('message', (event: MessageEvent<WorkerRequest>) => {
   const req = event.data;
   if (req.type === 'parse') {
     parseBuffer(req.buffer);
   }
-};
+});
 
+function parseLine(line: string, ctx: ParseContext): void {
+  if (!line.trim()) {
+    return;
+  }
+  try {
+    const rec = JSON.parse(line) as { type: string; [key: string]: unknown };
+    processRecord(rec, ctx);
+  } catch {
+    // ignore malformed lines
+  }
+}
+
+// eslint-disable-next-line no-async-await -- streaming gzip decompression requires async/await
 async function parseBuffer(buffer: ArrayBuffer): Promise<void> {
   const t0 = performance.now();
 
@@ -30,84 +43,53 @@ async function parseBuffer(buffer: ArrayBuffer): Promise<void> {
   const exchanges: DomainExchange[] = [];
   let truncated = false;
 
+  const ctx: ParseContext = {
+    exchanges,
+    get header() {
+      return header;
+    },
+    setHeader: (h) => {
+      header = h;
+    },
+    setSystemInfo: (si) => {
+      systemInfo = si;
+    },
+    setSummary: (s) => {
+      summary = s;
+    },
+  };
+
   try {
     const blob = new Blob([buffer]);
     const ds = new DecompressionStream('gzip');
     const stream = blob.stream().pipeThrough(ds);
     const reader = stream.getReader();
 
-    const decoder = new TextDecoder('utf-8');
+    const decoder = new TextDecoder('utf8');
     let leftover = '';
 
     while (true) {
+      // eslint-disable-next-line no-await-in-loop -- streaming read must be sequential
       const { done, value } = await reader.read();
-      if (done) break;
-      const chunk = decoder.decode(value, { stream: true });
-      leftover += chunk;
+      if (done) {
+        break;
+      }
+      leftover += decoder.decode(value, { stream: true });
       const lines = leftover.split('\n');
       leftover = lines.pop() ?? ''; // last item is incomplete line or ''
-
       for (const line of lines) {
-        if (!line.trim()) continue;
-        try {
-          const rec = JSON.parse(line) as {
-            type: string;
-            [key: string]: unknown;
-          };
-          processRecord(
-            rec,
-            header,
-            systemInfo,
-            summary,
-            exchanges,
-            (h) => {
-              header = h;
-            },
-            (si) => {
-              systemInfo = si;
-            },
-            (s) => {
-              summary = s;
-            },
-          );
-        } catch {
-          // ignore malformed lines
-        }
+        parseLine(line, ctx);
       }
     }
 
     // Handle remaining leftover
     if (leftover.trim()) {
       truncated = true;
-      // try to parse what we have anyway
-      try {
-        const rec = JSON.parse(leftover) as {
-          type: string;
-          [key: string]: unknown;
-        };
-        processRecord(
-          rec,
-          header,
-          systemInfo,
-          summary,
-          exchanges,
-          (h) => {
-            header = h;
-          },
-          (si) => {
-            systemInfo = si;
-          },
-          (s) => {
-            summary = s;
-          },
-        );
-      } catch {
-        // ignore malformed partial line
-      }
+      parseLine(leftover, ctx); // try to parse partial last line
     }
-  } catch (err) {
+  } catch (error) {
     // gzip decompression failed — not a valid gzip file
-    const response: WorkerResponse = { type: 'error', message: String(err) };
+    const response: WorkerResponse = { type: 'error', message: String(error) };
     self.postMessage(response);
     return;
   }
@@ -134,52 +116,56 @@ async function parseBuffer(buffer: ArrayBuffer): Promise<void> {
   self.postMessage(response);
 }
 
+const DEFAULT_TIMEOUT_S = 2;
+
+interface ParseContext {
+  exchanges: DomainExchange[];
+  header: Header | null;
+  setHeader: (h: Header) => void;
+  setSystemInfo: (si: SystemInfo) => void;
+  setSummary: (s: Summary) => void;
+}
+
 function processRecord(
   rec: { type: string; [key: string]: unknown },
-  header: Header | null,
-  _systemInfo: SystemInfo | null,
-  _summary: Summary | null,
-  exchanges: DomainExchange[],
-  setHeader: (h: Header) => void,
-  setSystemInfo: (si: SystemInfo) => void,
-  setSummary: (s: Summary) => void,
+  ctx: ParseContext,
 ): void {
   switch (rec.type) {
-    case 'header':
-      setHeader(rec as unknown as Header);
+    case 'header': {
+      ctx.setHeader(rec as unknown as Header);
       break;
+    }
     case 'system_info': {
       const si = rec as unknown as SystemInfo;
       if (si.point === 'start') {
-        setSystemInfo(si);
+        ctx.setSystemInfo(si);
       }
       break;
     }
     case 'exchange': {
       const raw = rec as unknown as Exchange;
-      const timeoutS = header?.settings.timeout_s ?? 2.0;
-      exchanges.push(enrichExchange(raw, timeoutS));
+      const timeoutS = ctx.header?.settings.timeout_s ?? DEFAULT_TIMEOUT_S;
+      ctx.exchanges.push(enrichExchange(raw, timeoutS));
       break;
     }
-    case 'summary':
-      setSummary(rec as unknown as Summary); // last occurrence wins
+    case 'summary': {
+      ctx.setSummary(rec as unknown as Summary); // last occurrence wins
       break;
-    case 'event':
-      // silently skip
-      break;
-    default:
-      // unknown type — silently skip
-      break;
+    }
+    default: // silently skip events and unknown types
   }
 }
 
+const MS_PER_S = 1000;
+const OID_TRUNCATE_ARCS = 7;
+const LAST_INDEX = -1;
+
 function enrichExchange(raw: Exchange, timeoutS: number): DomainExchange {
   const attempts = raw.attempts;
-  // format spec guarantees minItems: 1 — safe to index without null check
-  // biome-ignore lint/style/noNonNullAssertion: format spec guarantees minItems: 1
-  const first = attempts[0]!;
-  // biome-ignore lint/style/noNonNullAssertion: format spec guarantees minItems: 1
-  const last = attempts[attempts.length - 1]!;
+  // format spec guarantees minItems: 1 — tuple type ensures attempts[0] is always defined
+  const first = attempts[0];
+  // at(LAST_INDEX) is safe: tuple guarantees at least one element
+  const last = attempts.at(LAST_INDEX) ?? first;
 
   const isTimeout = last.received_at === null;
 
@@ -188,9 +174,9 @@ function enrichExchange(raw: Exchange, timeoutS: number): DomainExchange {
   const receivedAtSec: number = isTimeout
     ? last.sent_at + timeoutS
     : (last.received_at ?? last.sent_at + timeoutS);
-  const rtt = (receivedAtSec - first.sent_at) * 1000;
-  const receivedAtMs = receivedAtSec * 1000;
-  const sentAtMs = first.sent_at * 1000;
+  const rtt = (receivedAtSec - first.sent_at) * MS_PER_S;
+  const receivedAtMs = receivedAtSec * MS_PER_S;
+  const sentAtMs = first.sent_at * MS_PER_S;
 
   // responseOids: unique 7-arc-truncated OIDs from response varbinds
   const responseOids = truncateAndDeduplicateOids(raw.response?.varbinds ?? []);
@@ -209,11 +195,11 @@ function enrichExchange(raw: Exchange, timeoutS: number): DomainExchange {
 }
 
 function truncateOid(oid: string): string {
-  // Take first 7 arc components
-  return oid.split('.').slice(0, 7).join('.');
+  // Take first OID_TRUNCATE_ARCS arc components
+  return oid.split('.').slice(0, OID_TRUNCATE_ARCS).join('.');
 }
 
-function truncateAndDeduplicateOids(varbinds: Array<Varbind>): OidString[] {
+function truncateAndDeduplicateOids(varbinds: Varbind[]): OidString[] {
   const seen = new Set<string>();
   const result: OidString[] = [];
   for (const vb of varbinds) {

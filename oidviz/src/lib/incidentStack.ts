@@ -1,6 +1,6 @@
 import type { DomainExchange, Incident, OidString } from './model';
 
-const REGION_PREFIXES: ReadonlyArray<readonly [string, string]> = [
+const REGION_PREFIXES: readonly (readonly [string, string])[] = [
   // Longer prefixes must come before shorter ones sharing the same root
   ['1.3.6.1.2.1.2.2.1', 'ifTable'],
   ['1.3.6.1.2.1.1.', 'system'],
@@ -13,24 +13,35 @@ const REGION_PREFIXES: ReadonlyArray<readonly [string, string]> = [
 ];
 
 const GAP_WINDOW = 8;
+const OID_PREFIX_ARCS = 8;
+
+const SCORE_TIMEOUT_WEIGHT = 100;
+const SCORE_VIOLATION_WEIGHT = 50;
+const SCORE_RETRY_WEIGHT = 10;
+const SCORE_RTT_LOG_WEIGHT = 5;
+const SCORE_SIZE_WEIGHT = 0.1;
 
 function getRegion(oid: OidString): string {
   for (const [prefix, name] of REGION_PREFIXES) {
-    if (oid.startsWith(prefix)) return name;
+    if (oid.startsWith(prefix)) {
+      return name;
+    }
   }
-  return oid.split('.').slice(0, 8).join('.');
+  return oid.split('.').slice(0, OID_PREFIX_ARCS).join('.');
 }
 
 function dominantRegion(
   members: number[],
-  exchanges: ReadonlyArray<DomainExchange>,
+  exchanges: readonly DomainExchange[],
 ): string {
   const counts = new Map<string, number>();
   let best = '';
   let bestCount = 0;
   for (const i of members) {
     const ex = exchanges[i];
-    if (ex === undefined) continue;
+    if (ex === undefined) {
+      continue;
+    }
     const r = getRegion(ex.requestOid);
     const c = (counts.get(r) ?? 0) + 1;
     counts.set(r, c);
@@ -44,17 +55,17 @@ function dominantRegion(
 
 function computeScore(c: Incident): number {
   return (
-    100 * c.timeoutCount +
-    50 * c.violationTypes.size +
-    10 * c.retryCount +
-    Math.log10(Math.max(c.peakRtt, 1)) * 5 +
-    c.members.length * 0.1
+    SCORE_TIMEOUT_WEIGHT * c.timeoutCount +
+    SCORE_VIOLATION_WEIGHT * c.violationTypes.size +
+    SCORE_RETRY_WEIGHT * c.retryCount +
+    Math.log10(Math.max(c.peakRtt, 1)) * SCORE_RTT_LOG_WEIGHT +
+    c.members.length * SCORE_SIZE_WEIGHT
   );
 }
 
 function buildCluster(
   members: number[],
-  exchanges: ReadonlyArray<DomainExchange>,
+  exchanges: readonly DomainExchange[],
 ): Incident {
   // members is always non-empty when called
   const startIdx = members[0] as number;
@@ -94,10 +105,12 @@ function buildCluster(
 }
 
 export function buildIncidents(
-  exchanges: ReadonlyArray<DomainExchange>,
+  exchanges: readonly DomainExchange[],
   slowMs: number,
 ): Incident[] {
-  if (exchanges.length === 0) return [];
+  if (exchanges.length === 0) {
+    return [];
+  }
 
   // Build anomaly boolean array in O(n)
   const anomalous = exchanges.map(
@@ -114,8 +127,10 @@ export function buildIncidents(
   let clusterMembers: number[] | null = null;
   let lastMemberIdx = -1;
 
-  for (let i = 0; i < exchanges.length; i++) {
-    if (!anomalous[i]) continue;
+  for (let i = 0; i < exchanges.length; i += 1) {
+    if (!anomalous[i]) {
+      continue;
+    }
 
     if (clusterMembers === null) {
       // Start first cluster

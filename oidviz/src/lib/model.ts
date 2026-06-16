@@ -54,6 +54,12 @@ export interface Incident {
   score: number;
 }
 
+export enum Severity {
+  Ok = 0,
+  Slow = 1,
+  Violation = 2,
+}
+
 // TrieNode — internal node of the OID trie
 export interface TrieNode {
   arc: string;
@@ -63,7 +69,7 @@ export interface TrieNode {
   leaves: TrieLeaf[];
   expanded: boolean; // intentionally mutable — only mutable field in domain model
   stats: { count: number; maxRtt: number; violationCount: number };
-  severity: 0 | 1 | 2; // 0=ok, 1=slow, 2=violation; propagated upward
+  severity: Severity; // 0=ok, 1=slow, 2=violation; propagated upward
 }
 
 // TrieLeaf
@@ -78,7 +84,10 @@ export type FlatRow =
   | { kind: 'leaf'; depth: number; exchange: DomainExchange; shared: boolean };
 
 // Worker message protocol — typed discriminated unions
-export type WorkerRequest = { type: 'parse'; buffer: ArrayBuffer };
+export interface WorkerRequest {
+  type: 'parse';
+  buffer: ArrayBuffer;
+}
 
 export type WorkerResponse =
   | { type: 'result'; data: ParseResult }

@@ -27,24 +27,33 @@ function openFilePicker() {
 function onFileChange(event: Event) {
   const input = event.target as HTMLInputElement;
   const file = input.files?.[0];
-  if (!file) return;
+  if (!file) {
+    return;
+  }
   file.arrayBuffer().then((buf) => emit('file-selected', buf));
 }
 
-async function loadFixture(name: string) {
-  const response = await fetch(`/tools/fixtures/${name}.oidtrace.jsonl.gz`);
-  const buf = await response.arrayBuffer();
-  emit('fixture-selected', buf);
+function loadFixture(name: string) {
+  fetch(`/tools/fixtures/${name}.oidtrace.jsonl.gz`)
+    .then((response) => response.arrayBuffer())
+    .then((buf) => {
+      emit('fixture-selected', buf);
+    })
+    .catch(() => {
+      /* ignore fetch errors */
+    });
 }
 
 function onSlowChange(e: Event) {
   emit('filter-change', { slow: (e.target as HTMLInputElement).checked });
 }
 
+const MS_PER_S = 1000;
+
 function onSlowMsChange(e: Event) {
   const val = Number.parseFloat((e.target as HTMLInputElement).value);
   if (!Number.isNaN(val)) {
-    emit('filter-change', { slowMs: val * 1000 });
+    emit('filter-change', { slowMs: val * MS_PER_S });
   }
 }
 
@@ -57,44 +66,63 @@ const sysDescrFull = computed(() => {
   return String(props.result?.systemInfo?.values?.sysDescr ?? '');
 });
 
-const sysObjectID = computed(() => {
+const sysObjectId = computed(() => {
   return String(props.result?.systemInfo?.values?.sysObjectID ?? '');
 });
 
+const CENTISECS_PER_SEC = 100;
+const SECS_PER_DAY = 86_400;
+const SECS_PER_HOUR = 3600;
+const SECS_PER_MIN = 60;
+
 const sysUpTimeFormatted = computed(() => {
   const raw = props.result?.systemInfo?.values?.sysUpTime;
-  if (raw == null) return '';
+  if (raw === null || raw === undefined) {
+    return '';
+  }
   // sysUpTime is in centiseconds (TimeTicks)
-  const totalSecs = Math.floor(Number(raw) / 100);
-  const days = Math.floor(totalSecs / 86400);
-  const hours = Math.floor((totalSecs % 86400) / 3600);
-  const mins = Math.floor((totalSecs % 3600) / 60);
-  const secs = totalSecs % 60;
-  if (days > 0) return `${days}d ${hours}h ${mins}m`;
-  if (hours > 0) return `${hours}h ${mins}m ${secs}s`;
+  const totalSecs = Math.floor(Number(raw) / CENTISECS_PER_SEC);
+  const days = Math.floor(totalSecs / SECS_PER_DAY);
+  const hours = Math.floor((totalSecs % SECS_PER_DAY) / SECS_PER_HOUR);
+  const mins = Math.floor((totalSecs % SECS_PER_HOUR) / SECS_PER_MIN);
+  const secs = totalSecs % SECS_PER_MIN;
+  if (days > 0) {
+    return `${days}d ${hours}h ${mins}m`;
+  }
+  if (hours > 0) {
+    return `${hours}h ${mins}m ${secs}s`;
+  }
   return `${mins}m ${secs}s`;
 });
 
 const totalViolations = computed(() => {
   const counts = props.result?.summary?.violation_counts;
-  if (!counts) return 0;
+  if (!counts) {
+    return 0;
+  }
   return Object.values(counts).reduce((sum, n) => sum + n, 0);
 });
 
 const durationFormatted = computed(() => {
   const at = props.result?.summary?.at;
-  if (at == null) return '';
+  if (at === null || at === undefined) {
+    return '';
+  }
   const totalSecs = Math.floor(at);
-  const days = Math.floor(totalSecs / 86400);
-  const hours = Math.floor((totalSecs % 86400) / 3600);
-  const mins = Math.floor((totalSecs % 3600) / 60);
-  const secs = totalSecs % 60;
-  if (days > 0) return `${days}d ${hours}h ${mins}m`;
-  if (hours > 0) return `${hours}h ${mins}m ${secs}s`;
+  const days = Math.floor(totalSecs / SECS_PER_DAY);
+  const hours = Math.floor((totalSecs % SECS_PER_DAY) / SECS_PER_HOUR);
+  const mins = Math.floor((totalSecs % SECS_PER_HOUR) / SECS_PER_MIN);
+  const secs = totalSecs % SECS_PER_MIN;
+  if (days > 0) {
+    return `${days}d ${hours}h ${mins}m`;
+  }
+  if (hours > 0) {
+    return `${hours}h ${mins}m ${secs}s`;
+  }
   return `${mins}m ${secs}s`;
 });
 
-const viewLabels: Record<'incidents' | 'minimap' | 'oidtree', string> = {
+const viewLabels: { [K in 'incidents' | 'minimap' | 'oidtree']: string } = {
   incidents: 'Incidents',
   minimap: 'Minimap',
   oidtree: 'OID Tree',

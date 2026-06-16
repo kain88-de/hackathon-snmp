@@ -15,7 +15,9 @@ function openFilePicker() {
 function onFileChange(event: Event) {
   const input = event.target as HTMLInputElement;
   const file = input.files?.[0];
-  if (!file) return;
+  if (!file) {
+    return;
+  }
   isDragging.value = false;
   file.arrayBuffer().then((buf) => emit('file-selected', buf));
 }
@@ -23,9 +25,13 @@ function onFileChange(event: Event) {
 function onDrop(event: DragEvent) {
   isDragging.value = false;
   const file = event.dataTransfer?.files[0];
-  if (!file) return;
+  if (!file) {
+    return;
+  }
   // Only accept .oidtrace.jsonl.gz files
-  if (!file.name.endsWith('.oidtrace.jsonl.gz')) return;
+  if (!file.name.endsWith('.oidtrace.jsonl.gz')) {
+    return;
+  }
   file.arrayBuffer().then((buf) => emit('file-selected', buf));
 }
 </script>
