@@ -1,5 +1,6 @@
 <script setup lang="ts">
 import { computed, onMounted, onUnmounted, ref } from 'vue';
+import Sidebar from './components/Sidebar.vue';
 import { matchesFacets } from './lib/filters.ts';
 import { buildIncidents } from './lib/incidentStack.ts';
 import type { ActiveView, AppState, FacetState, ParseResult, WorkerResponse } from './lib/model.ts';
@@ -114,9 +115,18 @@ onUnmounted(() => {
 
 <template>
   <div class="app-layout">
-    <aside class="sidebar">
-      <!-- Sidebar placeholder -->
-    </aside>
+    <Sidebar
+      :appState="appState"
+      :result="parseResult"
+      :facetState="facetState"
+      :activeView="activeView"
+      :darkMode="darkMode"
+      @file-selected="handleFileSelected"
+      @fixture-selected="handleFileSelected"
+      @view-change="handleViewChange"
+      @facet-change="handleFacetChange"
+      @toggle-dark-mode="toggleDarkMode"
+    />
     <main class="main-content">
       <div v-if="appState.phase === 'landing'">
         Landing screen placeholder
