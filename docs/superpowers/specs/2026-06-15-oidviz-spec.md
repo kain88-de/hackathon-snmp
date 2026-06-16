@@ -174,7 +174,7 @@ Read-only fields from `header.settings`: `bulk_size`, `timeout_s`, `retries`, `s
 
 ## Visual reference
 
-`oidviz/prototypes/index.html` is the authoritative visual reference for all four views. Open it in a browser to see the exact layout, colours, and interactions. The descriptions below specify structure and behaviour; the prototype resolves any ambiguity about appearance.
+`docs/superpowers/specs/oidviz-prototypes/index.html` is the authoritative visual reference for all four views. Open it in a browser to see the exact layout, colours, and interactions. The descriptions below specify structure and behaviour; the prototype resolves any ambiguity about appearance.
 
 ---
 

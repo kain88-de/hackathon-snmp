@@ -297,7 +297,7 @@ Each step is independently verifiable:
 
 ## Files to update in the prototype
 
-The prototype at `oidviz/prototypes/index.html` is the authoritative visual reference and must be updated before the spec is revised.
+The prototype at `docs/superpowers/specs/oidviz-prototypes/index.html` is the authoritative visual reference and must be updated before the spec is revised.
 
 Changes needed:
 - Add `--dim-*` colour tokens to `:root` / `[data-theme=dark]`
