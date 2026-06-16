@@ -124,36 +124,48 @@ Shown after a file loads:
 ### Views
 Navigation: **Findings** (default) · Incident Stack · Minimap + Detail · OID Tree. Active view highlighted.
 
-### Filters
-- **Slow** (checkbox, on by default) — exchanges with RTT > threshold; inline threshold input in seconds (default `1`)
-- **Violations** (checkbox, on by default) — exchanges with at least one entry in `violations`
-- **Retries** (checkbox, on by default) — exchanges with >1 attempt
-- **Timeouts** (checkbox, off by default) — exchanges where the last attempt has `received_at === null`
+### Facets
 
-Changing a filter or threshold immediately re-renders the active view.
+The sidebar exposes two independent axes and one attribute. All default to "Any" / unchecked so the views show all exchanges on first load.
 
-#### Filter compose rule
+**Performance** (radio, default Any):
+- **Any** — no performance constraint
+- **Fast** — `!isTimeout && rtt ≤ slowMs`
+- **Slow** — `!isTimeout && rtt > slowMs`; inline threshold in seconds (default `1`)
+- **Timed out** — `isTimeout`
 
-Each checkbox means "include this category". Filters combine with **OR**: an exchange passes if it satisfies **any** checked criterion. When no filter is checked, all exchanges are shown (unfiltered).
+**Correctness** (radio, default Any):
+- **Any** — no correctness constraint
+- **Violations only** — `violations.length > 0`
+
+**Attributes** (checkbox, default unchecked):
+- **Only retried** — `attemptCount > 1`
+
+Changing any facet immediately re-renders the active view.
+
+#### Facet compose rule
+
+Axes are AND-ed together. An exchange passes if it satisfies all active constraints:
 
 ```
-passes = none_checked
-      || (slow      && rtt > slowMs)
-      || (violations && violations.length > 0)
-      || (retries   && attemptCount > 1)
-      || (timeouts  && isTimeout)
+passes =
+  perf_matches(exchange)   &&   // Any always matches
+  corr_matches(exchange)   &&   // Any always matches
+  (!retryOnly || attemptCount > 1)
 ```
 
-Checking "Slow" and "Violation" together means: *show everything that is slow, and also show everything that has violations* — the visible set grows with each additional checkbox. This is why the UI reads as additive even though the implementation is OR.
+Performance states are mutually exclusive — every exchange is exactly one of Fast, Slow, or Timed out. Selecting Slow + Violations only shows slow exchanges that also have protocol errors.
 
-| View | Unit filtered | What OR means |
+**Default state (all Any, not retried)**: every exchange passes — views show all data; Findings sections categorise by performance outcome.
+
+| View | Unit | Facet effect |
 |---|---|---|
-| Findings | Exchange | Each section shows exchanges from the filtered set that also match that section's dimension |
-| Incident Stack | Cluster | Show cluster if it has at least one member matching any checked criterion (`peakRtt > slowMs`, `violationTypes.size > 0`, `retryCount > 0`, `timeoutCount > 0`) |
+| Findings | Exchange | Sections show the filtered set, partitioned by performance axis |
+| Incident Stack | Cluster | Shown if cluster satisfies all facets (perf: `peakRtt`/`timeoutCount`; corr: `violationTypes.size`; retry: `retryCount`) |
 | Minimap + Detail | Exchange | Only filtered exchanges appear in buckets and detail bars |
 | OID Tree | Exchange | Only filtered exchanges enter the trie |
 
-**"Timeout filter active, OID Tree"**: timeout exchanges have no response OIDs and produce no trie leaves. The OID Tree shows empty with the message: *"Timeouts have no response OIDs — see the Minimap view."*
+**"Timed out" + OID Tree**: timeout exchanges have no response OIDs → trie is empty. Show message: *"Timeouts have no response OIDs — see the Minimap view."*
 
 ### Walk config
 Read-only fields from `header.settings`: `bulk_size`, `timeout_s`, `retries`, `start_oid`, `time_budget_s` (optional), `resume_from` (optional).
@@ -184,52 +196,43 @@ Where a single element can only show one colour (a minimap pixel, a canvas bar),
 
 ## View: Findings (default)
 
-Answers: *"What types of problems exist in this trace, and where?"*
+Answers: *"What is the performance picture of this trace?"*
 
-The Findings view categorises the filtered exchange set into four sections by dimension. It is the default landing view after a file loads.
+The Findings view partitions the filtered exchange set into sections by **performance outcome**. It is the default landing view after a file loads.
 
-### Structure
+### Sections
 
-Four collapsible sections, always visible simultaneously (accordion — not tabs), in fixed order:
+Three collapsible sections, collapsed by default, in fixed order:
 
 ```
-⏱ Slow        (n)
-⚠ Violation   (n)
-↻ Retry       (n)
-✕ Timeout     (n)
+⏱ Slow        (n)   — !isTimeout && rtt > slowMs
+✕ Timed out   (n)   — isTimeout
+⚠ Fast        (n)   — !isTimeout && rtt ≤ slowMs  [only shown when non-empty]
 ```
 
-Each section header shows the dimension colour, glyph, label, and count. A section with zero members is shown collapsed and greyed — absence is informative.
+The Fast section appears only when the facet selection produces fast exchanges in the filtered set (e.g. Correctness = Violations only reveals fast exchanges that violated protocol). In the default state (Performance = Any) it is hidden — the interesting data is in Slow and Timed out.
 
-An exchange appears in **every section whose dimension it satisfies**. An exchange that is both slow and has violations appears in both Slow and Violation.
+Each section header shows the dimension colour, glyph, label, and count. A section with zero members is shown collapsed and greyed.
 
-### Categorisation and filtering
+### Violations and retries as row badges
 
-Sections categorise the **already-filtered set** — they do not re-widen it. When no filter is checked, each section shows all exchanges exhibiting that dimension (the natural explore mode). When filters are checked, each section shows only the intersection.
+Violations and retries are not top-level sections — they are inline badges on rows:
+- `⚠` on any row where `violations.length > 0`
+- `↻×N` on any row where `attemptCount > 1`
 
 ### Unit of display: the exchange
 
-Rows are individual exchanges. One exchange with multiple response OIDs is one row — per-OID detail belongs in the OID Tree.
+Rows are individual exchanges. One exchange with multiple response OIDs is one row — per-OID breakdown belongs in the OID Tree.
 
-### Row layout per section
+### Row layout
 
-| Section | Metric (right-aligned) | Secondary |
+Left: `requestOid` (named if known) · `#seq` · inline badges. Right: RTT metric · `t=…s` offset.
+
+| Section | Metric | Sort |
 |---|---|---|
-| Slow | RTT in ms, `--dim-slow` colour | `t=…s` |
-| Violation | violation type string(s) | `{rtt}ms`, `t=…s` |
-| Retry | `{attemptCount}×` | `{rtt}ms`, `t=…s` |
-| Timeout | `timeout` badge | `t=…s` |
-
-Left side of each row: `requestOid` (named if known) · `#seq`. OID truncated with title attribute showing full value.
-
-### Sorting within each section
-
-| Section | Sort |
-|---|---|
-| Slow | RTT descending |
-| Violation | violation count descending, then RTT descending |
-| Retry | `attemptCount` descending |
-| Timeout | `seq` ascending (chronological) |
+| Slow | RTT (ms or s) in `--dim-slow` | RTT descending |
+| Timed out | RTT (timeout budget) | `seq` ascending |
+| Fast | violation type string(s) | violation count desc, then RTT |
 
 ### Interaction
 
@@ -295,8 +298,8 @@ Each incident row:
 - **Subtitle**: seq range · peak RTT · exchange count · retry count (omitted if 0)
 - **Walk position bar**: shows where in the walk this incident falls (proportional)
 
-### Filters
-Incidents are hidden/shown based on active sidebar filters (AND semantics at cluster level). Count label updates accordingly.
+### Facets
+Incidents are shown only when they satisfy all active facets. A cluster satisfies the Performance facet if its dominant outcome matches (perf=Slow: `peakRtt > slowMs && timeoutCount === 0`; perf=Timed out: `timeoutCount > 0`; perf=Fast: `peakRtt ≤ slowMs && timeoutCount === 0`). Correctness and Retry facets apply to cluster-level aggregates. Count label updates accordingly.
 
 ### Virtualised rendering
 Only rows within the visible viewport are rendered.
@@ -305,7 +308,7 @@ Only rows within the visible viewport are rendered.
 Opens on row click. Fixed overlay with backdrop; clicking the backdrop or pressing Escape closes it.
 - Header: incident number · region · seq range · Prev / Next navigation · close button
 - Summary stats grid: Peak RTT, Timeouts, Retries, Exchanges, Violations
-- Exchange table: Seq · OID · RTT · Flag (timeout / violation type / retry count). Only exchanges that pass the active filter are shown in this table.
+- Exchange table: Seq · OID · RTT · Flag (timeout / violation type / retry count). Only exchanges that pass the active facets are shown in this table.
 
 ---
 
@@ -341,8 +344,8 @@ Hover tooltip: seq, % into trace, violation/status, RTT, sent-at time, OID.
 
 Toolbar: window time range label · "Zoom to problems" (focuses densest problem bucket) · "Reset window" (restores default 5% width).
 
-### Filters
-Active sidebar filters (AND) determine which exchanges appear in minimap buckets and detail bars.
+### Facets
+Active facets determine which exchanges appear in minimap buckets and detail bars.
 
 ---
 
@@ -379,8 +382,8 @@ Nodes with any dimension flag set (`slow || violation || retry`) are expanded by
 ### Toolbar
 "Collapse all" · matching/shown count label.
 
-### Filters
-Active sidebar filters (AND) determine which exchanges enter the trie. Filter changes trigger a full trie rebuild — expand state is not preserved across filter changes.
+### Facets
+Active facets determine which exchanges enter the trie. Facet changes trigger a full trie rebuild — expand state is not preserved across facet changes.
 
 ---
 
