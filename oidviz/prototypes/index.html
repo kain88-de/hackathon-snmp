@@ -13,6 +13,15 @@
   --mono: ui-monospace, 'Cascadia Code', Menlo, monospace;
   --sidebar-w: 220px;
   --sb: #1e293b; --sb-text: #e2e8f0; --sb-muted: #94a3b8; --sb-border: #334155;
+  --dim-slow: #3b82f6;
+  --dim-violation: #f59e0b;
+  --dim-retry: #93c5fd;
+  --dim-timeout: #ef4444;
+  --dim-none: #94a3b8;
+  --dim-slow-bg: #dbeafe;
+  --dim-violation-bg: #fef3c7;
+  --dim-retry-bg: #e0f2fe;
+  --dim-timeout-bg: #fee2e2;
 }
 body { background: var(--bg); color: var(--text); font-family: system-ui, sans-serif; font-size: 14px; display: flex; height: 100vh; overflow: hidden; }
 
@@ -96,6 +105,10 @@ body { background: var(--bg); color: var(--text); font-family: system-ui, sans-s
 .severity-chip.err  { background: #fee2e2; color: #dc2626; }
 .severity-chip.warn { background: #fef3c7; color: #d97706; }
 .severity-chip.info { background: #dbeafe; color: #3b82f6; }
+.severity-chip.dim-timeout  { background: var(--dim-timeout-bg); color: var(--dim-timeout); }
+.severity-chip.dim-violation { background: var(--dim-violation-bg); color: var(--dim-violation); }
+.severity-chip.dim-slow     { background: var(--dim-slow-bg); color: var(--dim-slow); }
+.severity-chip.dim-retry    { background: var(--dim-retry-bg); color: var(--dim-retry); }
 .incident-title { flex: 1; min-width: 0; display: flex; flex-direction: column; gap: 3px; }
 .incident-name { font-size: 13px; font-weight: 600; white-space: nowrap; overflow: hidden; text-overflow: ellipsis; }
 .incident-sub  { font-size: 11px; color: var(--muted); font-family: var(--mono); white-space: nowrap; overflow: hidden; text-overflow: ellipsis; }
@@ -104,6 +117,8 @@ body { background: var(--bg); color: var(--text); font-family: system-ui, sans-s
 .pos-bar-track { width: 100%; height: 12px; border-radius: 6px; background: #e2e8f0; position: relative; overflow: hidden; }
 .pos-bar-fill  { position: absolute; top: 0; height: 100%; border-radius: 6px; min-width: 5px; }
 .pos-bar-fill.err { background: #dc2626; } .pos-bar-fill.warn { background: #d97706; } .pos-bar-fill.info { background: #3b82f6; }
+.pos-bar-fill.dim-timeout { background: var(--dim-timeout); } .pos-bar-fill.dim-violation { background: var(--dim-violation); }
+.pos-bar-fill.dim-slow { background: var(--dim-slow); } .pos-bar-fill.dim-retry { background: var(--dim-retry); }
 .pos-bar-ticks { display: flex; justify-content: space-between; font-size: 9px; color: #94a3b8; font-family: ui-monospace, monospace; }
 
 #v7-detail-overlay { display: none; position: fixed; inset: 0; background: rgba(15,23,42,.5); z-index: 200; align-items: center; justify-content: center; }
@@ -121,6 +136,41 @@ body { background: var(--bg); color: var(--text); font-family: system-ui, sans-s
 .tag-viol { color: #d97706; font-weight: 600; } .tag-timeout { color: #dc2626; font-weight: 600; } .tag-retry { color: #3b82f6; font-weight: 600; }
 
 #global-tooltip { position: fixed; background: #1e293b; color: #f1f5f9; font-size: 11px; font-family: var(--mono); padding: 7px 10px; border-radius: 6px; pointer-events: none; display: none; z-index: 100; white-space: pre; line-height: 1.6; }
+
+/* Findings by Category */
+#vf-chart-wrap { flex: 1; overflow-y: auto; background: var(--surface); }
+.findings-section { border-bottom: 2px solid var(--border); }
+.findings-header {
+  display: flex; align-items: center; gap: 10px;
+  padding: 10px 16px; cursor: pointer; user-select: none;
+  background: var(--surface); border-bottom: 1px solid var(--border);
+  position: sticky; top: 0; z-index: 10;
+}
+.findings-header:hover { background: #f8fafc; }
+.findings-dim-dot {
+  width: 10px; height: 10px; border-radius: 50%; flex-shrink: 0;
+}
+.findings-header-label { font-size: 13px; font-weight: 700; flex: 1; }
+.findings-count {
+  font-size: 11px; font-family: var(--mono); color: var(--muted);
+  background: var(--bg); border-radius: 10px; padding: 1px 8px;
+}
+.findings-caret { color: var(--muted); font-size: 11px; }
+.findings-rows { display: none; }
+.findings-rows.open { display: block; }
+.finding-row {
+  display: flex; align-items: center; gap: 10px;
+  padding: 6px 16px 6px 36px;
+  border-bottom: 1px solid #f1f5f9;
+  font-size: 12px; font-family: var(--mono);
+  cursor: pointer; transition: background .1s;
+}
+.finding-row:hover { background: #f8fafc; }
+.finding-oid { flex: 1; overflow: hidden; text-overflow: ellipsis; white-space: nowrap; color: var(--text); }
+.finding-seq { color: var(--muted); flex-shrink: 0; font-size: 11px; }
+.finding-metric { font-weight: 700; flex-shrink: 0; min-width: 80px; text-align: right; }
+.finding-secondary { color: var(--muted); flex-shrink: 0; font-size: 11px; }
+.findings-empty { padding: 24px 36px; color: var(--muted); font-size: 12px; font-style: italic; }
 </style>
 </head>
 <body>
@@ -174,7 +224,10 @@ body { background: var(--bg); color: var(--text); font-family: system-ui, sans-s
 
   <div class="sb-section" id="sb-views" style="display:none">
     <div class="sb-title">View</div>
-    <button class="view-btn active" id="nav-v7" onclick="switchView('v7')">
+    <button class="view-btn active" id="nav-vf" onclick="switchView('vf')">
+      <span class="view-btn-icon">⊟</span>Findings
+    </button>
+    <button class="view-btn" id="nav-v7" onclick="switchView('v7')">
       <span class="view-btn-icon">⚑</span>Incident Stack
     </button>
     <button class="view-btn" id="nav-v5" onclick="switchView('v5')">
@@ -191,6 +244,56 @@ body { background: var(--bg); color: var(--text); font-family: system-ui, sans-s
     <div class="drop-box" id="main-drop-box" onclick="document.getElementById('file-input').click()">
       <div class="drop-title">Drop a trace file or click to open</div>
       <div class="drop-sub">Accepts <b>.oidtrace.jsonl.gz</b></div>
+    </div>
+  </div>
+
+  <!-- VF: Findings by Category -->
+  <div class="view-panel active" id="view-vf">
+    <div class="view-toolbar">
+      <span id="vf-count-label" style="font-weight:600;color:var(--text)"></span>
+      <span style="flex:1"></span>
+    </div>
+    <div id="vf-chart-wrap">
+      <!-- SLOW section -->
+      <div class="findings-section" id="vf-slow-section">
+        <div class="findings-header" onclick="VF.toggleSection('slow')">
+          <div class="findings-dim-dot" style="background:var(--dim-slow)"></div>
+          <span class="findings-header-label" style="color:var(--dim-slow)">&#x23F1; Slow</span>
+          <span class="findings-count" id="vf-slow-count">0</span>
+          <span class="findings-caret" id="vf-slow-caret">&#x25BE;</span>
+        </div>
+        <div class="findings-rows open" id="vf-slow-rows"></div>
+      </div>
+      <!-- VIOLATION section -->
+      <div class="findings-section" id="vf-violation-section">
+        <div class="findings-header" onclick="VF.toggleSection('violation')">
+          <div class="findings-dim-dot" style="background:var(--dim-violation)"></div>
+          <span class="findings-header-label" style="color:var(--dim-violation)">&#x26A0; Violation</span>
+          <span class="findings-count" id="vf-violation-count">0</span>
+          <span class="findings-caret" id="vf-violation-caret">&#x25BE;</span>
+        </div>
+        <div class="findings-rows open" id="vf-violation-rows"></div>
+      </div>
+      <!-- RETRY section -->
+      <div class="findings-section" id="vf-retry-section">
+        <div class="findings-header" onclick="VF.toggleSection('retry')">
+          <div class="findings-dim-dot" style="background:var(--dim-retry)"></div>
+          <span class="findings-header-label" style="color:var(--dim-retry)">&#x21BB; Retry</span>
+          <span class="findings-count" id="vf-retry-count">0</span>
+          <span class="findings-caret" id="vf-retry-caret">&#x25BE;</span>
+        </div>
+        <div class="findings-rows open" id="vf-retry-rows"></div>
+      </div>
+      <!-- TIMEOUT section -->
+      <div class="findings-section" id="vf-timeout-section">
+        <div class="findings-header" onclick="VF.toggleSection('timeout')">
+          <div class="findings-dim-dot" style="background:var(--dim-timeout)"></div>
+          <span class="findings-header-label" style="color:var(--dim-timeout)">&#x2715; Timeout</span>
+          <span class="findings-count" id="vf-timeout-count">0</span>
+          <span class="findings-caret" id="vf-timeout-caret">&#x25BE;</span>
+        </div>
+        <div class="findings-rows open" id="vf-timeout-rows"></div>
+      </div>
     </div>
   </div>
 
@@ -269,7 +372,7 @@ body { background: var(--bg); color: var(--text); font-family: system-ui, sans-s
 // ── Shared state ──
 let ALL = [], traceHeader = null, traceSummary = null, traceSystemInfo = null;
 let SLOW_MS = 1000;
-let activeView = 'v7';
+let activeView = 'vf';
 let traceMaxT = 1;
 
 // ── Drop zone wiring ──
@@ -361,13 +464,14 @@ async function parseAndShow(blob) {
 
   // Show active view
   document.getElementById('drop-screen').classList.add('hidden');
-  ['v7','v5','v1'].forEach(v =>
+  ['vf','v7','v5','v1'].forEach(v =>
     document.getElementById('view-' + v).classList.toggle('active', v === activeView)
   );
 
   V7.onData();
   V5.onData();
   V1.onData();
+  VF.onData();
 }
 
 function updateWalkInfo(header, summary, systemInfo, parseMs) {
@@ -411,13 +515,14 @@ function updateWalkInfo(header, summary, systemInfo, parseMs) {
 
 function switchView(id) {
   activeView = id;
-  ['v7','v5','v1'].forEach(v => {
+  ['vf','v7','v5','v1'].forEach(v => {
     document.getElementById('view-' + v).classList.toggle('active', v === id);
     document.getElementById('nav-' + v).classList.toggle('active', v === id);
   });
   if (!ALL.length) return;
   if (id === 'v5') V5.onActivate();
   if (id === 'v1') V1.onActivate();
+  if (id === 'vf') VF.render(ALL, getFilters());
 }
 
 function getFilters() {
@@ -433,6 +538,7 @@ function applyFilters() {
   if (!ALL.length) return;
   if (activeView === 'v7')      V7.applyFilters();
   else if (activeView === 'v5') V5.applyFilters();
+  else if (activeView === 'vf') VF.render(ALL, getFilters());
   else                          V1.applyFilters();
 }
 
@@ -497,7 +603,10 @@ const V7 = (() => {
   }
 
   function sevCls(c) {
-    return c.timeoutCount > 0 ? 'err' : (c.violationTypes.size > 0 || c.peakRtt > SLOW_MS) ? 'warn' : 'info';
+    if (c.timeoutCount > 0) return 'dim-timeout';
+    if (c.violationTypes.size > 0) return 'dim-violation';
+    if (c.peakRtt > SLOW_MS) return 'dim-slow';
+    return 'dim-retry';
   }
 
   function applyFilters() {
@@ -771,8 +880,14 @@ const V5 = (() => {
 
   function applyFilters(initial=false) {
     maxT=traceMaxT;
-    const f=getFilters(), any=f.slow||f.viol||f.retry;
-    filtered=any?ALL.filter(e=>(f.slow&&e.rtt>SLOW_MS)||(f.viol&&!!e.violation)||(f.retry&&e.attempts.length>1)):ALL.slice();
+    const f=getFilters(), any=f.slow||f.viol||f.retry||f.timeout;
+    filtered=any?ALL.filter(e=>{
+      if(f.slow&&e.rtt<=SLOW_MS)return false;
+      if(f.viol&&!e.violation)return false;
+      if(f.retry&&e.attempts.length<=1)return false;
+      if(f.timeout&&!e.timeout)return false;
+      return true;
+    }):ALL.slice();
     miniCanvas.width=miniWrap.clientWidth||800; miniCanvas.height=MINI_H; miniW=miniCanvas.width;
     buildBuckets(); if(initial) autoFocus(); drawMini(); drawDetail();
   }
@@ -822,11 +937,13 @@ const V1 = (() => {
 
   function buildTrie() {
     const f=getFilters(), r=mkNode('','');
+    const anyChecked=f.slow||f.viol||f.retry||f.timeout;
     for (const exc of ALL) {
-      if(f.slow||f.viol||f.retry||f.timeout){
-        const ms=f.slow&&exc.rtt>SLOW_MS&&!exc.violation&&!exc.timeout;
-        const mv=f.viol&&!!exc.violation, mr=f.retry&&exc.attempts.length>1, mt=f.timeout&&exc.timeout;
-        if(!ms&&!mv&&!mr&&!mt) continue;
+      if(anyChecked){
+        if(f.slow&&exc.rtt<=SLOW_MS)continue;
+        if(f.viol&&!exc.violation)continue;
+        if(f.retry&&exc.attempts.length<=1)continue;
+        if(f.timeout&&!exc.timeout)continue;
       }
       const shared=exc.oids.length>1;
       for(const pfx of exc.oids){
@@ -837,7 +954,7 @@ const V1 = (() => {
           if(!node.children.has(arc)) node.children.set(arc,mkNode(arc,acc));
           node=node.children.get(arc);
         }
-        node.leaves.push({exc,shared});
+        node.leaves.push({exc,shared,oid:pfx});
       }
     }
     return r;
@@ -864,7 +981,7 @@ const V1 = (() => {
     rows.push({depth,type:'node',node});
     if(!node.expanded) return;
     for(const c of node.children.values())flatNode(c,depth+1,rows);
-    for(const {exc,shared} of node.leaves)rows.push({depth:depth+1,type:'leaf',exc,shared});
+    for(const {exc,shared,oid} of node.leaves)rows.push({depth:depth+1,type:'leaf',exc,shared,oid});
   }
 
   function paintRows() {
@@ -911,7 +1028,7 @@ const V1 = (() => {
       const exc=row.exc; el.className='tree-row leaf';
       const sp=document.createElement('span'); sp.style.cssText=`width:${indent+14}px;flex-shrink:0`; el.appendChild(sp);
       const lb=document.createElement('span'); lb.className='row-label';
-      lb.innerHTML=`<span style="color:var(--muted);font-size:11px">#${exc.seq}</span> ${exc.oids[0]||''}`;
+      lb.innerHTML=`<span style="color:var(--muted);font-size:11px">#${exc.seq}</span> ${row.oid||exc.oid||''}`;
       if(row.shared){const st=document.createElement('span');st.className='shared-tag';st.textContent='(shared)';lb.appendChild(st);}
       el.appendChild(lb);
       const ce=document.createElement('span'); ce.className='row-count'; ce.textContent=exc.attempts.length>1?exc.attempts.length+'×':'—'; el.appendChild(ce);
@@ -934,6 +1051,96 @@ const V1 = (() => {
     applyFilters,
     onActivate() { renderVP(); },
     collapseAllAndRender() { if(!root)return; collapseAll(root); flatRows=flatten(root); paintRows(); },
+  };
+})();
+
+// ═══════════════════════════════════════════════════════
+// VF — Findings by Category
+// ═══════════════════════════════════════════════════════
+const VF = (() => {
+  function truncate(s, n) { return s.length > n ? s.slice(0, n) + '…' : s; }
+
+  function escH(s) { return String(s).replace(/&/g,'&amp;').replace(/</g,'&lt;').replace(/>/g,'&gt;').replace(/"/g,'&quot;'); }
+
+  function categorise(exchanges, slowMs) {
+    const slow = [], violation = [], retry = [], timeout = [];
+    for (const ex of exchanges) {
+      if (ex.timeout) timeout.push(ex);
+      if (ex.violation) violation.push(ex);
+      if (ex.attempts.length > 1) retry.push(ex);
+      if (ex.rtt > slowMs) slow.push(ex);
+    }
+    slow.sort((a, b) => b.rtt - a.rtt);
+    violation.sort((a, b) => (b.violation ? 1 : 0) - (a.violation ? 1 : 0) || b.rtt - a.rtt);
+    retry.sort((a, b) => b.attempts.length - a.attempts.length);
+    timeout.sort((a, b) => a.seq - b.seq);
+    return { slow, violation, retry, timeout };
+  }
+
+  function makeRow(ex, metric) {
+    return `<div class="finding-row" onclick="console.log('focus exchange', ${ex.seq})">` +
+      `<span class="finding-oid" title="${escH(ex.oid)}">${escH(truncate(ex.oid, 40))}</span>` +
+      `<span class="finding-seq">#${ex.seq}</span>` +
+      `<span class="finding-metric">${escH(metric)}</span>` +
+      `<span class="finding-secondary">t=${(ex.sentAtMs/1000).toFixed(2)}s</span>` +
+      `</div>`;
+  }
+
+  function fillSection(dimKey, items, metricFn) {
+    const rowsEl = document.getElementById('vf-' + dimKey + '-rows');
+    const countEl = document.getElementById('vf-' + dimKey + '-count');
+    countEl.textContent = items.length.toLocaleString();
+    if (!items.length) {
+      rowsEl.innerHTML = '<div class="findings-empty">No ' + dimKey + ' exchanges.</div>';
+      return;
+    }
+    rowsEl.innerHTML = items.map(ex => makeRow(ex, metricFn(ex))).join('');
+  }
+
+  function render(exchanges, filterState) {
+    // Apply AND filter
+    const f = filterState;
+    const anyChecked = f.slow || f.viol || f.retry || f.timeout;
+    let filtered;
+    if (!anyChecked) {
+      filtered = exchanges.slice();
+    } else {
+      filtered = exchanges.filter(ex => {
+        if (f.slow && ex.rtt <= SLOW_MS) return false;
+        if (f.viol && !ex.violation) return false;
+        if (f.retry && ex.attempts.length <= 1) return false;
+        if (f.timeout && !ex.timeout) return false;
+        return true;
+      });
+    }
+
+    const cats = categorise(filtered, SLOW_MS);
+
+    fillSection('slow',      cats.slow,      ex => ex.rtt >= 1000 ? (ex.rtt/1000).toFixed(2)+'s' : ex.rtt.toFixed(0)+'ms');
+    fillSection('violation', cats.violation, ex => ex.violation || '—');
+    fillSection('retry',     cats.retry,     ex => ex.attempts.length + '× attempts');
+    fillSection('timeout',   cats.timeout,   ex => ex.rtt >= 1000 ? (ex.rtt/1000).toFixed(2)+'s' : ex.rtt.toFixed(0)+'ms');
+
+    const label =
+      cats.slow.length.toLocaleString() + ' slow · ' +
+      cats.violation.length.toLocaleString() + ' violations · ' +
+      cats.retry.length.toLocaleString() + ' retries · ' +
+      cats.timeout.length.toLocaleString() + ' timeouts';
+    document.getElementById('vf-count-label').textContent = label;
+  }
+
+  function toggleSection(dim) {
+    const rowsEl  = document.getElementById('vf-' + dim + '-rows');
+    const caretEl = document.getElementById('vf-' + dim + '-caret');
+    const isOpen  = rowsEl.classList.contains('open');
+    rowsEl.classList.toggle('open', !isOpen);
+    caretEl.textContent = isOpen ? '▸' : '▾';
+  }
+
+  return {
+    onData()  { render(ALL, getFilters()); },
+    render,
+    toggleSection,
   };
 })();
 </script>
