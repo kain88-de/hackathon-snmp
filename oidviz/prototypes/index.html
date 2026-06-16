@@ -520,13 +520,24 @@ function switchView(id) {
   if (id === 'vf') VF.render();
 }
 
-function getFilters() {
+function getFacets() {
   return {
-    slow:    document.getElementById('f-slow')?.checked    ?? false,
-    viol:    document.getElementById('f-viol')?.checked    ?? false,
-    retry:   document.getElementById('f-retry')?.checked   ?? false,
-    timeout: document.getElementById('f-timeout')?.checked ?? false,
+    perf:      document.querySelector('input[name="f-perf"]:checked')?.value ?? 'any',
+    corr:      document.querySelector('input[name="f-corr"]:checked')?.value ?? 'any',
+    retryOnly: document.getElementById('f-retry')?.checked ?? false,
   };
+}
+
+function applyFacets(exchanges) {
+  const f = getFacets();
+  return exchanges.filter(ex => {
+    if (f.perf === 'fast'    && (ex.timeout || ex.rtt > SLOW_MS))  return false;
+    if (f.perf === 'slow'    && (ex.timeout || ex.rtt <= SLOW_MS)) return false;
+    if (f.perf === 'timeout' && !ex.timeout)                        return false;
+    if (f.corr === 'violations' && !ex.violation)                   return false;
+    if (f.retryOnly && ex.attempts.length <= 1)                     return false;
+    return true;
+  });
 }
 
 function applyFilters() {
@@ -605,10 +616,14 @@ const V7 = (() => {
   }
 
   function applyFilters() {
-    const f = getFilters();
+    const f = getFacets();
     shownClusters = clusters.filter(c => {
-      if (c.timeoutCount > 0 && (f.slow || f.viol || f.retry)) return true;
-      return (f.slow && c.peakRtt > SLOW_MS) || (f.viol && c.violationTypes.size > 0) || (f.retry && c.retryCount > 0);
+      if (f.perf === 'timeout' && c.timeoutCount === 0)             return false;
+      if (f.perf === 'slow'    && c.peakRtt <= SLOW_MS)            return false;
+      if (f.perf === 'fast'    && (c.timeoutCount > 0 || c.peakRtt > SLOW_MS)) return false;
+      if (f.corr === 'violations' && c.violationTypes.size === 0)   return false;
+      if (f.retryOnly && c.retryCount === 0)                        return false;
+      return true;
     });
     document.getElementById('v7-count-label').textContent =
       shownClusters.length.toLocaleString() + ' incident' + (shownClusters.length !== 1 ? 's' : '');
@@ -875,14 +890,7 @@ const V5 = (() => {
 
   function applyFilters(initial=false) {
     maxT=traceMaxT;
-    const f=getFilters(), any=f.slow||f.viol||f.retry||f.timeout;
-    filtered=any?ALL.filter(e=>{
-      if(f.slow&&e.rtt>SLOW_MS)return true;
-      if(f.viol&&e.violation)return true;
-      if(f.retry&&e.attempts.length>1)return true;
-      if(f.timeout&&e.timeout)return true;
-      return !(f.slow||f.viol||f.retry||f.timeout);
-    }):ALL.slice();
+    filtered=applyFacets(ALL);
     miniCanvas.width=miniWrap.clientWidth||800; miniCanvas.height=MINI_H; miniW=miniCanvas.width;
     buildBuckets(); if(initial) autoFocus(); drawMini(); drawDetail();
   }
@@ -931,13 +939,8 @@ const V1 = (() => {
     expanded:false, stats:{count:0,maxRtt:0,viol:0}, severity:0});
 
   function buildTrie() {
-    const f=getFilters(), r=mkNode('','');
-    const anyChecked=f.slow||f.viol||f.retry||f.timeout;
-    for (const exc of ALL) {
-      if(anyChecked){
-        const match=(f.slow&&exc.rtt>SLOW_MS)||(f.viol&&exc.violation)||(f.retry&&exc.attempts.length>1)||(f.timeout&&exc.timeout);
-        if(!match)continue;
-      }
+    const r=mkNode('','');
+    for (const exc of applyFacets(ALL)) {
       const shared=exc.oids.length>1;
       for(const pfx of exc.oids){
         const parts=pfx.split('.');
@@ -1055,28 +1058,6 @@ const VF = (() => {
 
   function escH(s) { return String(s).replace(/&/g,'&amp;').replace(/</g,'&lt;').replace(/>/g,'&gt;').replace(/"/g,'&quot;'); }
 
-  function getFacets() {
-    return {
-      perf:      document.querySelector('input[name="f-perf"]:checked')?.value    ?? 'any',
-      corr:      document.querySelector('input[name="f-corr"]:checked')?.value    ?? 'any',
-      retryOnly: document.getElementById('f-retry')?.checked ?? false,
-    };
-  }
-
-  function applyFacets(exchanges, facets) {
-    return exchanges.filter(ex => {
-      // Performance axis
-      if (facets.perf === 'fast'    && (ex.timeout || ex.rtt > SLOW_MS)) return false;
-      if (facets.perf === 'slow'    && (ex.timeout || ex.rtt <= SLOW_MS)) return false;
-      if (facets.perf === 'timeout' && !ex.timeout) return false;
-      // Correctness axis
-      if (facets.corr === 'violations' && !ex.violation) return false;
-      // Retry attribute
-      if (facets.retryOnly && ex.attempts.length <= 1) return false;
-      return true;
-    });
-  }
-
   function fmtRtt(ex) {
     return ex.rtt >= 1000 ? (ex.rtt/1000).toFixed(2)+'s' : Math.round(ex.rtt)+'ms';
   }
@@ -1110,8 +1091,7 @@ const VF = (() => {
   }
 
   function render() {
-    const facets   = getFacets();
-    const filtered = applyFacets(ALL, facets);
+    const filtered = applyFacets(ALL);
 
     const slow    = filtered.filter(ex => !ex.timeout && ex.rtt > SLOW_MS).sort((a,b) => b.rtt - a.rtt);
     const timeout = filtered.filter(ex => ex.timeout).sort((a,b) => a.seq - b.seq);
@@ -1138,9 +1118,8 @@ const VF = (() => {
   }
 
   return {
-    onData()     { render(); },
+    onData()  { render(); },
     render,
-    getFacets,
     toggleSection,
   };
 })();
