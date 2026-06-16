@@ -116,7 +116,6 @@ function countLeaves(node: TrieNode): number {
 </script>
 
 <template>
-  <h1 class="sr-only">OIDviz</h1>
   <Sidebar
     :appState="appState"
     :result="viewerResult"
@@ -130,6 +129,7 @@ function countLeaves(node: TrieNode): number {
     @toggle-dark-mode="toggleDarkMode"
   />
   <main class="main-area">
+    <h1 class="sr-only">OIDviz</h1>
     <LandingScreen
       v-if="appState.phase !== 'viewer'"
       :appState="appState"
