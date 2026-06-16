@@ -57,6 +57,7 @@ export interface TrieNode {
   name: string | null;
   children: Map<string, TrieNode>;
   leaves: TrieLeaf[];
+  // Intentionally mutable — only mutable domain field
   expanded: boolean;
   stats: { count: number; maxRtt: number; violationCount: number };
   flags: TrieNodeFlags;
