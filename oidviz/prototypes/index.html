@@ -283,7 +283,7 @@ body { background: var(--bg); color: var(--text); font-family: system-ui, sans-s
       <div class="findings-section" id="vf-fast-section" style="display:none">
         <div class="findings-header" onclick="VF.toggleSection('fast')">
           <div class="findings-dim-dot" style="background:var(--dim-violation)"></div>
-          <span class="findings-header-label" style="color:var(--dim-violation)">&#x26A0; Fast with violations</span>
+          <span class="findings-header-label" style="color:var(--dim-violation)">&#x26A0; Fast</span>
           <span class="findings-count" id="vf-fast-count">0</span>
           <span class="findings-caret" id="vf-fast-caret">&#x25B8;</span>
         </div>
@@ -1125,7 +1125,7 @@ const VF = (() => {
     const parts = [];
     if (slow.length)    parts.push(slow.length.toLocaleString() + ' slow');
     if (timeout.length) parts.push(timeout.length.toLocaleString() + ' timed out');
-    if (fast.length)    parts.push(fast.length.toLocaleString() + ' fast with violations');
+    if (fast.length)    parts.push(fast.length.toLocaleString() + ' fast');
     document.getElementById('vf-count-label').textContent = parts.join(' · ') || 'No exchanges match';
   }
 
