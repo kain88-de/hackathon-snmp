@@ -1,7 +1,7 @@
 # OIDviz web toolchain guardrails
 
 Reference for agents setting up or extending the oidviz web app.
-Stack: **Svelte + TypeScript + Bun + Vite**.
+Stack: **Vue 3 + TypeScript + Bun + Vite**. (Stack changed from Svelte 5 to Vue 3 — company-wide Vue adoption.)
 
 ---
 
@@ -83,19 +83,21 @@ Output is structured JSON — `target` is the failing DOM node, `failureSummary`
 
 ---
 
-## Agent feedback loop (fastest to slowest)
+## Agent feedback loop (lint and types first)
 
-Run this sequence on every file save. Stop at the first failure and feed the output back as a prompt.
+Lint and types run first — they are the fastest checks and catch the most issues. Run in order on every file save. Stop
+at the first failure and feed the output back as a prompt.
 
 ```
-1. bun test                         (<100ms)  logic
-2. bunx oxlint src/                 (<50ms)   syntax + basic a11y
-3. bunx biome check --formatter-enabled=false (<200ms) a11y + style
-4. bunx tsc --noEmit --skipLibCheck (~1-2s)   types
-5. bunx @axe-core/cli http://localhost:5173   rendered a11y
+1. bunx oxlint src/                            (<50ms)   syntax + basic a11y
+2. bunx tsc --noEmit --skipLibCheck           (~1-2s)   types
+3. bunx biome check src/                      (<200ms)  a11y + style + format check
+4. bun test                                   (<100ms)  logic
+5. just a11y                                  (~10s)    rendered a11y (builds + serves via vite preview)
 ```
 
-Steps 1–4 run without a browser. Step 5 requires the dev server to be running.
+Steps 1–4 run without a browser. Step 5 builds the app and serves it via `vite preview` — no separate dev server needed.
+Use `just ci` to run all five steps in sequence.
 
 ---
 
@@ -107,17 +109,17 @@ Steps 1–4 run without a browser. Step 5 requires the dev server to be running.
 | `npx tsc` | `bunx tsc` |
 | Install ESLint | Use Oxlint |
 | Run `tsc --build` for feedback | `tsc --noEmit --skipLibCheck` |
-| Skip step 5 for UI changes | Always axe-check pages agents touch |
+| Skip step 5 for UI changes | Always axe-check pages agents touch — `just a11y` is self-contained |
 
 ---
 
 ## Type generation from JSON Schema
 
-The trace format schema lives at `../traceformat/docs/trace-format.schema.json`.
+The trace format schema lives at `../docs/trace-format.schema.json`.
 Generate TypeScript types once at setup and after schema changes:
 
 ```sh
-bunx json-schema-to-typescript ../traceformat/docs/trace-format.schema.json \
+bunx json-schema-to-typescript ../docs/trace-format.schema.json \
   -o src/types.gen.ts
 ```
 
