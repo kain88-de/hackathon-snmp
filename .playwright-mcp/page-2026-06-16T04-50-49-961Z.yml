@@ -1,0 +1,262 @@
+- generic [ref=e1]:
+  - generic [ref=e2]:
+    - generic [ref=e3]: OIDviz
+    - generic [ref=e4]:
+      - generic [ref=e5]: Load
+      - button "Open trace file…" [ref=e6] [cursor=pointer]
+      - generic [ref=e7]:
+        - button "trace-5k" [ref=e8] [cursor=pointer]
+        - button "trace-50k" [ref=e9] [cursor=pointer]
+        - button "trace-100k" [ref=e10] [cursor=pointer]
+        - button "focused" [ref=e11] [cursor=pointer]
+    - generic [ref=e44]:
+      - generic [ref=e45]: Device
+      - generic [ref=e46]:
+        - generic [ref=e47]: sysDescr
+        - generic "Synthetic NOS 1.0 — 100000 exchanges" [ref=e808]
+      - generic [ref=e49]:
+        - generic [ref=e50]: sysObjectID
+        - generic [ref=e51]: 1.3.6.1.4.1.99999.1.1
+      - generic [ref=e52]:
+        - generic [ref=e53]: sysUpTime
+        - generic [ref=e54]: 57d 0h 38m
+    - generic [ref=e55]:
+      - generic [ref=e56]: Walk info
+      - generic [ref=e57]:
+        - generic [ref=e58]: Label
+        - generic [ref=e59]: synthetic-100000
+      - generic [ref=e60]:
+        - generic [ref=e61]: SNMP
+        - generic [ref=e62]: 2c
+      - generic [ref=e63]:
+        - generic [ref=e64]: Start OID
+        - generic [ref=e65]: 1.3.6.1
+      - generic [ref=e66]:
+        - generic [ref=e67]: Exchanges
+        - generic [ref=e68]: 100,000
+      - generic [ref=e69]:
+        - generic [ref=e70]: OIDs seen
+        - generic [ref=e71]: 1,000,000
+      - generic [ref=e72]:
+        - generic [ref=e73]: Duration
+        - generic [ref=e74]: 24m 22s
+      - generic [ref=e75]:
+        - generic [ref=e76]: Violations
+        - generic [ref=e77]: 1,179
+      - generic [ref=e78]:
+        - generic [ref=e79]: End reason
+        - generic [ref=e80]: completed
+      - generic [ref=e81]:
+        - generic [ref=e82]: Parse time
+        - generic [ref=e83]: 1098ms
+    - generic [ref=e84]:
+      - generic [ref=e85]: Filters
+      - generic [ref=e86] [cursor=pointer]:
+        - checkbox "Slow > 1 s" [ref=e87]
+        - text: Slow >
+        - spinbutton [ref=e88]: "1"
+        - text: s
+      - generic [ref=e89] [cursor=pointer]:
+        - checkbox "Violations" [checked] [ref=e90]
+        - text: Violations
+      - generic [ref=e91] [cursor=pointer]:
+        - checkbox "Retries" [ref=e92]
+        - text: Retries
+      - generic [ref=e93] [cursor=pointer]:
+        - checkbox "Timeouts" [ref=e94]
+        - text: Timeouts
+    - generic [ref=e95]:
+      - generic [ref=e96]: View
+      - button "⊟ Findings" [ref=e97] [cursor=pointer]:
+        - generic [ref=e98]: ⊟
+        - text: Findings
+      - button "⚑ Incident Stack" [ref=e99] [cursor=pointer]:
+        - generic [ref=e100]: ⚑
+        - text: Incident Stack
+      - button "▬ Minimap + Detail" [ref=e101] [cursor=pointer]:
+        - generic [ref=e102]: ▬
+        - text: Minimap + Detail
+      - button "⊞ OID Tree" [active] [ref=e103] [cursor=pointer]:
+        - generic [ref=e104]: ⊞
+        - text: OID Tree
+  - generic [ref=e4051]:
+    - generic [ref=e4052]:
+      - button "Collapse all" [ref=e4053] [cursor=pointer]
+      - generic [ref=e4054]: 100,000 matching / 100,000 shown
+    - generic [ref=e4055]:
+      - generic [ref=e4056]:
+        - generic [ref=e4057]: OID / Name
+        - generic [ref=e4058]: Count
+        - generic [ref=e4059]: Max RTT
+        - generic [ref=e4060]: Violations
+      - generic [ref=e4061]:
+        - generic "1" [ref=e4062] [cursor=pointer]:
+          - generic [ref=e4063]: ▾
+          - generic [ref=e4064]: "1"
+          - generic [ref=e4065]: 100,000
+          - generic [ref=e4066]: 2.3s
+          - generic [ref=e4068]: "1179"
+        - generic "1.3" [ref=e4069] [cursor=pointer]:
+          - generic [ref=e4070]: ▾
+          - generic [ref=e4071]: "3"
+          - generic [ref=e4072]: 100,000
+          - generic [ref=e4073]: 2.3s
+          - generic [ref=e4075]: "1179"
+        - generic "1.3.6" [ref=e4076] [cursor=pointer]:
+          - generic [ref=e4077]: ▾
+          - generic [ref=e4078]: "6"
+          - generic [ref=e4079]: 100,000
+          - generic [ref=e4080]: 2.3s
+          - generic [ref=e4082]: "1179"
+        - generic "1.3.6.1" [ref=e4083] [cursor=pointer]:
+          - generic [ref=e4084]: ▾
+          - generic [ref=e4085]: "1"
+          - generic [ref=e4086]: 100,000
+          - generic [ref=e4087]: 2.3s
+          - generic [ref=e4089]: "1179"
+        - generic "1.3.6.1.2" [ref=e4090] [cursor=pointer]:
+          - generic [ref=e4091]: ▾
+          - generic [ref=e4092]: "2"
+          - generic [ref=e4093]: 72,728
+          - generic [ref=e4094]: 2.3s
+          - generic [ref=e4096]: "865"
+        - generic "1.3.6.1.2.1" [ref=e4097] [cursor=pointer]:
+          - generic [ref=e4098]: ▾
+          - generic [ref=e4099]: "1"
+          - generic [ref=e4100]: 72,728
+          - generic [ref=e4101]: 2.3s
+          - generic [ref=e4103]: "865"
+        - generic "1.3.6.1.2.1.1" [ref=e4104] [cursor=pointer]:
+          - generic [ref=e4105]: ▾
+          - generic [ref=e4106]: 1system
+          - generic [ref=e4107]: 9,091
+          - generic [ref=e4108]: 2.3s
+          - generic [ref=e4110]: "111"
+        - generic [ref=e4111]:
+          - generic [ref=e4112]: "#1 1.3.6.1.2.1.1"
+          - generic [ref=e4113]: —
+          - generic [ref=e4114]: 0.3ms
+        - generic [ref=e4115]:
+          - generic [ref=e4116]: "#12 1.3.6.1.2.1.1"
+          - generic [ref=e4117]: —
+          - generic [ref=e4118]: 0.4ms
+        - generic [ref=e4119]:
+          - generic [ref=e4120]: "#23 1.3.6.1.2.1.1"
+          - generic [ref=e4121]: —
+          - generic [ref=e4122]: 0.4ms
+        - generic [ref=e4123]:
+          - generic [ref=e4124]: "#34 1.3.6.1.2.1.1"
+          - generic [ref=e4125]: —
+          - generic [ref=e4126]: 0.9ms
+        - generic [ref=e4127]:
+          - generic [ref=e4128]: "#45 1.3.6.1.2.1.1"
+          - generic [ref=e4129]: —
+          - generic [ref=e4130]: 0.5ms
+        - generic [ref=e4131]:
+          - generic [ref=e4132]: "#56 1.3.6.1.2.1.1"
+          - generic [ref=e4133]: —
+          - generic [ref=e4134]: 0.1ms
+        - generic [ref=e4135]:
+          - generic [ref=e4136]: "#67 1.3.6.1.2.1.1"
+          - generic [ref=e4137]: —
+          - generic [ref=e4138]: 3.9ms
+        - generic [ref=e4139]:
+          - generic [ref=e4140]: "#78 1.3.6.1.2.1.1"
+          - generic [ref=e4141]: —
+          - generic [ref=e4142]: 0.8ms
+        - generic [ref=e4143]:
+          - generic [ref=e4144]: "#89 1.3.6.1.2.1.1"
+          - generic [ref=e4145]: —
+          - generic [ref=e4146]: 0.2ms
+        - generic [ref=e4147]:
+          - generic [ref=e4148]: "#100 1.3.6.1.2.1.1"
+          - generic [ref=e4149]: —
+          - generic [ref=e4150]: 0.5ms
+        - generic [ref=e4151]:
+          - generic [ref=e4152]: "#111 1.3.6.1.2.1.1"
+          - generic [ref=e4153]: —
+          - generic [ref=e4154]: 0.1ms
+        - generic [ref=e4155]:
+          - generic [ref=e4156]: "#122 1.3.6.1.2.1.1"
+          - generic [ref=e4157]: —
+          - generic [ref=e4158]: 0.7ms
+        - generic [ref=e4159]:
+          - generic [ref=e4160]: "#133 1.3.6.1.2.1.1"
+          - generic [ref=e4161]: —
+          - generic [ref=e4162]: 0.3ms
+        - generic [ref=e4163]:
+          - generic [ref=e4164]: "#144 1.3.6.1.2.1.1"
+          - generic [ref=e4165]: —
+          - generic [ref=e4166]: 0.5ms
+        - generic [ref=e4167]:
+          - generic [ref=e4168]: "#155 1.3.6.1.2.1.1"
+          - generic [ref=e4169]: —
+          - generic [ref=e4170]: 0.6ms
+        - generic [ref=e4171]:
+          - generic [ref=e4172]: "#166 1.3.6.1.2.1.1"
+          - generic [ref=e4173]: —
+          - generic [ref=e4174]: 0.7ms
+        - generic [ref=e4175]:
+          - generic [ref=e4176]: "#177 1.3.6.1.2.1.1"
+          - generic [ref=e4177]: —
+          - generic [ref=e4178]: 0.2ms
+        - generic [ref=e4179]:
+          - generic [ref=e4180]: "#188 1.3.6.1.2.1.1"
+          - generic [ref=e4181]: —
+          - generic [ref=e4182]: 0.2ms
+        - generic [ref=e4183]:
+          - generic [ref=e4184]: "#199 1.3.6.1.2.1.1"
+          - generic [ref=e4185]: —
+          - generic [ref=e4186]: 0.4ms
+        - generic [ref=e4187]:
+          - generic [ref=e4188]: "#210 1.3.6.1.2.1.1"
+          - generic [ref=e4189]: —
+          - generic [ref=e4190]: 0.1ms
+        - generic [ref=e4191]:
+          - generic [ref=e4192]: "#221 1.3.6.1.2.1.1"
+          - generic [ref=e4193]: —
+          - generic [ref=e4194]: 0.9ms
+        - generic [ref=e4195]:
+          - generic [ref=e4196]: "#232 1.3.6.1.2.1.1"
+          - generic [ref=e4197]: —
+          - generic [ref=e4198]: 0.4ms
+        - generic [ref=e4199]:
+          - generic [ref=e4200]: "#243 1.3.6.1.2.1.1"
+          - generic [ref=e4201]: —
+          - generic [ref=e4202]: 0.6ms
+        - generic [ref=e4203]:
+          - generic [ref=e4204]: "#254 1.3.6.1.2.1.1"
+          - generic [ref=e4205]: —
+          - generic [ref=e4206]: 0.5ms
+        - generic [ref=e4207]:
+          - generic [ref=e4208]: "#265 1.3.6.1.2.1.1"
+          - generic [ref=e4209]: —
+          - generic [ref=e4210]: 0.2ms
+        - generic [ref=e4211]:
+          - generic [ref=e4212]: "#276 1.3.6.1.2.1.1"
+          - generic [ref=e4213]: 2×
+          - generic [ref=e4214]: 2.30s
+        - generic [ref=e4215]:
+          - generic [ref=e4216]: "#287 1.3.6.1.2.1.1"
+          - generic [ref=e4217]: —
+          - generic [ref=e4218]: 0.6ms
+        - generic [ref=e4219]:
+          - generic [ref=e4220]: "#298 1.3.6.1.2.1.1"
+          - generic [ref=e4221]: —
+          - generic [ref=e4222]: 0.5ms
+        - generic [ref=e4223]:
+          - generic [ref=e4224]: "#309 1.3.6.1.2.1.1"
+          - generic [ref=e4225]: —
+          - generic [ref=e4226]: 0.7ms
+        - generic [ref=e4227]:
+          - generic [ref=e4228]: "#320 1.3.6.1.2.1.1"
+          - generic [ref=e4229]: —
+          - generic [ref=e4230]: 0.9ms
+        - generic [ref=e4231]:
+          - generic [ref=e4232]: "#331 1.3.6.1.2.1.1"
+          - generic [ref=e4233]: —
+          - generic [ref=e4234]: 0.5ms
+        - generic [ref=e4235]:
+          - generic [ref=e4236]: "#342 1.3.6.1.2.1.1"
+          - generic [ref=e4237]: —
+          - generic [ref=e4238]: 0.6ms

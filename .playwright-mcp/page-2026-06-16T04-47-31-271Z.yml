@@ -1,0 +1,32 @@
+- generic [active] [ref=e1]:
+  - generic [ref=e2]:
+    - generic [ref=e3]: OIDviz
+    - generic [ref=e4]:
+      - generic [ref=e5]: Load
+      - button "Open trace file…" [ref=e6] [cursor=pointer]
+      - generic [ref=e7]:
+        - button "trace-5k" [ref=e8] [cursor=pointer]
+        - button "trace-50k" [ref=e9] [cursor=pointer]
+        - button "trace-100k" [ref=e10] [cursor=pointer]
+        - button "focused" [ref=e11] [cursor=pointer]
+  - generic [ref=e12]:
+    - generic [ref=e14] [cursor=pointer]:
+      - generic [ref=e15]: Drop a trace file or click to open
+      - generic [ref=e16]: Accepts .oidtrace.jsonl.gz
+    - generic [ref=e19]:
+      - generic [ref=e21] [cursor=pointer]:
+        - generic [ref=e23]: ⏱ Slow
+        - generic [ref=e24]: "0"
+        - generic [ref=e25]: ▾
+      - generic [ref=e27] [cursor=pointer]:
+        - generic [ref=e29]: ⚠ Violation
+        - generic [ref=e30]: "0"
+        - generic [ref=e31]: ▾
+      - generic [ref=e33] [cursor=pointer]:
+        - generic [ref=e35]: ↻ Retry
+        - generic [ref=e36]: "0"
+        - generic [ref=e37]: ▾
+      - generic [ref=e39] [cursor=pointer]:
+        - generic [ref=e41]: ✕ Timeout
+        - generic [ref=e42]: "0"
+        - generic [ref=e43]: ▾
