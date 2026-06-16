@@ -34,7 +34,7 @@ function onFileChange(event: Event) {
 }
 
 function loadFixture(name: string) {
-  fetch(`/tools/fixtures/${name}.oidtrace.jsonl.gz`)
+  fetch(`/../traceformat/examples/${name}.oidtrace.jsonl.gz`)
     .then((response) => response.arrayBuffer())
     .then((buf) => {
       emit('fixture-selected', buf);
