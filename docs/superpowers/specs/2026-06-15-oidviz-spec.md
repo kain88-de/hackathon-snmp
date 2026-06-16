@@ -34,7 +34,7 @@ Vue 3 · TypeScript · Bun · Vite · `@vitejs/plugin-vue` · see `docs/dev-guid
 
 Types are generated from `../docs/trace-format.schema.json` (path relative to `oidviz/`):
 ```sh
-bunx json-schema-to-typescript ../docs/trace-format.schema.json -o src/types.gen.ts
+bunx json-schema-to-typescript ../docs/trace-format.schema.json -o src/lib/types.gen.ts
 ```
 
 Do not hand-write types for trace records.
@@ -96,7 +96,7 @@ Sections (top to bottom):
 `OIDviz` logotype.
 
 ### Load
-"Open trace file…" button + shortcut buttons for bundled fixture files. Hidden file input accepts `.oidtrace.jsonl.gz`. Uncompressed `.oidtrace.jsonl` is not accepted.
+"Open trace file…" button + shortcut buttons for the example trace files in `traceformat/examples/` (`trace-5k`, `trace-50k`, `trace-100k`, `trace-focused`). Hidden file input accepts `.oidtrace.jsonl.gz`. Uncompressed `.oidtrace.jsonl` is not accepted.
 
 ### Device
 Populated from the `system_info` record (`type: "system_info"`, `point: "start"`) when present. Hidden if no such record exists in the trace. Values are looked up by OID key in `system_info.values`.
@@ -207,7 +207,7 @@ Three collapsible sections, collapsed by default, in fixed order:
 ```
 ⏱ Slow        (n)   — !isTimeout && rtt > slowMs
 ✕ Timed out   (n)   — isTimeout
-⚠ Fast        (n)   — !isTimeout && rtt ≤ slowMs  [only shown when non-empty]
+— Fast         (n)   — !isTimeout && rtt ≤ slowMs  [only shown when non-empty]
 ```
 
 The Fast section appears only when the facet selection produces fast exchanges in the filtered set (e.g. Correctness = Violations only reveals fast exchanges that violated protocol). In the default state (Performance = Any) it is hidden — the interesting data is in Slow and Timed out.
@@ -280,7 +280,7 @@ Well-known prefixes mapped to region names for **clustering only** (coarse topol
 
 Matching is longest-prefix-first. Unknown OIDs use the first 8 arcs as the region label.
 
-This list is intentionally separate from the OID Tree's well-known name map (which is for display labels) and from the build-time resolution map (which covers ~2k prefixes for tooltips). Each list is sized to its purpose.
+This list is intentionally separate from the OID Tree's well-known name map (which is for display labels) and from the build-time resolution map (oidNames.ts, for tooltips). Each list is sized to its purpose.
 
 ### Incident scoring
 Score prioritises: timeouts > distinct violation types > retries > peak RTT > member count. `distinctViolationTypes` is the count of unique violation strings across all member exchanges.
@@ -389,7 +389,7 @@ Active facets determine which exchanges enter the trie. Facet changes trigger a 
 
 ## OID name resolution
 
-Bundle a static map of ~2k standard RFC OID prefixes → names at build time. Used for **tooltip display** and node labels that fall outside the OID Tree's short well-known-name list.
+Bundle a static map of standard RFC OID prefixes → names at build time (start with ~50 common prefixes; expand over time). Used for **tooltip display** and node labels that fall outside the OID Tree's short well-known-name list.
 
 Sources: SNMPv2-MIB, IF-MIB, IP-MIB, TCP-MIB, UDP-MIB, HOST-RESOURCES-MIB, SNMP-FRAMEWORK-MIB, common Cisco/Juniper/Net-SNMP enterprise prefixes.
 
@@ -417,13 +417,14 @@ Note: the project uses three OID prefix lists with distinct purposes — see [OI
 | Incident Stack rows | Tab, Enter to open modal |
 | Findings rows | Tab, Enter to focus exchange in Minimap |
 | Incident modal | Escape to close, focus returns to trigger row |
-| Filter checkboxes | Tab, Space/Enter to toggle |
+| Facet radios (Performance, Correctness) | Tab, Arrow keys to select |
+| Only-retried checkbox | Tab, Space to toggle |
 | Number inputs | Standard keyboard editing |
 
 ### Screen reader
 - `<aside>` for sidebar, `<main>` for view area
 - Canvas wrappers: `role="application"`, `aria-label`
-- `aria-live="polite"` region in the sidebar for status messages (file loaded, filter changed)
+- `aria-live="polite"` region in the sidebar for status messages (file loaded, facet changed)
 - Modal open: focus moves to modal heading; modal close: focus returns to trigger row
 
 ### CI gate
