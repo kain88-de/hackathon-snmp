@@ -140,6 +140,57 @@ Steps 1–6 run without a browser. Use `just ci` to run steps 1–6 in sequence 
 
 ---
 
+## TypeScript safety patterns
+
+These patterns are **required**, not optional. They complement the linters — the linters catch syntax; these patterns catch logic errors the type system would otherwise miss.
+
+### 1. `assertNever` for discriminated union exhaustiveness
+
+**TypeScript does NOT automatically error on an incomplete `switch`.** A switch with no `default` arm compiles silently even when a new union variant is added. Always close every union switch with `assertNever`:
+
+```ts
+// src/lib/model.ts — define once, import everywhere
+export const assertNever = (x: never): never => {
+  throw new Error(`Unhandled variant: ${JSON.stringify(x)}`);
+};
+
+// Usage
+switch (response.type) {
+  case 'result': …; break;
+  case 'error':  …; break;
+  default: assertNever(response); // compile error if WorkerResponse gains a new variant
+}
+```
+
+Without `assertNever`, adding a new variant to `AppState` or `WorkerResponse` silently passes the type checker even though no code handles it.
+
+### 2. Brand unit-carrying numbers
+
+`rtt`, `sentAtMs`, `receivedAtMs` are in milliseconds. `sent_at`, `timeout_s` are in seconds. Bare `number` lets a seconds value flow into a milliseconds field silently. Brand them at the conversion site:
+
+```ts
+// src/lib/model.ts
+export type Ms = number & { readonly _brand: 'Ms' };
+export type Seconds = number & { readonly _brand: 'Seconds' };
+export const ms = (n: number): Ms => n as Ms;
+export const seconds = (n: number): Seconds => n as Seconds;
+```
+
+The conversion (`sent_at * 1000`) becomes the only legal `Seconds → Ms` boundary. All downstream consumers are forced to hold `Ms`, not `number`.
+
+### 3. Runtime validation at external trust boundaries
+
+`as SomeType` on `JSON.parse()` output is not type-safe — it asserts structure that was never verified. A malformed input produces an object the type system believes is well-typed but has `undefined` fields at runtime.
+
+**Every external data source must be validated before entering the typed domain:**
+- Worker: JSON lines from `DecompressionStream` — validate shape before casting to `Header`/`Exchange`/etc.
+- `fetch` responses — validate before mapping to domain types
+- `localStorage` — validate before reading as typed config
+
+Use a shape-check function (at minimum, check required fields exist and have the right typeof) or a schema validator. Do not write `JSON.parse(line) as Exchange` without a check.
+
+---
+
 ## Vue component structure — keep logic in `.ts` files
 
 **Rule: if the TypeScript compiler can validate it, it must live in a `.ts` file.**
