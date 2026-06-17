@@ -91,14 +91,16 @@ Run in this order. Stop at the first failure and fix before continuing.
 
 ```
 1. bunx oxlint -D all -c .oxlintrc.json --ignore-pattern "src/lib/types.gen.ts" src/   (<50ms)   syntax + all rules
-2. bunx biome check --formatter-enabled=false src/                                      (<50ms)   all biome lint rules
-3. bunx tsc --noEmit --skipLibCheck                                                     (~1-2s)   types
-4. bunx biome check --linter-enabled=false src/                                         (<50ms)   format check
-5. bun test                                                                             (<100ms)  logic
-6. just a11y                                                                            (~10s)    rendered a11y (build + vite preview)
+2. bunx biome check --formatter-enabled=false --error-on-warnings src/                 (<50ms)   all biome lint rules; warnings are errors
+3. bunx vue-tsc --noEmit --skipLibCheck                                                (~2-4s)   types + template type checking
+4. bunx biome check --linter-enabled=false src/                                        (<50ms)   format check
+5. bun test                                                                            (<100ms)  logic
+6. just a11y                                                                           (~10s)    rendered a11y (build + vite preview)
 ```
 
 Steps 1–5 run without a browser. Use `just ci` to run steps 1–5 in sequence (`lint → types → fmt-check → test`). Run `just a11y` separately before merging.
+
+**Warnings are errors.** `biome check --error-on-warnings` is required in step 2. CI must exit 0 with zero warnings and zero errors.
 
 ---
 
@@ -107,7 +109,7 @@ Steps 1–5 run without a browser. Use `just ci` to run steps 1–5 in sequence 
 | Target      | Command                                                                                             |
 |-------------|-----------------------------------------------------------------------------------------------------|
 | `lint`      | oxlint (`-D all -c .oxlintrc.json --ignore-pattern`) + biome check (`--formatter-enabled=false`)   |
-| `types`     | `bunx tsc --noEmit --skipLibCheck`                                                                  |
+| `types`     | `bunx vue-tsc --noEmit --skipLibCheck`                                                              |
 | `fmt-check` | `bunx biome check --linter-enabled=false src/`                                                      |
 | `test`      | `bun test`                                                                                          |
 | `ci`        | `lint → types → fmt-check → test`                                                                   |
@@ -115,6 +117,28 @@ Steps 1–5 run without a browser. Use `just ci` to run steps 1–5 in sequence 
 | `fmt`       | `bunx biome format --write src/`                                                                    |
 | `dev`       | `bun run dev`                                                                                       |
 | `gen-types` | `bunx json-schema-to-typescript ../docs/trace-format.schema.json -o src/lib/types.gen.ts`          |
+
+---
+
+## Vue component structure
+
+Keep `.vue` files short: `<script setup>` should contain only props/emits declarations and one composable call. Heavy logic lives in `src/composables/` as plain `.ts` files.
+
+```vue
+<!-- Good: .vue file is 30-80 lines -->
+<script setup lang="ts">
+import type { DomainExchange } from '../lib/model.ts';
+import { useMyFeature } from '../composables/useMyFeature.ts';
+
+const props = defineProps<{ exchanges: DomainExchange[] }>();
+const emit = defineEmits<{ 'focus-exchange': [seq: number] }>();
+const { ref1, ref2, onEvent } = useMyFeature(() => props, emit);
+</script>
+```
+
+Benefits: composable `.ts` files are fully linted (no template-scope false positives), fully type-checked by vue-tsc, and independently testable. The `.vue` file stays readable.
+
+**For component imports in App.vue**: Biome cannot cross-reference `<script setup>` bindings with `<template>`, so component imports show as unused. Use `// biome-ignore lint/correctness/noUnusedImports: used in <template>` on each such import — this is the minimal, surgical suppression that keeps the rule active for real unused imports.
 
 ---
 
@@ -126,8 +150,10 @@ Steps 1–5 run without a browser. Use `just ci` to run steps 1–5 in sequence 
 | `npx tsc` | `bunx tsc` |
 | Install ESLint | Use Oxlint with `-D all` |
 | `bunx oxlint src/` without `-D all` | Always pass `-D all -c .oxlintrc.json` |
-| Run `tsc --build` for feedback | `tsc --noEmit --skipLibCheck` |
-| `bunx biome check src/` for lint only | `bunx biome check --formatter-enabled=false src/` |
+| Run `tsc --build` for feedback | `vue-tsc --noEmit --skipLibCheck` |
+| `bunx biome check src/` for lint only | `bunx biome check --formatter-enabled=false --error-on-warnings src/` |
+| Use `tsc` instead of `vue-tsc` | `vue-tsc` checks template types; `tsc` misses them |
+| Put 200+ lines of TS in a `.vue` file | Extract to a composable in `src/composables/` |
 | Skip `just a11y` for UI changes | Always axe-check pages agents touch |
 | Hard-code hex colours in canvas | Read `--dim-*` tokens via `getComputedStyle` at draw time |
 
