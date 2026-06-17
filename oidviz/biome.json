@@ -31,8 +31,8 @@
       "includes": ["**/*.vue"],
       "linter": {
         "rules": {
-          "style": { "noDefaultExport": "off" },
-          "correctness": { "noUnusedVariables": "off" }
+          "style": { "noDefaultExport": "off", "useVueMultiWordComponentNames": "off" },
+          "correctness": { "noUnusedVariables": "off", "noUnusedImports": "off" }
         }
       }
     },
