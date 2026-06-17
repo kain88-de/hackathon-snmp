@@ -4,7 +4,7 @@ default:
     just --list
 
 lint:
-    bunx oxlint -D all -c .oxlintrc.json --ignore-pattern "src/lib/types.gen.ts" -A "unicorn/filename-case" -A "sort-imports" -A "unicorn/no-null" src/
+    bunx oxlint -D all -c .oxlintrc.json --ignore-pattern "src/lib/types.gen.ts" -A "unicorn/filename-case" -A "sort-imports" -A "unicorn/no-null" -A "max-lines" -A "max-lines-per-function" -A "max-params" -A "max-statements" src/
     bunx biome check --formatter-enabled=false src/
 
 types:

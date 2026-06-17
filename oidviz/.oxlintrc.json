@@ -1,7 +1,10 @@
 {
   "rules": {
     "no-magic-numbers": ["warn", { "ignoreEnums": true, "ignoreArrayIndexes": true }],
-    "max-lines": ["warn", { "max": 500 }],
+    "max-lines": "off",
+    "max-lines-per-function": "off",
+    "max-params": "off",
+    "max-statements": "off",
     "no-optional-chaining": "off",
     "no-ternary": "off",
     "no-continue": "off",

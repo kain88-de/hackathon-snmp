@@ -4,6 +4,7 @@ import FindingsByCategory from './components/FindingsByCategory.vue';
 import IncidentModal from './components/IncidentModal.vue';
 import IncidentStack from './components/IncidentStack.vue';
 import LandingScreen from './components/LandingScreen.vue';
+import MinimapDetail from './components/MinimapDetail.vue';
 import Sidebar from './components/Sidebar.vue';
 import { matchesFacets } from './lib/filters.ts';
 import { buildIncidents } from './lib/incidentStack.ts';
@@ -171,10 +172,12 @@ onUnmounted(() => {
           :exchanges="parseResult?.exchanges ?? []"
           @open-incident="openIncidentModal"
         />
-        <div v-else-if="activeView === 'minimap'">
-          Minimap placeholder
-          <!-- oidFlatRows passed here in next task -->
-        </div>
+        <MinimapDetail
+          v-else-if="activeView === 'minimap'"
+          :exchanges="filteredExchanges"
+          :facetState="facetState"
+          @focus-exchange="handleFocusExchange"
+        />
         <div v-else-if="activeView === 'oidtree'">OID Tree placeholder</div>
       </div>
     </main>
