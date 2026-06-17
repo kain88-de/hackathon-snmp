@@ -23,9 +23,9 @@
   --sidebar-border: #dee2e6;
 
   /* DIM tokens for canvas and incident chips */
-  --dim-slow: #f59e0b;
+  --dim-slow: #92400e;
   --dim-slow-bg: #fef3c7;
-  --dim-violation: #dc2626;
+  --dim-violation: #991b1b;
   --dim-violation-bg: #fee2e2;
   --dim-retry: #7c3aed;
   --dim-retry-bg: #ede9fe;
@@ -59,7 +59,7 @@
   --sidebar-text: #f9fafb;
   --sidebar-muted: #9ca3af;
   --sidebar-border: #374151;
-  --dim-slow: #fbbf24;
+  --dim-slow: #fde68a;
   --dim-slow-bg: #78350f;
   --dim-violation: #f87171;
   --dim-violation-bg: #7f1d1d;
