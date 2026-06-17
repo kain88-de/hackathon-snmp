@@ -231,17 +231,17 @@ const parseBuffer = (buffer: ArrayBuffer): Promise<void> => {
           message: 'No header record found in trace file',
           type: 'error',
         };
-        globalThis.postMessage(response, globalThis.location.origin);
+        globalThis.postMessage(response);
         return;
       }
       const successResponse: WorkerResponse = { data: result, type: 'result' };
-      globalThis.postMessage(successResponse, globalThis.location.origin);
+      globalThis.postMessage(successResponse);
     });
 };
 
 const postError = (message: string): void => {
   const response: WorkerResponse = { message, type: 'error' };
-  globalThis.postMessage(response, globalThis.location.origin);
+  globalThis.postMessage(response);
 };
 
 const handleError = (error: unknown): void => {

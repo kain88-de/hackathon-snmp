@@ -475,6 +475,7 @@ const onKeyDown = (event: KeyboardEvent): void => {
 };
 
 let resizeObserver: ResizeObserver | null = null;
+let themeObserver: MutationObserver | null = null;
 
 const syncCanvasWidth = (): void => {
   const mini = minimapRef.value;
@@ -499,6 +500,11 @@ onMounted(() => {
     draw();
   });
   resizeObserver.observe(mini);
+  themeObserver = new MutationObserver(() => {
+    drawMinimap();
+    drawDetail();
+  });
+  themeObserver.observe(document.documentElement, { attributeFilter: ['data-theme'] });
   autoFocus();
   draw();
 });
@@ -506,6 +512,10 @@ onMounted(() => {
 onUnmounted(() => {
   if (resizeObserver) {
     resizeObserver.disconnect();
+  }
+  if (themeObserver !== null) {
+    themeObserver.disconnect();
+    themeObserver = null;
   }
 });
 
