@@ -1,12 +1,19 @@
 <script setup lang="ts">
 import { computed, onMounted, onUnmounted, ref, watch } from 'vue';
+// biome-ignore lint/correctness/noUnusedImports: used in <template> — Biome cannot cross-reference script setup bindings with template
+import AppSidebar from './components/AppSidebar.vue';
+// biome-ignore lint/correctness/noUnusedImports: used in <template>
 import FindingsByCategory from './components/FindingsByCategory.vue';
+// biome-ignore lint/correctness/noUnusedImports: used in <template>
 import IncidentModal from './components/IncidentModal.vue';
+// biome-ignore lint/correctness/noUnusedImports: used in <template>
 import IncidentStack from './components/IncidentStack.vue';
+// biome-ignore lint/correctness/noUnusedImports: used in <template>
 import LandingScreen from './components/LandingScreen.vue';
+// biome-ignore lint/correctness/noUnusedImports: used in <template>
 import MinimapDetail from './components/MinimapDetail.vue';
+// biome-ignore lint/correctness/noUnusedImports: used in <template>
 import OidTree from './components/OidTree.vue';
-import Sidebar from './components/Sidebar.vue';
 import { matchesFacets } from './lib/filters.ts';
 import { buildIncidents } from './lib/incidentStack.ts';
 import type {
@@ -184,7 +191,7 @@ onUnmounted(() => {
 
 <template>
   <div class="app-layout">
-    <Sidebar
+    <AppSidebar
       :appState="appState"
       :result="parseResult"
       :facetState="facetState"

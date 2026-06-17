@@ -1,6 +1,7 @@
 {
   "rules": {
     "no-magic-numbers": ["warn", { "ignoreEnums": true, "ignoreArrayIndexes": true }],
+
     "max-lines": "off",
     "max-lines-per-function": "off",
     "max-params": "off",
