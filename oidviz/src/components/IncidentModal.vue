@@ -48,22 +48,49 @@ onUnmounted(() => {
 
 <template>
   <Teleport to="body">
-    <div class="modal-overlay" @click.self="emit('close')">
+    <div
+      class="modal-overlay"
+      @click.self="emit('close')"
+    >
       <div
         role="dialog"
         aria-modal="true"
         :aria-labelledby="dialogTitleId"
         class="modal-panel"
       >
-        <h2 ref="titleRef" tabindex="-1" :id="dialogTitleId" class="modal-title">
+        <h2
+          :id="dialogTitleId"
+          ref="titleRef"
+          tabindex="-1"
+          class="modal-title"
+        >
           Incident {{ index + 1 }} / {{ total }} — {{ incident.region }}
         </h2>
 
         <div class="modal-nav">
-          <button type="button" :disabled="index === 0" @click="emit('navigate', -1)">← Prev</button>
+          <button
+            type="button"
+            :disabled="index === 0"
+            @click="emit('navigate', -1)"
+          >
+            ← Prev
+          </button>
           <span>{{ index + 1 }} / {{ total }}</span>
-          <button type="button" :disabled="index === total - 1" @click="emit('navigate', 1)">Next →</button>
-          <button type="button" @click="emit('close')" aria-label="Close modal" class="close-btn">✕</button>
+          <button
+            type="button"
+            :disabled="index === total - 1"
+            @click="emit('navigate', 1)"
+          >
+            Next →
+          </button>
+          <button
+            type="button"
+            aria-label="Close modal"
+            class="close-btn"
+            @click="emit('close')"
+          >
+            ✕
+          </button>
         </div>
 
         <div class="incident-stats">
@@ -84,14 +111,28 @@ onUnmounted(() => {
               </tr>
             </thead>
             <tbody>
-              <tr v-for="ex in memberExchanges" :key="ex.seq">
+              <tr
+                v-for="ex in memberExchanges"
+                :key="ex.seq"
+              >
                 <td>{{ ex.seq }}</td>
                 <td>{{ ex.rtt.toFixed(0) }}ms</td>
-                <td class="oid-cell">{{ ex.requestOid }}</td>
+                <td class="oid-cell">
+                  {{ ex.requestOid }}
+                </td>
                 <td>
-                  <span v-if="ex.isTimeout" class="badge badge-timeout">T</span>
-                  <span v-if="ex.violations.length > 0" class="badge badge-violation">V</span>
-                  <span v-if="ex.attemptCount > 1" class="badge badge-retry">R</span>
+                  <span
+                    v-if="ex.isTimeout"
+                    class="badge badge-timeout"
+                  >T</span>
+                  <span
+                    v-if="ex.violations.length > 0"
+                    class="badge badge-violation"
+                  >V</span>
+                  <span
+                    v-if="ex.attemptCount > 1"
+                    class="badge badge-retry"
+                  >R</span>
                 </td>
               </tr>
             </tbody>

@@ -49,7 +49,11 @@ const onFileChange = (event: Event): void => {
 <template>
   <div class="landing-screen">
     <!-- Error display -->
-    <div v-if="appState.phase === 'error'" role="alert" class="error-message">
+    <div
+      v-if="appState.phase === 'error'"
+      role="alert"
+      class="error-message"
+    >
       Error: {{ appState.message }}
     </div>
 
@@ -66,13 +70,22 @@ const onFileChange = (event: Event): void => {
       @drop.prevent="onDrop"
       @keydown="onKeyDown"
     >
-      <div v-if="appState.phase === 'loading'" class="loading-indicator">
+      <div
+        v-if="appState.phase === 'loading'"
+        class="loading-indicator"
+      >
         <span class="sr-only">Loading trace file...</span>
         <!-- visual loading spinner -->
-        <div class="spinner" aria-hidden="true"></div>
+        <div
+          class="spinner"
+          aria-hidden="true"
+        />
         <p>Parsing trace file...</p>
       </div>
-      <div v-else class="drop-zone-content">
+      <div
+        v-else
+        class="drop-zone-content"
+      >
         <p>Drag a <code>.oidtrace.jsonl.gz</code> file here</p>
         <p>or press <kbd>Enter</kbd> to browse</p>
       </div>
@@ -85,7 +98,7 @@ const onFileChange = (event: Event): void => {
       accept=".gz"
       style="display:none"
       @change="onFileChange"
-    />
+    >
   </div>
 </template>
 

@@ -19,7 +19,12 @@ const {
 </script>
 
 <template>
-  <div class="minimap-detail" ref="containerRef" tabindex="0" @keydown="onKeyDown">
+  <div
+    ref="containerRef"
+    class="minimap-detail"
+    tabindex="0"
+    @keydown="onKeyDown"
+  >
     <div class="minimap-wrapper">
       <canvas
         ref="minimapRef"
@@ -32,9 +37,17 @@ const {
       />
     </div>
     <div class="detail-wrapper">
-      <canvas ref="detailRef" class="detail-canvas" />
+      <canvas
+        ref="detailRef"
+        class="detail-canvas"
+      />
     </div>
-    <div v-if="exchanges.length === 0" class="empty-state">Load a trace to see the timeline</div>
+    <div
+      v-if="exchanges.length === 0"
+      class="empty-state"
+    >
+      Load a trace to see the timeline
+    </div>
   </div>
 </template>
 

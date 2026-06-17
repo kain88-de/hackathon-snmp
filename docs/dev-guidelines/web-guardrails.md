@@ -20,20 +20,39 @@ Bun executes TypeScript natively — no separate transpile step.
 
 ---
 
-## Linting: Oxlint — all rules on
+## Linting: three complementary tools
 
-Oxlint (Rust) replaces ESLint. Runs under 50ms. **All rules are enabled via `-D all`** with a project config file that disables false positives.
+Three linters run in sequence — each catches what the others miss:
+
+| Tool | Speed | Catches |
+|---|---|---|
+| Oxlint | ~80ms | JS/TS correctness — all rules via `-D all` |
+| Biome | ~95ms | JS/TS style + formatting — all rule groups |
+| ESLint + eslint-plugin-vue | ~930ms | Vue template conventions (attribute order, hyphenation, void elements) |
+
+### Oxlint — JS/TS correctness
+
+**All rules enabled via `-D all`**. Config in `.oxlintrc.json` suppresses false positives.
 
 ```sh
 bunx oxlint -D all -c .oxlintrc.json --ignore-pattern "src/lib/types.gen.ts" src/
 ```
 
-The `.oxlintrc.json` file in the project root disables noise rules and configures:
-- `no-magic-numbers` with `ignoreEnums: true` and `ignoreArrayIndexes: true`
-- `max-lines` capped at 500
-- false positives off: `no-optional-chaining`, `no-ternary`, `no-continue`, `unicorn/no-null`, `unicorn/filename-case`, `explicit-function-return-type`, `sort-*`
+Do **not** run `bunx oxlint src/` without `-D all` — that skips most rules.
 
-Do **not** install ESLint. Do **not** run `bunx oxlint src/` without `-D all` — that skips most rules.
+### ESLint + eslint-plugin-vue — Vue template rules
+
+ESLint runs **only on `.vue` files** (`.ts` files are excluded — covered by Oxlint + Biome). Config in `eslint.config.mjs`. Zero warnings allowed (`--max-warnings 0`).
+
+```sh
+bunx eslint --max-warnings 0 src/
+```
+
+This is the only tool that understands Vue template syntax: it catches `vue/attribute-hyphenation` (`:app-state` not `:appState`), `vue/html-self-closing` (void elements), `vue/attributes-order`, and other template-specific conventions. Oxlint and Biome are blind to template content.
+
+**Why ESLint despite being ~12× slower than Oxlint:** it corrects Vue template mistakes that no other tool in the stack catches. The ~930ms cost is accepted.
+
+Do **not** run `eslint src/` without `--max-warnings 0` — warnings must be zero.
 
 ---
 
@@ -90,17 +109,18 @@ Zero WCAG 2.1 AA violations in DOM content is a hard gate before merge. Canvas v
 Run in this order. Stop at the first failure and fix before continuing.
 
 ```
-1. bunx oxlint -D all -c .oxlintrc.json --ignore-pattern "src/lib/types.gen.ts" src/   (<50ms)   syntax + all rules
-2. bunx biome check --formatter-enabled=false --error-on-warnings src/                 (<50ms)   all biome lint rules; warnings are errors
-3. bunx vue-tsc --noEmit --skipLibCheck                                                (~2-4s)   types + template type checking
-4. bunx biome check --linter-enabled=false src/                                        (<50ms)   format check
-5. bun test                                                                            (<100ms)  logic
-6. just a11y                                                                           (~10s)    rendered a11y (build + vite preview)
+1. bunx oxlint -D all -c .oxlintrc.json --ignore-pattern "src/lib/types.gen.ts" src/   (~80ms)    JS/TS correctness — all rules
+2. bunx biome check --formatter-enabled=false --error-on-warnings src/                 (~95ms)    JS/TS style; warnings are errors
+3. bunx eslint --max-warnings 0 src/                                                   (~930ms)   Vue template conventions
+4. bunx vue-tsc --noEmit --skipLibCheck                                                (~2-4s)    types + template type checking
+5. bunx biome check --linter-enabled=false src/                                        (<50ms)    format check
+6. bun test                                                                            (<100ms)   logic
+7. just a11y                                                                           (~10s)     rendered a11y (build + vite preview)
 ```
 
-Steps 1–5 run without a browser. Use `just ci` to run steps 1–5 in sequence (`lint → types → fmt-check → test`). Run `just a11y` separately before merging.
+Steps 1–6 run without a browser. Use `just ci` to run steps 1–6 in sequence (`lint → types → fmt-check → test`). Run `just a11y` separately before merging.
 
-**Warnings are errors.** `biome check --error-on-warnings` is required in step 2. CI must exit 0 with zero warnings and zero errors.
+**Warnings are errors** in both Biome (`--error-on-warnings`) and ESLint (`--max-warnings 0`). CI must exit 0 with zero warnings and zero errors.
 
 ---
 
@@ -108,7 +128,7 @@ Steps 1–5 run without a browser. Use `just ci` to run steps 1–5 in sequence 
 
 | Target      | Command                                                                                             |
 |-------------|-----------------------------------------------------------------------------------------------------|
-| `lint`      | oxlint (`-D all -c .oxlintrc.json --ignore-pattern`) + biome check (`--formatter-enabled=false`)   |
+| `lint`      | oxlint (`-D all`) + biome check (`--error-on-warnings`) + eslint (`--max-warnings 0`)              |
 | `types`     | `bunx vue-tsc --noEmit --skipLibCheck`                                                              |
 | `fmt-check` | `bunx biome check --linter-enabled=false src/`                                                      |
 | `test`      | `bun test`                                                                                          |
@@ -163,6 +183,7 @@ const { ref1, ref2, onEvent } = useMyFeature(() => props, emit);
 | `bunx oxlint src/` without `-D all` | Always pass `-D all -c .oxlintrc.json` |
 | Run `tsc --build` for feedback | `vue-tsc --noEmit --skipLibCheck` |
 | `bunx biome check src/` for lint only | `bunx biome check --formatter-enabled=false --error-on-warnings src/` |
+| `bunx eslint src/` without `--max-warnings 0` | Always pass `--max-warnings 0` |
 | Use `tsc` instead of `vue-tsc` | `vue-tsc` checks template types; `tsc` misses them |
 | Put 200+ lines of TS in a `.vue` file | Extract to a composable in `src/composables/` |
 | Skip `just a11y` for UI changes | Always axe-check pages agents touch |

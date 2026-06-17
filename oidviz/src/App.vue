@@ -192,11 +192,11 @@ onUnmounted(() => {
 <template>
   <div class="app-layout">
     <AppSidebar
-      :appState="appState"
+      :app-state="appState"
       :result="parseResult"
-      :facetState="facetState"
-      :activeView="activeView"
-      :darkMode="darkMode"
+      :facet-state="facetState"
+      :active-view="activeView"
+      :dark-mode="darkMode"
       @file-selected="handleFileSelected"
       @fixture-selected="handleFileSelected"
       @view-change="handleViewChange"
@@ -206,34 +206,34 @@ onUnmounted(() => {
     <main class="main-content">
       <LandingScreen
         v-if="appState.phase === 'landing' || appState.phase === 'loading' || appState.phase === 'error'"
-        :appState="appState"
+        :app-state="appState"
         @file-selected="handleFileSelected"
       />
       <div v-else-if="appState.phase === 'viewer'">
         <FindingsByCategory
           v-if="activeView === 'findings'"
           :exchanges="filteredExchanges"
-          :facetState="facetState"
+          :facet-state="facetState"
           @focus-exchange="handleFocusExchange"
         />
         <IncidentStack
           v-else-if="activeView === 'incidents'"
           :incidents="incidents"
-          :facetState="facetState"
+          :facet-state="facetState"
           :exchanges="parseResult?.exchanges ?? []"
           @open-incident="openIncidentModal"
         />
         <MinimapDetail
           v-else-if="activeView === 'minimap'"
           :exchanges="filteredExchanges"
-          :facetState="facetState"
+          :facet-state="facetState"
           @focus-exchange="handleFocusExchange"
         />
         <OidTree
           v-else-if="activeView === 'oidtree'"
-          :flatRows="oidFlatRows"
-          :facetState="facetState"
-          :matchingCount="filteredExchanges.length"
+          :flat-rows="oidFlatRows"
+          :facet-state="facetState"
+          :matching-count="filteredExchanges.length"
           @reflatten="handleReflatten"
           @collapse-all="handleCollapseAll"
         />

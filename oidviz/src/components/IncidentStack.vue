@@ -69,9 +69,19 @@ const isSlowOnly = (incident: Incident): boolean =>
 </script>
 
 <template>
-  <div class="incident-stack" ref="containerRef" @scroll="onScroll">
-    <div class="incident-list-inner" :style="{ height: `${totalHeight}px` }">
-      <div class="incident-rows-viewport" :style="{ transform: `translateY(${offsetTop}px)` }">
+  <div
+    ref="containerRef"
+    class="incident-stack"
+    @scroll="onScroll"
+  >
+    <div
+      class="incident-list-inner"
+      :style="{ height: `${totalHeight}px` }"
+    >
+      <div
+        class="incident-rows-viewport"
+        :style="{ transform: `translateY(${offsetTop}px)` }"
+      >
         <button
           v-for="{ incident, index } in visibleIncidents"
           :key="index"
@@ -82,22 +92,39 @@ const isSlowOnly = (incident: Incident): boolean =>
         >
           <span class="score">{{ incident.score.toFixed(1) }}</span>
           <span class="rtt">{{ incident.peakRtt.toFixed(0) }}ms</span>
-          <span v-if="incident.timeoutCount > 0" class="chip chip-timeout">
+          <span
+            v-if="incident.timeoutCount > 0"
+            class="chip chip-timeout"
+          >
             {{ incident.timeoutCount }}T
           </span>
-          <span v-if="incident.violationTypes.size > 0" class="chip chip-violation">
+          <span
+            v-if="incident.violationTypes.size > 0"
+            class="chip chip-violation"
+          >
             {{ incident.violationTypes.size }}V
           </span>
-          <span v-if="incident.retryCount > 0" class="chip chip-retry">
+          <span
+            v-if="incident.retryCount > 0"
+            class="chip chip-retry"
+          >
             {{ incident.retryCount }}R
           </span>
-          <span v-if="isSlowOnly(incident)" class="chip chip-slow">slow</span>
+          <span
+            v-if="isSlowOnly(incident)"
+            class="chip chip-slow"
+          >slow</span>
           <span class="region">{{ incident.region }}</span>
           <span class="member-count">{{ incident.members.length }}</span>
         </button>
       </div>
     </div>
-    <div v-if="incidents.length === 0" class="empty-state">No incidents found</div>
+    <div
+      v-if="incidents.length === 0"
+      class="empty-state"
+    >
+      No incidents found
+    </div>
   </div>
 </template>
 

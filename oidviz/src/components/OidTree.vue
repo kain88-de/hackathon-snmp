@@ -77,11 +77,20 @@ const toggleNode = (node: TrieNode): void => {
 <template>
   <div class="oid-tree">
     <div class="oid-tree-controls">
-      <button type="button" @click="emit('collapse-all')">Collapse all</button>
+      <button
+        type="button"
+        @click="emit('collapse-all')"
+      >
+        Collapse all
+      </button>
       <span>{{ matchingCount }} exchanges</span>
     </div>
 
-    <div ref="containerRef" class="oid-tree-scroll" @scroll="onScroll">
+    <div
+      ref="containerRef"
+      class="oid-tree-scroll"
+      @scroll="onScroll"
+    >
       <div :style="{ height: totalHeight + 'px', position: 'relative' }">
         <div
           v-for="{ row, index } in visibleRows"
@@ -97,21 +106,47 @@ const toggleNode = (node: TrieNode): void => {
               :style="{ marginLeft: row.depth * INDENT_PX + 'px' }"
               :aria-expanded="row.node.expanded"
               @click="toggleNode(row.node)"
-            >{{ row.node.expanded ? '▾' : '▸' }}</button>
+            >
+              {{ row.node.expanded ? '▾' : '▸' }}
+            </button>
             <span class="arc-label">{{ row.node.arc }}</span>
-            <span v-if="row.node.name" class="known-name">({{ row.node.name }})</span>
+            <span
+              v-if="row.node.name"
+              class="known-name"
+            >({{ row.node.name }})</span>
             <span class="stats">{{ row.node.stats.count }}</span>
-            <span v-if="row.node.flags.slow" class="badge badge-slow">S</span>
-            <span v-if="row.node.flags.violation" class="badge badge-violation">V</span>
-            <span v-if="row.node.flags.retry" class="badge badge-retry">R</span>
+            <span
+              v-if="row.node.flags.slow"
+              class="badge badge-slow"
+            >S</span>
+            <span
+              v-if="row.node.flags.violation"
+              class="badge badge-violation"
+            >V</span>
+            <span
+              v-if="row.node.flags.retry"
+              class="badge badge-retry"
+            >R</span>
           </template>
 
           <template v-else>
-            <span :style="{ marginLeft: (row.depth + 1) * INDENT_PX + 'px' }" class="leaf-oid">{{ row.oid }}</span>
+            <span
+              :style="{ marginLeft: (row.depth + 1) * INDENT_PX + 'px' }"
+              class="leaf-oid"
+            >{{ row.oid }}</span>
             <span class="rtt">{{ row.exchange.rtt.toFixed(0) }}ms</span>
-            <span v-if="row.exchange.isTimeout" class="badge badge-timeout">T</span>
-            <span v-if="row.exchange.violations.length > 0" class="badge badge-violation">V</span>
-            <span v-if="row.exchange.attemptCount > 1" class="badge badge-retry">R</span>
+            <span
+              v-if="row.exchange.isTimeout"
+              class="badge badge-timeout"
+            >T</span>
+            <span
+              v-if="row.exchange.violations.length > 0"
+              class="badge badge-violation"
+            >V</span>
+            <span
+              v-if="row.exchange.attemptCount > 1"
+              class="badge badge-retry"
+            >R</span>
           </template>
         </div>
       </div>

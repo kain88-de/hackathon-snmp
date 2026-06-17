@@ -6,6 +6,7 @@ default:
 lint:
     bunx oxlint -D all -c .oxlintrc.json --ignore-pattern "src/lib/types.gen.ts" --ignore-pattern "src/components/*.setup.ts" -A "unicorn/filename-case" -A "sort-imports" -A "unicorn/no-null" -A "max-lines" -A "max-lines-per-function" -A "max-params" -A "max-statements" -A "require-post-message-target-origin" -A "capitalized-comments" src/
     bunx biome check --formatter-enabled=false --error-on-warnings src/
+    bunx eslint --max-warnings 0 src/
 
 types:
     bunx vue-tsc --noEmit --skipLibCheck

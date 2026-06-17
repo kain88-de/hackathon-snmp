@@ -22,14 +22,17 @@ const toggleSection = (key: 'slow' | 'timeout' | 'fast'): void => {
       <button
         type="button"
         class="section-header"
-        @click="toggleSection('slow')"
         :aria-expanded="expanded.slow"
+        @click="toggleSection('slow')"
       >
         <span>Slow</span>
         <span class="count">({{ findings.slow.length }})</span>
         <span aria-hidden="true">{{ expanded.slow ? '▾' : '▸' }}</span>
       </button>
-      <div v-if="expanded.slow" class="section-rows">
+      <div
+        v-if="expanded.slow"
+        class="section-rows"
+      >
         <button
           v-for="ex in findings.slow"
           :key="ex.seq"
@@ -39,8 +42,14 @@ const toggleSection = (key: 'slow' | 'timeout' | 'fast'): void => {
         >
           <span class="rtt">{{ ex.rtt.toFixed(0) }}ms</span>
           <span class="oid">{{ ex.requestOid }}</span>
-          <span v-if="ex.violations.length > 0" class="badge badge-violation">V</span>
-          <span v-if="ex.attemptCount > 1" class="badge badge-retry">R</span>
+          <span
+            v-if="ex.violations.length > 0"
+            class="badge badge-violation"
+          >V</span>
+          <span
+            v-if="ex.attemptCount > 1"
+            class="badge badge-retry"
+          >R</span>
         </button>
       </div>
     </section>
@@ -50,14 +59,17 @@ const toggleSection = (key: 'slow' | 'timeout' | 'fast'): void => {
       <button
         type="button"
         class="section-header"
-        @click="toggleSection('timeout')"
         :aria-expanded="expanded.timeout"
+        @click="toggleSection('timeout')"
       >
         <span>Timed Out</span>
         <span class="count">({{ findings.timeout.length }})</span>
         <span aria-hidden="true">{{ expanded.timeout ? '▾' : '▸' }}</span>
       </button>
-      <div v-if="expanded.timeout" class="section-rows">
+      <div
+        v-if="expanded.timeout"
+        class="section-rows"
+      >
         <button
           v-for="ex in findings.timeout"
           :key="ex.seq"
@@ -67,26 +79,38 @@ const toggleSection = (key: 'slow' | 'timeout' | 'fast'): void => {
         >
           <span class="rtt timeout">TIMEOUT</span>
           <span class="oid">{{ ex.requestOid }}</span>
-          <span v-if="ex.violations.length > 0" class="badge badge-violation">V</span>
-          <span v-if="ex.attemptCount > 1" class="badge badge-retry">R</span>
+          <span
+            v-if="ex.violations.length > 0"
+            class="badge badge-violation"
+          >V</span>
+          <span
+            v-if="ex.attemptCount > 1"
+            class="badge badge-retry"
+          >R</span>
           <span class="badge badge-timeout">T</span>
         </button>
       </div>
     </section>
 
     <!-- Fast section (only when non-empty) -->
-    <section v-if="findings.fast.length > 0" class="findings-section">
+    <section
+      v-if="findings.fast.length > 0"
+      class="findings-section"
+    >
       <button
         type="button"
         class="section-header"
-        @click="toggleSection('fast')"
         :aria-expanded="expanded.fast"
+        @click="toggleSection('fast')"
       >
         <span>Fast</span>
         <span class="count">({{ findings.fast.length }})</span>
         <span aria-hidden="true">{{ expanded.fast ? '▾' : '▸' }}</span>
       </button>
-      <div v-if="expanded.fast" class="section-rows">
+      <div
+        v-if="expanded.fast"
+        class="section-rows"
+      >
         <button
           v-for="ex in findings.fast"
           :key="ex.seq"
@@ -96,8 +120,14 @@ const toggleSection = (key: 'slow' | 'timeout' | 'fast'): void => {
         >
           <span class="rtt">{{ ex.rtt.toFixed(0) }}ms</span>
           <span class="oid">{{ ex.requestOid }}</span>
-          <span v-if="ex.violations.length > 0" class="badge badge-violation">V</span>
-          <span v-if="ex.attemptCount > 1" class="badge badge-retry">R</span>
+          <span
+            v-if="ex.violations.length > 0"
+            class="badge badge-violation"
+          >V</span>
+          <span
+            v-if="ex.attemptCount > 1"
+            class="badge badge-retry"
+          >R</span>
         </button>
       </div>
     </section>

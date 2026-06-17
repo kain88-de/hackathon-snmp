@@ -86,18 +86,43 @@ const onSlowThresholdChange = (event: Event): void => {
 </script>
 
 <template>
-  <aside class="sidebar" aria-label="OIDviz controls">
+  <aside
+    class="sidebar"
+    aria-label="OIDviz controls"
+  >
     <div class="sidebar-header">
-      <h1 class="sidebar-title">OIDviz</h1>
-      <button type="button" aria-label="Toggle dark mode" @click="emit('toggle-dark-mode')">
+      <h1 class="sidebar-title">
+        OIDviz
+      </h1>
+      <button
+        type="button"
+        aria-label="Toggle dark mode"
+        @click="emit('toggle-dark-mode')"
+      >
         {{ props.darkMode ? '☀️' : '🌙' }}
       </button>
     </div>
 
     <section aria-labelledby="file-section-label">
-      <h2 id="file-section-label" class="sidebar-section-title">Load Trace</h2>
-      <button type="button" @click="openFilePicker">Open File</button>
-      <input ref="fileInput" type="file" accept=".gz" style="display: none" @change="onFileChange" />
+      <h2
+        id="file-section-label"
+        class="sidebar-section-title"
+      >
+        Load Trace
+      </h2>
+      <button
+        type="button"
+        @click="openFilePicker"
+      >
+        Open File
+      </button>
+      <input
+        ref="fileInput"
+        type="file"
+        accept=".gz"
+        style="display: none"
+        @change="onFileChange"
+      >
 
       <div class="fixture-buttons">
         <button
@@ -123,19 +148,30 @@ const onSlowThresholdChange = (event: Event): void => {
       </button>
     </nav>
 
-    <section v-if="props.appState.phase === 'viewer'" aria-labelledby="facet-section-label">
-      <h2 id="facet-section-label" class="sidebar-section-title">Filters</h2>
+    <section
+      v-if="props.appState.phase === 'viewer'"
+      aria-labelledby="facet-section-label"
+    >
+      <h2
+        id="facet-section-label"
+        class="sidebar-section-title"
+      >
+        Filters
+      </h2>
 
       <fieldset>
         <legend>Performance</legend>
-        <label v-for="opt in PERF_OPTIONS" :key="opt.value">
+        <label
+          v-for="opt in PERF_OPTIONS"
+          :key="opt.value"
+        >
           <input
             type="radio"
             name="perf"
             :value="opt.value"
             :checked="props.facetState.perf === opt.value"
             @change="emit('facet-change', { perf: opt.value })"
-          />
+          >
           {{ opt.label }}
         </label>
       </fieldset>
@@ -149,7 +185,7 @@ const onSlowThresholdChange = (event: Event): void => {
             value="any"
             :checked="props.facetState.corr === 'any'"
             @change="emit('facet-change', { corr: 'any' })"
-          />
+          >
           Any
         </label>
         <label>
@@ -159,7 +195,7 @@ const onSlowThresholdChange = (event: Event): void => {
             value="violations"
             :checked="props.facetState.corr === 'violations'"
             @change="emit('facet-change', { corr: 'violations' })"
-          />
+          >
           Violations only
         </label>
       </fieldset>
@@ -169,7 +205,7 @@ const onSlowThresholdChange = (event: Event): void => {
           type="checkbox"
           :checked="props.facetState.retryOnly"
           @change="emit('facet-change', { retryOnly: !props.facetState.retryOnly })"
-        />
+        >
         Retries only
       </label>
 
@@ -181,14 +217,17 @@ const onSlowThresholdChange = (event: Event): void => {
         step="0.1"
         :value="props.facetState.slowMs / MS_PER_SECOND"
         @change="onSlowThresholdChange"
-      />
+      >
 
       <div class="sidebar-stats">
         <div>Exchanges: {{ props.appState.result.exchanges.length }}</div>
       </div>
     </section>
 
-    <div aria-live="polite" class="truncation-warning">
+    <div
+      aria-live="polite"
+      class="truncation-warning"
+    >
       <span v-if="result !== null && result.truncated">&#x26A0; Trace file was truncated</span>
     </div>
   </aside>
