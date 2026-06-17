@@ -50,6 +50,12 @@ bun test                                                                        
 
 ---
 
+## Plan review cadence
+
+For any plan longer than 6 tasks: after every 6 tasks, pause and dispatch an Opus agent to review the plan document for wrong, missing, or contradictory guidance. Implementation reveals plan errors that aren't visible upfront — a wrong instruction replicates across every subsequent task. The reviewer asks: *"Does any guidance here actively prevent correct implementation?"* Fix the plan before continuing.
+
+---
+
 ## Type-driven development
 
 **Principle: encode correctness in the type system. If a constraint can be a compile error, it must be.**
