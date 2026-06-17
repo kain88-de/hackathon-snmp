@@ -52,7 +52,13 @@ bun test                                                                        
 
 ## Plan review cadence
 
-For any plan longer than 6 tasks: after every 6 tasks, pause and dispatch an Opus agent to review the plan document for wrong, missing, or contradictory guidance. Implementation reveals plan errors that aren't visible upfront — a wrong instruction replicates across every subsequent task. The reviewer asks: *"Does any guidance here actively prevent correct implementation?"* Fix the plan before continuing.
+For any plan longer than 6 tasks: after every 6 tasks, pause and dispatch an Opus agent to review the plan document for wrong, missing, or contradictory guidance. Implementation reveals plan errors that aren't visible upfront — a wrong instruction replicates across every subsequent task.
+
+The reviewer asks two questions:
+1. *"Does any guidance here actively prevent correct implementation?"*
+2. *"Does the plan leave correctness to runtime that the type system could catch at compile time?"* — look for bare `string`/`number` crossing boundaries that should be branded, unions consumed without exhaustiveness, external data cast without validation, or logic described in prose that should be expressed as a type constraint.
+
+Fix the plan before continuing.
 
 ---
 
