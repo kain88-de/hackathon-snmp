@@ -120,12 +120,25 @@ Steps 1–5 run without a browser. Use `just ci` to run steps 1–5 in sequence 
 
 ---
 
-## Vue component structure
+## Vue component structure — keep logic in `.ts` files
 
-Keep `.vue` files short: `<script setup>` should contain only props/emits declarations and one composable call. Heavy logic lives in `src/composables/` as plain `.ts` files.
+**Rule: if the TypeScript compiler can validate it, it must live in a `.ts` file.**
+
+`.vue` files are opaque to linters and partially opaque to `vue-tsc`. Code inside `<script setup>` escapes `no-unused-vars`, `no-unused-imports`, and other correctness rules because Biome cannot cross-reference the script with the template. The compiler is your primary safety net — don't put logic where it can't see it clearly.
+
+**What belongs in `.vue` files:**
+- `defineProps` / `defineEmits` declarations
+- Imports of composables / lib modules
+- Destructuring of composable return values
+- The template itself
+
+**What belongs in `.ts` files:**
+- All business logic (pure functions → `src/lib/`)
+- All stateful component logic (refs, watchers, lifecycle hooks, event handlers → `src/composables/`)
+- Any code you want the linter and compiler to fully validate
 
 ```vue
-<!-- Good: .vue file is 30-80 lines -->
+<!-- Good: .vue file is ~20-40 lines, all logic in .ts -->
 <script setup lang="ts">
 import type { DomainExchange } from '../lib/model.ts';
 import { useMyFeature } from '../composables/useMyFeature.ts';
@@ -136,9 +149,7 @@ const { ref1, ref2, onEvent } = useMyFeature(() => props, emit);
 </script>
 ```
 
-Benefits: composable `.ts` files are fully linted (no template-scope false positives), fully type-checked by vue-tsc, and independently testable. The `.vue` file stays readable.
-
-**For component imports in App.vue**: Biome cannot cross-reference `<script setup>` bindings with `<template>`, so component imports show as unused. Use `// biome-ignore lint/correctness/noUnusedImports: used in <template>` on each such import — this is the minimal, surgical suppression that keeps the rule active for real unused imports.
+**For component imports in App.vue**: Biome cannot see `<template>` usage from `<script setup>`, so component imports flag as unused. Use `// biome-ignore lint/correctness/noUnusedImports: used in <template>` on each — surgical suppression that keeps the rule active for real unused imports.
 
 ---
 
