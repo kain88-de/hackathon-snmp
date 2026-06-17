@@ -1,14 +1,23 @@
 <script setup lang="ts">
-import { computed, onMounted, onUnmounted, ref } from 'vue';
+import { computed, onMounted, onUnmounted, ref, watch } from 'vue';
 import FindingsByCategory from './components/FindingsByCategory.vue';
 import IncidentModal from './components/IncidentModal.vue';
 import IncidentStack from './components/IncidentStack.vue';
 import LandingScreen from './components/LandingScreen.vue';
 import MinimapDetail from './components/MinimapDetail.vue';
+import OidTree from './components/OidTree.vue';
 import Sidebar from './components/Sidebar.vue';
 import { matchesFacets } from './lib/filters.ts';
 import { buildIncidents } from './lib/incidentStack.ts';
-import type { ActiveView, AppState, FacetState, ParseResult, WorkerResponse } from './lib/model.ts';
+import type {
+  ActiveView,
+  AppState,
+  FacetState,
+  FlatRow,
+  ParseResult,
+  TrieNode,
+  WorkerResponse,
+} from './lib/model.ts';
 import { autoExpand, buildTrie, flatten, rollup } from './lib/oidTrie.ts';
 
 // State machine
@@ -57,13 +66,48 @@ const incidents = computed(() => {
   return buildIncidents(result.exchanges, facetState.value.slowMs);
 });
 
-// OidRoot: full rebuild on facet change
-const oidFlatRows = computed(() => {
+// OID trie — mutable root kept as ref so expand/collapse can re-flatten without full rebuild
+const oidRoot = ref<TrieNode | null>(null);
+const oidFlatRows = ref<FlatRow[]>([]);
+
+const rebuildTrie = (): void => {
   const root = buildTrie(filteredExchanges.value);
   rollup(root, facetState.value.slowMs);
   autoExpand(root);
-  return flatten(root);
-});
+  oidRoot.value = root;
+  oidFlatRows.value = flatten(root);
+};
+
+const collapseNode = (node: TrieNode): void => {
+  node.expanded = false;
+  for (const child of node.children.values()) {
+    collapseNode(child);
+  }
+};
+
+const handleReflatten = (): void => {
+  if (!oidRoot.value) {
+    return;
+  }
+  oidFlatRows.value = flatten(oidRoot.value);
+};
+
+const handleCollapseAll = (): void => {
+  const root = oidRoot.value;
+  if (!root) {
+    return;
+  }
+  collapseNode(root);
+  oidFlatRows.value = flatten(root);
+};
+
+watch(
+  [filteredExchanges, (): number => facetState.value.slowMs],
+  (): void => {
+    rebuildTrie();
+  },
+  { immediate: true },
+);
 
 // File handling — called by LandingScreen (wired in next task)
 const handleFileSelected = (buffer: ArrayBuffer): void => {
@@ -178,7 +222,14 @@ onUnmounted(() => {
           :facetState="facetState"
           @focus-exchange="handleFocusExchange"
         />
-        <div v-else-if="activeView === 'oidtree'">OID Tree placeholder</div>
+        <OidTree
+          v-else-if="activeView === 'oidtree'"
+          :flatRows="oidFlatRows"
+          :facetState="facetState"
+          :matchingCount="filteredExchanges.length"
+          @reflatten="handleReflatten"
+          @collapse-all="handleCollapseAll"
+        />
       </div>
     </main>
   </div>
