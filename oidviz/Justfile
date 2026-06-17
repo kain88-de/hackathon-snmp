@@ -8,7 +8,7 @@ lint:
     bunx biome check --formatter-enabled=false --error-on-warnings src/
 
 types:
-    bunx tsc --noEmit --skipLibCheck
+    bunx vue-tsc --noEmit --skipLibCheck
 
 fmt-check:
     bunx biome check --linter-enabled=false src/

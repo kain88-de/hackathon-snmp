@@ -242,7 +242,7 @@ onUnmounted(() => {
   </div>
   <IncidentModal
     v-if="modalIncidentIndex !== null"
-    :incident="incidents[modalIncidentIndex]"
+    :incident="incidents[modalIncidentIndex]!"
     :exchanges="parseResult?.exchanges ?? []"
     :index="modalIncidentIndex"
     :total="incidents.length"

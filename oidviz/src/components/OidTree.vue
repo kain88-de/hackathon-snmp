@@ -95,7 +95,7 @@ const toggleNode = (node: TrieNode): void => {
               type="button"
               class="expand-btn"
               :style="{ marginLeft: row.depth * INDENT_PX + 'px' }"
-              :aria-expanded="String(row.node.expanded)"
+              :aria-expanded="row.node.expanded"
               @click="toggleNode(row.node)"
             >{{ row.node.expanded ? '▾' : '▸' }}</button>
             <span class="arc-label">{{ row.node.arc }}</span>

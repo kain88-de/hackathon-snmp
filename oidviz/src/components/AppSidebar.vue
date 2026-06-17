@@ -52,6 +52,9 @@ const onFileChange = (event: Event): void => {
     return;
   }
   const [file] = input.files;
+  if (!file) {
+    return;
+  }
   file
     .arrayBuffer()
     .then((buffer) => {

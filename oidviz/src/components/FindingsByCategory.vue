@@ -23,7 +23,7 @@ const toggleSection = (key: 'slow' | 'timeout' | 'fast'): void => {
         type="button"
         class="section-header"
         @click="toggleSection('slow')"
-        :aria-expanded="String(expanded.slow)"
+        :aria-expanded="expanded.slow"
       >
         <span>Slow</span>
         <span class="count">({{ findings.slow.length }})</span>
@@ -51,7 +51,7 @@ const toggleSection = (key: 'slow' | 'timeout' | 'fast'): void => {
         type="button"
         class="section-header"
         @click="toggleSection('timeout')"
-        :aria-expanded="String(expanded.timeout)"
+        :aria-expanded="expanded.timeout"
       >
         <span>Timed Out</span>
         <span class="count">({{ findings.timeout.length }})</span>
@@ -80,7 +80,7 @@ const toggleSection = (key: 'slow' | 'timeout' | 'fast'): void => {
         type="button"
         class="section-header"
         @click="toggleSection('fast')"
-        :aria-expanded="String(expanded.fast)"
+        :aria-expanded="expanded.fast"
       >
         <span>Fast</span>
         <span class="count">({{ findings.fast.length }})</span>
