@@ -27,8 +27,6 @@ const BAR_PADDING = 8;
 const BAR_MIN_FILL = 2;
 const WINDOW_MIN_SPAN = 1;
 const WINDOW_MIN_W = 4;
-const WINDOW_STROKE_OPACITY = 0.8;
-const WINDOW_FILL_OPACITY = 0.08;
 const DRAG_THRESHOLD = 3;
 const DETAIL_BOTTOM_PAD = 20;
 const ZERO = 0;
@@ -104,18 +102,20 @@ const drawMinimapBars = (
 
 const drawMinimapWindow = (
   ctx: CanvasRenderingContext2D,
+  canvas: HTMLCanvasElement,
   total: number,
   canvasW: number,
   canvasH: number,
   ws: number,
   we: number,
 ): void => {
+  const style = getComputedStyle(canvas);
   const x1 = Math.floor((ws / total) * canvasW);
   const x2 = Math.floor((we / total) * canvasW);
-  ctx.strokeStyle = `rgba(13, 110, 253, ${WINDOW_STROKE_OPACITY})`;
+  ctx.strokeStyle = style.getPropertyValue('--color-minimap-window-stroke').trim();
   ctx.lineWidth = TWO;
   ctx.strokeRect(x1, TWO, Math.max(WINDOW_MIN_W, x2 - x1), canvasH - LABEL_MARGIN);
-  ctx.fillStyle = `rgba(13, 110, 253, ${WINDOW_FILL_OPACITY})`;
+  ctx.fillStyle = style.getPropertyValue('--color-minimap-window-fill').trim();
   ctx.fillRect(x1 + ONE, THREE, Math.max(TWO, x2 - x1 - ONE), canvasH - AXIS_OFFSET);
 };
 
@@ -142,6 +142,7 @@ const drawMinimap = (): void => {
   drawMinimapBars(ctx, exchanges, canvasW, props.facetState.slowMs, getColors(canvas));
   drawMinimapWindow(
     ctx,
+    canvas,
     total,
     canvasW,
     canvasH,

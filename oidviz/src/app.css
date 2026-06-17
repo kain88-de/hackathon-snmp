@@ -34,6 +34,13 @@
   --dim-none: #6b7280;
   --dim-none-bg: #f3f4f6;
 
+  /* Minimap window highlight */
+  --color-minimap-window-stroke: rgba(13, 110, 253, 0.8);
+  --color-minimap-window-fill: rgba(13, 110, 253, 0.08);
+
+  /* Modal overlay */
+  --color-overlay: rgba(0, 0, 0, 0.5);
+
   /* Monospace */
   --font-mono: "JetBrains Mono", "Fira Code", "Cascadia Code", "Consolas", monospace;
 }
@@ -62,6 +69,9 @@
   --dim-timeout-bg: #1e3a8a;
   --dim-none: #9ca3af;
   --dim-none-bg: #374151;
+  --color-minimap-window-stroke: rgba(96, 165, 250, 0.8);
+  --color-minimap-window-fill: rgba(96, 165, 250, 0.08);
+  --color-overlay: rgba(0, 0, 0, 0.7);
 }
 
 /* Screen-reader only utility */
