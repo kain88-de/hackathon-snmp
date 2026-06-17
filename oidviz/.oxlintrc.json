@@ -1,0 +1,21 @@
+{
+  "rules": {
+    "no-magic-numbers": ["warn", { "ignoreEnums": true, "ignoreArrayIndexes": true }],
+    "max-lines": "off",
+    "max-lines-per-function": "off",
+    "max-params": "off",
+    "max-statements": "off",
+    "no-optional-chaining": "off",
+    "no-ternary": "off",
+    "no-continue": "off",
+    "unicorn/no-null": "off",
+    "unicorn/filename-case": "off",
+    "unicorn/prefer-ternary": "off",
+    "explicit-function-return-type": "off",
+    "prefer-object-spread": "off",
+    "sort-imports": "off",
+    "sort-keys": "off",
+    "sort-vars": "off",
+    "no-underscore-dangle": "off"
+  }
+}
