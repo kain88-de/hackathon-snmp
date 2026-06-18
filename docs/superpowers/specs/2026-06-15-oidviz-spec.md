@@ -25,6 +25,7 @@ Secondary user: SNMP expert drilling into a specific exchange to debug device ag
 - URL-encoded view state or bookmarking
 - Annotation or note-taking on traces
 - Persistent storage of any kind (settings, history, preferences)
+- Dark mode (light mode only for v1)
 
 ---
 
@@ -434,8 +435,4 @@ Note: the project uses three OID prefix lists with distinct purposes — see [OI
 
 ## Dark mode
 
-Default to system preference (`prefers-color-scheme`). Toggle in the sidebar header.
-
-DOM-based content (sidebar, incident modal, OID Tree, Findings) uses CSS custom properties throughout — no hard-coded colours. Dark mode is in scope for v1.
-
-Canvas-based views (Minimap + Detail) read colour tokens via `getComputedStyle` at draw time so dark mode applies to canvas as well.
+Out of scope for v1 — see non-goals. The app uses light mode only. CSS custom properties are used throughout so dark mode can be added later without touching component logic.
