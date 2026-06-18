@@ -96,7 +96,7 @@ Sections (top to bottom):
 `OIDviz` logotype.
 
 ### Load
-"Open trace file…" button + shortcut buttons for the example trace files in `traceformat/examples/` (`trace-5k`, `trace-50k`, `trace-100k`, `trace-focused`). Hidden file input accepts `.oidtrace.jsonl.gz`. Uncompressed `.oidtrace.jsonl` is not accepted.
+"Open trace file…" button. Hidden file input accepts `.oidtrace.jsonl.gz`. Uncompressed `.oidtrace.jsonl` is not accepted.
 
 ### Device
 Populated from the `system_info` record (`type: "system_info"`, `point: "start"`) when present. Hidden if no such record exists in the trace. Values are looked up by OID key in `system_info.values`.
