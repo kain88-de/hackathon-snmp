@@ -81,3 +81,34 @@ test("sidebar: aside landmark present, all four view buttons visible", async ({
 	).toBeVisible();
 	await expect(page.getByRole("button", { name: "OID Tree" })).toBeVisible();
 });
+
+test("incident stack: rows visible, modal opens/closes", async ({ page }) => {
+	await page.goto("/");
+
+	const fileInput = page.locator('input[type="file"]');
+	await fileInput.setInputFiles(FIXTURE_PATH);
+
+	await expect(page.locator('[data-phase="viewer"]')).toBeVisible({
+		timeout: 10000,
+	});
+
+	// Switch to Incident Stack view
+	await page.getByRole("button", { name: "Incident Stack" }).click();
+
+	// At least one incident row should be visible
+	await expect(page.locator(".incident-row").first()).toBeVisible({
+		timeout: 5000,
+	});
+
+	// Click the first incident row to open the modal
+	await page.locator(".incident-row").first().click();
+
+	// Modal should appear with role="dialog"
+	await expect(page.getByRole("dialog")).toBeVisible({ timeout: 3000 });
+
+	// Press Escape to close the modal
+	await page.keyboard.press("Escape");
+
+	// Modal should be gone
+	await expect(page.getByRole("dialog")).not.toBeVisible({ timeout: 3000 });
+});

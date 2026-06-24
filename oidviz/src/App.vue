@@ -1,14 +1,18 @@
 <script setup lang="ts">
 import { computed, ref } from "vue";
 import FindingsByCategory from "./components/FindingsByCategory.vue";
+import IncidentModal from "./components/IncidentModal.vue";
+import IncidentStack from "./components/IncidentStack.vue";
 import LandingScreen from "./components/LandingScreen.vue";
 import Sidebar from "./components/Sidebar.vue";
 import { matchesFacets } from "./lib/filters.ts";
+import { buildIncidents } from "./lib/incidentStack.ts";
 import type {
 	ActiveView,
 	AppState,
 	DomainExchange,
 	FacetState,
+	Incident,
 	ParseResult,
 	WorkerResponse,
 } from "./lib/model.ts";
@@ -21,6 +25,9 @@ const facetState = ref<FacetState>({
 	slowMs: 1000,
 });
 const activeView = ref<ActiveView>("findings");
+const selectedIncidentIndex = ref<number | null>(null);
+// Track the DOM element that triggered the modal, so we can restore focus on close
+let modalTriggerEl: HTMLElement | null = null;
 
 let worker: Worker | null = null;
 
@@ -80,6 +87,41 @@ const filteredExchanges = computed((): DomainExchange[] => {
 		matchesFacets(ex, facetState.value),
 	);
 });
+
+// Built from full exchange list (not filtered), because clustering is anomaly-driven
+const incidents = computed((): Incident[] => {
+	if (state.value.phase !== "viewer") {
+		return [];
+	}
+	return buildIncidents(state.value.result.exchanges, facetState.value.slowMs);
+});
+
+function onOpenIncident(index: number): void {
+	// Capture the currently focused element as the trigger for focus restoration
+	if (document.activeElement instanceof HTMLElement) {
+		modalTriggerEl = document.activeElement;
+	} else {
+		modalTriggerEl = null;
+	}
+	selectedIncidentIndex.value = index;
+}
+
+function onCloseIncident(): void {
+	selectedIncidentIndex.value = null;
+	// Restore focus to the trigger row
+	modalTriggerEl?.focus();
+	modalTriggerEl = null;
+}
+
+function onNavigateIncident(delta: number): void {
+	if (selectedIncidentIndex.value === null) {
+		return;
+	}
+	const next = selectedIncidentIndex.value + delta;
+	if (next >= 0 && next < incidents.value.length) {
+		selectedIncidentIndex.value = next;
+	}
+}
 </script>
 
 <template>
@@ -107,9 +149,23 @@ const filteredExchanges = computed((): DomainExchange[] => {
 					:exchanges="filteredExchanges"
 					:facet-state="facetState"
 				/>
-				<p v-else-if="activeView === 'incidents'">
-					Incidents view — placeholder
-				</p>
+				<template v-else-if="activeView === 'incidents'">
+					<IncidentStack
+						:incidents="incidents"
+						:facet-state="facetState"
+						:exchanges="filteredExchanges"
+						@open-incident="onOpenIncident"
+					/>
+					<IncidentModal
+						v-if="selectedIncidentIndex !== null"
+						:incident="incidents[selectedIncidentIndex]!"
+						:exchanges="filteredExchanges"
+						:index="selectedIncidentIndex"
+						:total="incidents.length"
+						@close="onCloseIncident"
+						@navigate="onNavigateIncident"
+					/>
+				</template>
 				<p v-else-if="activeView === 'minimap'">
 					Minimap view — placeholder
 				</p>
