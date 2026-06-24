@@ -1,0 +1,59 @@
+*,
+*::before,
+*::after {
+	box-sizing: border-box;
+	margin: 0;
+	padding: 0;
+}
+
+:root {
+	/* Dim tokens */
+	--dim-slow: #3b82f6;
+	--dim-slow-bg: #dbeafe;
+	--dim-violation: #f59e0b;
+	--dim-violation-bg: #fef3c7;
+	--dim-retry: #93c5fd;
+	--dim-retry-bg: #e0f2fe;
+	--dim-timeout: #ef4444;
+	--dim-timeout-bg: #fee2e2;
+	--dim-none: #94a3b8;
+	--dim-none-bg: #f1f5f9;
+
+	/* Layout / theme tokens */
+	--color-bg: #f1f5f9;
+	--color-surface: #ffffff;
+	--color-border: #e2e8f0;
+	--color-primary: #3b82f6;
+	--color-ok: #16a34a;
+	--color-warn: #d97706;
+	--color-err: #dc2626;
+	--color-text: #0f172a;
+	--color-text-muted: #64748b;
+
+	/* Sidebar tokens */
+	--sidebar-bg: #1e293b;
+	--sidebar-text: #e2e8f0;
+	--sidebar-muted: #94a3b8;
+	--sidebar-border: #334155;
+
+	/* Typography */
+	--font-mono: ui-monospace, "Cascadia Code", Menlo, monospace;
+}
+
+html,
+body {
+	height: 100%;
+}
+
+body {
+	background: var(--color-bg);
+	color: var(--color-text);
+	font-family: system-ui, sans-serif;
+	font-size: 14px;
+}
+
+#app {
+	height: 100%;
+	display: flex;
+	flex-direction: column;
+}

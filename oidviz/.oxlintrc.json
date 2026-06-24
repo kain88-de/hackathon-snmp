@@ -1,0 +1,13 @@
+{
+  "rules": {
+    "no-magic-numbers": ["warn", { "ignoreEnums": true, "ignore": [0, 1, -1] }],
+    "max-lines": ["warn", { "max": 500 }],
+    "no-undefined": "off",
+    "no-null": "off",
+    "consistent-type-definitions": "off",
+    "consistent-indexed-object-style": "off",
+    "no-optional-chaining": "off",
+    "sort-imports": "off"
+  },
+  "ignorePatterns": ["src/lib/types.gen.ts"]
+}

@@ -1,0 +1,39 @@
+set shell := ["bash", "-cu"]
+
+dev:
+    bun run dev
+
+build:
+    bun run build
+
+fmt:
+    bunx biome format --write src/
+
+fmt-check:
+    bunx biome check --linter-enabled=false src/
+
+lint:
+    bunx oxlint -D all -c .oxlintrc.json --ignore-pattern "src/lib/types.gen.ts" src/
+    bunx biome check --formatter-enabled=false --error-on-warnings src/
+    bunx eslint --max-warnings 0 src/
+
+types:
+    bunx vue-tsc --noEmit --skipLibCheck
+
+test:
+    bun test --path-ignore-patterns "tests/e2e/**" --pass-with-no-tests
+
+ci: lint types fmt-check test
+
+e2e:
+    bunx playwright test
+
+a11y:
+    bun run build
+    bunx vite preview --port 4173 &
+    sleep 2
+    bunx axe http://localhost:4173 --exit
+    kill %1
+
+gen-types:
+    bunx json-schema-to-typescript ../docs/trace-format.schema.json -o src/lib/types.gen.ts
