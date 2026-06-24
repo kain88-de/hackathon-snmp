@@ -82,6 +82,33 @@ test("sidebar: aside landmark present, all four view buttons visible", async ({
 	await expect(page.getByRole("button", { name: "OID Tree" })).toBeVisible();
 });
 
+test("minimap view: both canvases have non-zero clientWidth", async ({
+	page,
+}) => {
+	await page.goto("/");
+
+	const fileInput = page.locator('input[type="file"]');
+	await fileInput.setInputFiles(FIXTURE_PATH);
+
+	await expect(page.locator('[data-phase="viewer"]')).toBeVisible({
+		timeout: 10000,
+	});
+
+	// Switch to Minimap + Detail view
+	await page.getByRole("button", { name: "Minimap + Detail" }).click();
+
+	// Both canvas elements should have non-zero clientWidth
+	const canvases = page.locator(".minimap-detail canvas");
+	await expect(canvases).toHaveCount(2, { timeout: 3000 });
+
+	const widths = await canvases.evaluateAll((els) =>
+		els.map((el) => (el as HTMLElement).clientWidth),
+	);
+	for (const w of widths) {
+		expect(w).toBeGreaterThan(0);
+	}
+});
+
 test("incident stack: rows visible, modal opens/closes", async ({ page }) => {
 	await page.goto("/");
 

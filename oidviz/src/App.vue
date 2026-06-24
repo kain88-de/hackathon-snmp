@@ -4,6 +4,7 @@ import FindingsByCategory from "./components/FindingsByCategory.vue";
 import IncidentModal from "./components/IncidentModal.vue";
 import IncidentStack from "./components/IncidentStack.vue";
 import LandingScreen from "./components/LandingScreen.vue";
+import MinimapDetail from "./components/MinimapDetail.vue";
 import Sidebar from "./components/Sidebar.vue";
 import { clusterMatchesFacets, matchesFacets } from "./lib/filters.ts";
 import { buildIncidents } from "./lib/incidentStack.ts";
@@ -130,6 +131,10 @@ function onNavigateIncident(delta: number): void {
 	}
 }
 
+function onFocusExchange(_seq: number): void {
+	// no-op for now — placeholder for future navigation
+}
+
 // Clear a stale selectedIncidentIndex when facet changes shrink filteredIncidents
 watch(filteredIncidents, (list): void => {
 	if (
@@ -185,9 +190,12 @@ watch(filteredIncidents, (list): void => {
 						@navigate="onNavigateIncident"
 					/>
 				</template>
-				<p v-else-if="activeView === 'minimap'">
-					Minimap view — placeholder
-				</p>
+				<MinimapDetail
+					v-else-if="activeView === 'minimap'"
+					:exchanges="filteredExchanges"
+					:facet-state="facetState"
+					@focus-exchange="onFocusExchange"
+				/>
 				<p v-else-if="activeView === 'oidtree'">
 					OID Tree view — placeholder
 				</p>
