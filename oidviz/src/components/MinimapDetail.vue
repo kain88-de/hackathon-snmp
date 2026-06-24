@@ -29,6 +29,7 @@ const ML_LABEL_OFFSET = 4; // px gap between label and bar left edge
 const MIN_BAR_W = 3; // minimum exchange bar width px
 const VIOLATION_SCORE_BONUS = 1e9; // score bump for buckets with violations
 const RTT_SCORE_SCALE = 1000; // ms → score units
+const ARROW_SHIFT_FRACTION = 0.2; // Arrow key shifts window by 20% of span
 
 const containerEl = ref<HTMLElement | null>(null);
 const miniCanvas = ref<HTMLCanvasElement | null>(null);
@@ -41,6 +42,29 @@ let selectedColEnd = 0;
 let isDragging = false;
 let dragStartCol = 0;
 let totalCols = 0; // updated on each minimap draw
+
+// Drag mode tracking
+type DragMode = "create" | "pan" | "edge-left" | "edge-right";
+let dragMode: DragMode = "create";
+let dragPanAnchorCol = 0; // column under cursor at pan-start
+let dragPanStartL = 0; // selectedColStart at pan-start
+let dragPanStartR = 0; // selectedColEnd at pan-start
+const EDGE_GRAB_PX = 6; // pixels from edge that counts as edge drag
+
+function dragModeForCol(col: number): DragMode {
+	const winW = selectedColEnd - selectedColStart;
+	if (winW > 0 && col >= selectedColStart && col < selectedColEnd) {
+		// Inside window — check edges first
+		if (col - selectedColStart <= EDGE_GRAB_PX) {
+			return "edge-left";
+		}
+		if (selectedColEnd - 1 - col <= EDGE_GRAB_PX) {
+			return "edge-right";
+		}
+		return "pan";
+	}
+	return "create";
+}
 
 function exchangeColour(
 	ex: DomainExchange,
@@ -391,6 +415,34 @@ function detailRowFromMouseY(clientY: number): number | null {
 	return row;
 }
 
+function updateCursor(mini: HTMLCanvasElement, col: number): void {
+	const mode = dragModeForCol(col);
+	if (mode === "edge-left" || mode === "edge-right") {
+		mini.style.cursor = "ew-resize";
+	} else if (mode === "pan") {
+		mini.style.cursor = "grab";
+	} else {
+		mini.style.cursor = "crosshair";
+	}
+}
+
+function applyDragMove(col: number, cols: number): void {
+	if (dragMode === "pan") {
+		const delta = col - dragPanAnchorCol;
+		const winW = dragPanStartR - dragPanStartL;
+		const newStart = Math.max(0, Math.min(cols - winW, dragPanStartL + delta));
+		selectedColStart = newStart;
+		selectedColEnd = newStart + winW;
+	} else if (dragMode === "edge-left") {
+		selectedColStart = Math.max(0, Math.min(col, selectedColEnd - 1));
+	} else if (dragMode === "edge-right") {
+		selectedColEnd = Math.max(selectedColStart + 1, Math.min(cols, col + 1));
+	} else {
+		selectedColStart = Math.min(dragStartCol, col);
+		selectedColEnd = Math.max(dragStartCol, col) + 1;
+	}
+}
+
 onMounted((): void => {
 	const observer = new ResizeObserver((): void => {
 		redraw();
@@ -414,21 +466,33 @@ onMounted((): void => {
 	// Minimap interactions
 	const mini = miniCanvas.value;
 	if (mini) {
+		mini.setAttribute("tabindex", "0");
+
 		mini.addEventListener("mousedown", (e: MouseEvent): void => {
 			isDragging = true;
 			dragStartCol = colFromMouseX(mini, e.clientX);
-			selectedColStart = dragStartCol;
-			selectedColEnd = dragStartCol + 1;
+			dragMode = dragModeForCol(dragStartCol);
+			if (dragMode === "pan") {
+				dragPanAnchorCol = dragStartCol;
+				dragPanStartL = selectedColStart;
+				dragPanStartR = selectedColEnd;
+			} else if (dragMode === "edge-left" || dragMode === "edge-right") {
+				// anchor is the opposite edge (stays fixed)
+			} else {
+				// create
+				selectedColStart = dragStartCol;
+				selectedColEnd = dragStartCol + 1;
+			}
 			redraw();
 		});
 
 		mini.addEventListener("mousemove", (e: MouseEvent): void => {
+			const col = colFromMouseX(mini, e.clientX);
 			if (!isDragging) {
+				updateCursor(mini, col);
 				return;
 			}
-			const col = colFromMouseX(mini, e.clientX);
-			selectedColStart = Math.min(dragStartCol, col);
-			selectedColEnd = Math.max(dragStartCol, col) + 1;
+			applyDragMove(col, totalCols || mini.width);
 			redraw();
 		});
 
@@ -438,7 +502,7 @@ onMounted((): void => {
 			}
 			isDragging = false;
 			const col = colFromMouseX(mini, e.clientX);
-			if (col === dragStartCol) {
+			if (dragMode === "create" && col === dragStartCol) {
 				// Single click — select small window around click
 				const windowHalf = Math.max(
 					1,
@@ -446,19 +510,38 @@ onMounted((): void => {
 				);
 				selectedColStart = Math.max(0, col - windowHalf);
 				selectedColEnd = Math.min(totalCols || mini.width, col + windowHalf);
-			} else {
-				selectedColStart = Math.min(dragStartCol, col);
-				selectedColEnd = Math.max(dragStartCol, col) + 1;
 			}
 			redraw();
 		});
 
 		// Cancel drag if mouse leaves canvas
 		mini.addEventListener("mouseleave", (): void => {
+			mini.style.cursor = "crosshair";
 			if (isDragging) {
 				isDragging = false;
 				redraw();
 			}
+		});
+
+		// Arrow Left/Right: shift window by 20% of current span
+		mini.addEventListener("keydown", (e: KeyboardEvent): void => {
+			if (e.key !== "ArrowLeft" && e.key !== "ArrowRight") {
+				return;
+			}
+			e.preventDefault();
+			const cols = totalCols || mini.width;
+			const winW = selectedColEnd - selectedColStart;
+			const shift = Math.max(1, Math.round(winW * ARROW_SHIFT_FRACTION));
+			if (e.key === "ArrowLeft") {
+				const newStart = Math.max(0, selectedColStart - shift);
+				selectedColStart = newStart;
+				selectedColEnd = newStart + winW;
+			} else {
+				const newEnd = Math.min(cols, selectedColEnd + shift);
+				selectedColEnd = newEnd;
+				selectedColStart = newEnd - winW;
+			}
+			redraw();
 		});
 	}
 

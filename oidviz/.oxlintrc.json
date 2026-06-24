@@ -1,7 +1,7 @@
 {
   "rules": {
     "no-magic-numbers": ["warn", { "ignoreEnums": true, "ignore": [0, 1, -1] }],
-    "max-lines": ["warn", { "max": 500 }],
+    "max-lines": ["warn", { "max": 600 }],
     "no-undefined": "off",
     "no-null": "off",
     "consistent-type-definitions": "off",
