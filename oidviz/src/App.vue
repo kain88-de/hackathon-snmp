@@ -5,6 +5,7 @@ import IncidentModal from "./components/IncidentModal.vue";
 import IncidentStack from "./components/IncidentStack.vue";
 import LandingScreen from "./components/LandingScreen.vue";
 import MinimapDetail from "./components/MinimapDetail.vue";
+import OidTree from "./components/OidTree.vue";
 import Sidebar from "./components/Sidebar.vue";
 import { clusterMatchesFacets, matchesFacets } from "./lib/filters.ts";
 import { buildIncidents } from "./lib/incidentStack.ts";
@@ -13,10 +14,19 @@ import type {
 	AppState,
 	DomainExchange,
 	FacetState,
+	FlatRow,
 	Incident,
 	ParseResult,
+	TrieNode,
 	WorkerResponse,
 } from "./lib/model.ts";
+import {
+	autoExpand,
+	buildTrie,
+	collapseAll,
+	flatten,
+	rollup,
+} from "./lib/oidTrie.ts";
 
 const state = ref<AppState>({ phase: "landing" });
 const facetState = ref<FacetState>({
@@ -144,6 +154,45 @@ watch(filteredIncidents, (list): void => {
 		selectedIncidentIndex.value = null;
 	}
 });
+
+// OID Tree
+const oidRoot = computed((): TrieNode | null => {
+	if (state.value.phase !== "viewer") {
+		return null;
+	}
+	const root = buildTrie(filteredExchanges.value);
+	rollup(root, facetState.value.slowMs);
+	autoExpand(root);
+	return root;
+});
+
+const flatRows = ref<FlatRow[]>([]);
+
+watch(
+	oidRoot,
+	(root): void => {
+		if (root === null) {
+			flatRows.value = [];
+		} else {
+			flatRows.value = flatten(root);
+		}
+	},
+	{ immediate: true },
+);
+
+function onReflatten(): void {
+	if (oidRoot.value !== null) {
+		flatRows.value = flatten(oidRoot.value);
+	}
+}
+
+function onCollapseAll(): void {
+	if (oidRoot.value === null) {
+		return;
+	}
+	collapseAll(oidRoot.value);
+	flatRows.value = flatten(oidRoot.value);
+}
 </script>
 
 <template>
@@ -196,9 +245,14 @@ watch(filteredIncidents, (list): void => {
 					:facet-state="facetState"
 					@focus-exchange="onFocusExchange"
 				/>
-				<p v-else-if="activeView === 'oidtree'">
-					OID Tree view — placeholder
-				</p>
+				<OidTree
+					v-else-if="activeView === 'oidtree'"
+					:flat-rows="flatRows"
+					:facet-state="facetState"
+					:matching-count="filteredExchanges.length"
+					@reflatten="onReflatten"
+					@collapse-all="onCollapseAll"
+				/>
 			</div>
 
 			<div v-else-if="state.phase === 'error'" class="error-page" role="alert">

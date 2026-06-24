@@ -109,6 +109,25 @@ test("minimap view: both canvases have non-zero clientWidth", async ({
 	}
 });
 
+test("oid tree: at least one trie row visible", async ({ page }) => {
+	await page.goto("/");
+
+	const fileInput = page.locator('input[type="file"]');
+	await fileInput.setInputFiles(FIXTURE_PATH);
+
+	await expect(page.locator('[data-phase="viewer"]')).toBeVisible({
+		timeout: 10000,
+	});
+
+	// Switch to OID Tree view
+	await page.getByRole("button", { name: "OID Tree" }).click();
+
+	// At least one trie row should be visible
+	await expect(page.locator('[data-trie-row]').first()).toBeVisible({
+		timeout: 5000,
+	});
+});
+
 test("incident stack: rows visible, modal opens/closes", async ({ page }) => {
 	await page.goto("/");
 
