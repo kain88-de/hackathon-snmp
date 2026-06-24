@@ -64,8 +64,8 @@ function onSlowThresholdChange(event: Event): void {
 
 <template>
 	<aside class="sidebar" aria-label="Controls">
-		<!-- File section -->
-		<section class="sidebar-section">
+		<!-- File section (viewer phase only) -->
+		<section v-if="appState.phase === 'viewer'" class="sidebar-section">
 			<button class="sidebar-btn" type="button" @click="openFilePicker">
 				Open file
 			</button>
@@ -245,7 +245,7 @@ function onSlowThresholdChange(event: Event): void {
 
 .sidebar-nav-btn--active {
 	background: var(--color-primary);
-	color: #fff;
+	color: var(--sidebar-text-active);
 }
 
 .sidebar-facets {

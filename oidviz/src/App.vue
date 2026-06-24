@@ -72,24 +72,24 @@ function currentResult(): ParseResult | null {
 
 <template>
 	<div id="app" :data-phase="state.phase">
-		<LandingScreen
-			v-if="state.phase === 'landing' || state.phase === 'loading'"
+		<Sidebar
 			:app-state="state"
+			:result="currentResult()"
+			:facet-state="facetState"
+			:active-view="activeView"
 			@file-selected="onFileSelected"
+			@view-change="onViewChange"
+			@facet-change="onFacetChange"
 		/>
 
-		<div v-else-if="state.phase === 'viewer'" class="viewer-root">
-			<Sidebar
+		<div class="app-main">
+			<LandingScreen
+				v-if="state.phase === 'landing' || state.phase === 'loading'"
 				:app-state="state"
-				:result="currentResult()"
-				:facet-state="facetState"
-				:active-view="activeView"
 				@file-selected="onFileSelected"
-				@view-change="onViewChange"
-				@facet-change="onFacetChange"
 			/>
 
-			<div class="viewer-content">
+			<div v-else-if="state.phase === 'viewer'" class="viewer-content">
 				<p v-if="activeView === 'findings'">
 					Findings view — {{ state.result.exchanges.length }} exchanges
 					(perf: {{ facetState.perf }}, slowMs:
@@ -105,19 +105,27 @@ function currentResult(): ParseResult | null {
 					OID Tree view — placeholder
 				</p>
 			</div>
-		</div>
 
-		<div v-else-if="state.phase === 'error'" class="error-page" role="alert">
-			<p>Error: {{ state.message }}</p>
+			<div v-else-if="state.phase === 'error'" class="error-page" role="alert">
+				<p>Error: {{ state.message }}</p>
+			</div>
 		</div>
 	</div>
 </template>
 
 <style scoped>
-.viewer-root {
+#app {
 	display: flex;
 	flex-direction: row;
 	height: 100%;
+}
+
+.app-main {
+	flex: 1;
+	display: flex;
+	flex-direction: column;
+	height: 100%;
+	overflow: hidden;
 }
 
 .viewer-content {

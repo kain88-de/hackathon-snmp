@@ -1,0 +1,21 @@
+- generic [ref=e3]:
+  - complementary "OIDviz controls" [ref=e4]:
+    - generic [ref=e5]:
+      - heading "OIDviz" [level=1] [ref=e6]
+      - button "Toggle dark mode" [ref=e7]: 🌙
+    - region "Load Trace" [ref=e8]:
+      - heading "Load Trace" [level=2] [ref=e9]
+      - button "Open File" [ref=e10]
+    - navigation "Views" [ref=e11]:
+      - button "Findings" [ref=e12]
+      - button "Incident Stack" [ref=e13]
+      - button "Minimap" [ref=e14]
+      - button "OID Tree" [ref=e15]
+  - main [ref=e16]:
+    - region "File drop zone — drag a .oidtrace.jsonl.gz file here or press Enter to browse" [ref=e18] [cursor=pointer]:
+      - generic [ref=e19]:
+        - paragraph [ref=e20]:
+          - text: Drag a
+          - code [ref=e21]: .oidtrace.jsonl.gz
+          - text: file here
+        - paragraph [ref=e22]: or press Enter to browse
