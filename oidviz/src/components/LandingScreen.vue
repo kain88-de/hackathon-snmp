@@ -152,7 +152,7 @@ function readFile(file: File): void {
 .drop-zone:focus-visible,
 .drop-zone.drag-over {
 	border-color: var(--color-primary);
-	background: #eff6ff;
+	background: var(--color-primary-bg);
 }
 
 .drop-title {
@@ -219,9 +219,9 @@ kbd {
 }
 
 .error-banner {
-	background: #fee2e2;
-	color: #991b1b;
-	border: 1px solid #fca5a5;
+	background: var(--dim-timeout-bg);
+	color: var(--dim-timeout);
+	border: 1px solid var(--dim-timeout);
 	border-radius: 6px;
 	padding: 10px 16px;
 	max-width: 480px;
