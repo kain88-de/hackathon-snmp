@@ -38,3 +38,30 @@ test("file upload: transitions to viewer phase", async ({ page }) => {
 		timeout: 10000,
 	});
 });
+
+test("sidebar: aside landmark present, all four view buttons visible", async ({
+	page,
+}) => {
+	await page.goto("/");
+
+	// Upload a file so we're in viewer phase where sidebar is rendered
+	const fileInput = page.locator('input[type="file"]');
+	await fileInput.setInputFiles(FIXTURE_PATH);
+	await expect(page.locator('[data-phase="viewer"]')).toBeVisible({
+		timeout: 10000,
+	});
+
+	// Aside landmark present
+	const sidebar = page.getByRole("complementary", { name: "Controls" });
+	await expect(sidebar).toBeVisible();
+
+	// All four view buttons visible
+	await expect(page.getByRole("button", { name: "Findings" })).toBeVisible();
+	await expect(
+		page.getByRole("button", { name: "Incident Stack" }),
+	).toBeVisible();
+	await expect(
+		page.getByRole("button", { name: "Minimap + Detail" }),
+	).toBeVisible();
+	await expect(page.getByRole("button", { name: "OID Tree" })).toBeVisible();
+});

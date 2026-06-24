@@ -1,10 +1,12 @@
 <script setup lang="ts">
 import { ref } from "vue";
 import LandingScreen from "./components/LandingScreen.vue";
+import Sidebar from "./components/Sidebar.vue";
 import type {
 	ActiveView,
 	AppState,
 	FacetState,
+	ParseResult,
 	WorkerResponse,
 } from "./lib/model.ts";
 
@@ -51,6 +53,21 @@ function onFileSelected(buffer: ArrayBuffer): void {
 	// Transfer the ArrayBuffer so we avoid copying it
 	w.postMessage({ buffer, type: "parse" }, [buffer]);
 }
+
+function onViewChange(view: ActiveView): void {
+	activeView.value = view;
+}
+
+function onFacetChange(patch: Partial<FacetState>): void {
+	Object.assign(facetState.value, patch);
+}
+
+function currentResult(): ParseResult | null {
+	if (state.value.phase === "viewer") {
+		return state.value.result;
+	}
+	return null;
+}
 </script>
 
 <template>
@@ -62,32 +79,15 @@ function onFileSelected(buffer: ArrayBuffer): void {
 		/>
 
 		<div v-else-if="state.phase === 'viewer'" class="viewer-root">
-			<nav class="viewer-nav">
-				<button
-					:class="{ active: activeView === 'findings' }"
-					@click="activeView = 'findings'"
-				>
-					Findings
-				</button>
-				<button
-					:class="{ active: activeView === 'incidents' }"
-					@click="activeView = 'incidents'"
-				>
-					Incidents
-				</button>
-				<button
-					:class="{ active: activeView === 'minimap' }"
-					@click="activeView = 'minimap'"
-				>
-					Minimap
-				</button>
-				<button
-					:class="{ active: activeView === 'oidtree' }"
-					@click="activeView = 'oidtree'"
-				>
-					OID Tree
-				</button>
-			</nav>
+			<Sidebar
+				:app-state="state"
+				:result="currentResult()"
+				:facet-state="facetState"
+				:active-view="activeView"
+				@file-selected="onFileSelected"
+				@view-change="onViewChange"
+				@facet-change="onFacetChange"
+			/>
 
 			<div class="viewer-content">
 				<p v-if="activeView === 'findings'">
@@ -116,34 +116,14 @@ function onFileSelected(buffer: ArrayBuffer): void {
 <style scoped>
 .viewer-root {
 	display: flex;
-	flex-direction: column;
+	flex-direction: row;
 	height: 100%;
 }
 
-.viewer-nav {
-	display: flex;
-	gap: 8px;
-	padding: 12px 16px;
-	border-bottom: 1px solid var(--color-border);
-}
-
-.viewer-nav button {
-	padding: 6px 14px;
-	border: 1px solid var(--color-border);
-	border-radius: 4px;
-	background: var(--color-surface);
-	color: var(--color-text);
-	cursor: pointer;
-}
-
-.viewer-nav button.active {
-	background: var(--color-primary);
-	border-color: var(--color-primary);
-	color: #fff;
-}
-
 .viewer-content {
+	flex: 1;
 	padding: 24px;
+	overflow: auto;
 }
 
 .error-page {
