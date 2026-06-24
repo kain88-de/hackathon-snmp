@@ -1,5 +1,5 @@
 <script setup lang="ts">
-import { computed, ref } from "vue";
+import { computed, ref, watch } from "vue";
 import FindingsByCategory from "./components/FindingsByCategory.vue";
 import IncidentModal from "./components/IncidentModal.vue";
 import IncidentStack from "./components/IncidentStack.vue";
@@ -129,6 +129,16 @@ function onNavigateIncident(delta: number): void {
 		selectedIncidentIndex.value = next;
 	}
 }
+
+// Clear a stale selectedIncidentIndex when facet changes shrink filteredIncidents
+watch(filteredIncidents, (list): void => {
+	if (
+		selectedIncidentIndex.value !== null &&
+		selectedIncidentIndex.value >= list.length
+	) {
+		selectedIncidentIndex.value = null;
+	}
+});
 </script>
 
 <template>
@@ -166,7 +176,8 @@ function onNavigateIncident(delta: number): void {
 					<IncidentModal
 						v-if="selectedIncidentIndex !== null"
 						:incident="filteredIncidents[selectedIncidentIndex]!"
-						:exchanges="filteredExchanges"
+						:exchanges="state.result.exchanges"
+						:facet-state="facetState"
 						:index="selectedIncidentIndex"
 						:total="filteredIncidents.length"
 						:slow-ms="facetState.slowMs"

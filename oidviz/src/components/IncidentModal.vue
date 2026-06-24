@@ -1,10 +1,12 @@
 <script setup lang="ts">
 import { computed, onBeforeUnmount, onMounted, ref } from "vue";
-import type { DomainExchange, Incident } from "../lib/model.ts";
+import { matchesFacets } from "../lib/filters.ts";
+import type { DomainExchange, FacetState, Incident } from "../lib/model.ts";
 
 const props = defineProps<{
 	incident: Incident;
 	exchanges: DomainExchange[];
+	facetState: FacetState;
 	index: number;
 	total: number;
 	slowMs: number;
@@ -15,18 +17,16 @@ const emit = defineEmits<{ close: []; navigate: [delta: number] }>();
 const titleEl = ref<HTMLElement | null>(null);
 const panelEl = ref<HTMLElement | null>(null);
 
-// The exchanges visible in the table: incident members that exist in the
-// filtered exchanges array (undefined indices are absent from filteredExchanges).
-const memberExchanges = computed((): DomainExchange[] => {
-	const result: DomainExchange[] = [];
-	for (const idx of props.incident.members) {
-		const ex = props.exchanges[idx];
-		if (ex !== undefined) {
-			result.push(ex);
-		}
-	}
-	return result;
-});
+// Map incident member indices (into the full exchanges array) to exchange
+// objects, then filter by current facets so the table respects active filters.
+const memberExchanges = computed((): DomainExchange[] =>
+	props.incident.members
+		.map((i): DomainExchange | undefined => props.exchanges[i])
+		.filter(
+			(ex): ex is DomainExchange =>
+				ex !== undefined && matchesFacets(ex, props.facetState),
+		),
+);
 
 function onKeydown(e: KeyboardEvent): void {
 	if (e.key === "Escape") {
