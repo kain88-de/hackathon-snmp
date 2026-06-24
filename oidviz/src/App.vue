@@ -1,10 +1,13 @@
 <script setup lang="ts">
-import { ref } from "vue";
+import { computed, ref } from "vue";
+import FindingsByCategory from "./components/FindingsByCategory.vue";
 import LandingScreen from "./components/LandingScreen.vue";
 import Sidebar from "./components/Sidebar.vue";
+import { matchesFacets } from "./lib/filters.ts";
 import type {
 	ActiveView,
 	AppState,
+	DomainExchange,
 	FacetState,
 	ParseResult,
 	WorkerResponse,
@@ -68,6 +71,15 @@ function currentResult(): ParseResult | null {
 	}
 	return null;
 }
+
+const filteredExchanges = computed((): DomainExchange[] => {
+	if (state.value.phase !== "viewer") {
+		return [];
+	}
+	return state.value.result.exchanges.filter((ex): boolean =>
+		matchesFacets(ex, facetState.value),
+	);
+});
 </script>
 
 <template>
@@ -90,11 +102,11 @@ function currentResult(): ParseResult | null {
 			/>
 
 			<div v-else-if="state.phase === 'viewer'" class="viewer-content">
-				<p v-if="activeView === 'findings'">
-					Findings view — {{ state.result.exchanges.length }} exchanges
-					(perf: {{ facetState.perf }}, slowMs:
-					{{ facetState.slowMs }})
-				</p>
+				<FindingsByCategory
+					v-if="activeView === 'findings'"
+					:exchanges="filteredExchanges"
+					:facet-state="facetState"
+				/>
 				<p v-else-if="activeView === 'incidents'">
 					Incidents view — placeholder
 				</p>
@@ -130,8 +142,9 @@ function currentResult(): ParseResult | null {
 
 .viewer-content {
 	flex: 1;
-	padding: 24px;
-	overflow: auto;
+	overflow: hidden;
+	display: flex;
+	flex-direction: column;
 }
 
 .error-page {

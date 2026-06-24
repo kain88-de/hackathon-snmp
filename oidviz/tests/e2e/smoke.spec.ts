@@ -39,6 +39,22 @@ test("file upload: transitions to viewer phase", async ({ page }) => {
 	});
 });
 
+test("findings view: shows rows after file upload", async ({ page }) => {
+	await page.goto("/");
+
+	const fileInput = page.locator('input[type="file"]');
+	await fileInput.setInputFiles(FIXTURE_PATH);
+
+	await expect(page.locator('[data-phase="viewer"]')).toBeVisible({
+		timeout: 10000,
+	});
+
+	// Findings view is the default active view; at least one exchange row should be visible
+	await expect(page.locator(".exchange-row").first()).toBeVisible({
+		timeout: 5000,
+	});
+});
+
 test("sidebar: aside landmark present, all four view buttons visible", async ({
 	page,
 }) => {
