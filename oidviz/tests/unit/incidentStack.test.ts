@@ -116,6 +116,18 @@ describe("buildIncidents", () => {
 		expect(incidents[0]?.region).toBe("9.9.9");
 	});
 
+	test("region resolves to most frequent OID prefix across multi-member incident", () => {
+		// 2 members with System MIB OID, 1 with Cisco OID — majority wins
+		const exchanges = [
+			makeExchange({ seq: 1, rtt: 2000, requestOid: asOid("1.3.6.1.2.1.1.1.0") }),
+			makeExchange({ seq: 2, rtt: 2000, requestOid: asOid("1.3.6.1.2.1.1.1.0") }),
+			makeExchange({ seq: 3, rtt: 2000, requestOid: asOid("1.3.6.1.4.1.9.1.0") }),
+		];
+		const incidents = buildIncidents(exchanges, SLOW_MS);
+		expect(incidents).toHaveLength(1);
+		expect(incidents[0]?.region).toBe("System MIB");
+	});
+
 	test("score is computed correctly", () => {
 		// violations: 1 type (+1000), peakRtt=2000, retryCount=2 (+200), timeoutCount=0
 		const exchanges = [

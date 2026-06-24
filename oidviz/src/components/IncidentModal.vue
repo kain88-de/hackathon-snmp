@@ -7,6 +7,7 @@ const props = defineProps<{
 	exchanges: DomainExchange[];
 	index: number;
 	total: number;
+	slowMs: number;
 }>();
 
 const emit = defineEmits<{ close: []; navigate: [delta: number] }>();
@@ -116,7 +117,7 @@ onBeforeUnmount((): void => {
 							:key="ex.seq"
 						>
 							<td class="td-oid" :title="ex.requestOid">{{ ex.requestOid }}</td>
-							<td :class="ex.isTimeout ? 'td-timeout' : ex.rtt > 1000 ? 'td-slow' : ''">
+							<td :class="ex.isTimeout ? 'td-timeout' : ex.rtt > slowMs ? 'td-slow' : ''">
 								{{ ex.isTimeout ? 'timeout' : ex.rtt + 'ms' }}
 							</td>
 							<td>{{ ex.attemptCount }}</td>

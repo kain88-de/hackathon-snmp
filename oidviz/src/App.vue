@@ -5,7 +5,7 @@ import IncidentModal from "./components/IncidentModal.vue";
 import IncidentStack from "./components/IncidentStack.vue";
 import LandingScreen from "./components/LandingScreen.vue";
 import Sidebar from "./components/Sidebar.vue";
-import { matchesFacets } from "./lib/filters.ts";
+import { clusterMatchesFacets, matchesFacets } from "./lib/filters.ts";
 import { buildIncidents } from "./lib/incidentStack.ts";
 import type {
 	ActiveView,
@@ -96,6 +96,13 @@ const incidents = computed((): Incident[] => {
 	return buildIncidents(state.value.result.exchanges, facetState.value.slowMs);
 });
 
+// Filtered incidents: same filter applied in IncidentStack, used for modal lookup
+const filteredIncidents = computed((): Incident[] =>
+	incidents.value.filter((inc): boolean =>
+		clusterMatchesFacets(inc, facetState.value),
+	),
+);
+
 function onOpenIncident(index: number): void {
 	// Capture the currently focused element as the trigger for focus restoration
 	if (document.activeElement instanceof HTMLElement) {
@@ -118,7 +125,7 @@ function onNavigateIncident(delta: number): void {
 		return;
 	}
 	const next = selectedIncidentIndex.value + delta;
-	if (next >= 0 && next < incidents.value.length) {
+	if (next >= 0 && next < filteredIncidents.value.length) {
 		selectedIncidentIndex.value = next;
 	}
 }
@@ -158,10 +165,11 @@ function onNavigateIncident(delta: number): void {
 					/>
 					<IncidentModal
 						v-if="selectedIncidentIndex !== null"
-						:incident="incidents[selectedIncidentIndex]!"
+						:incident="filteredIncidents[selectedIncidentIndex]!"
 						:exchanges="filteredExchanges"
 						:index="selectedIncidentIndex"
-						:total="incidents.length"
+						:total="filteredIncidents.length"
+						:slow-ms="facetState.slowMs"
 						@close="onCloseIncident"
 						@navigate="onNavigateIncident"
 					/>
