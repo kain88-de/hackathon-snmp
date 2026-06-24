@@ -192,7 +192,7 @@ function rttClass(ex: DomainExchange): string {
 
 			<template
 				v-for="(item, i) in visibleItems.slice"
-				:key="visibleItems.startIdx + i"
+				:key="item.kind === 'row' ? item.exchange.seq : `header-${visibleItems.startIdx + i}`"
 			>
 				<div
 					v-if="item.kind === 'header'"
@@ -249,8 +249,6 @@ function rttClass(ex: DomainExchange): string {
 	color: var(--color-text-muted);
 	background: var(--color-bg);
 	border-bottom: 1px solid var(--color-border);
-	position: sticky;
-	top: 0;
 	z-index: 1;
 }
 
