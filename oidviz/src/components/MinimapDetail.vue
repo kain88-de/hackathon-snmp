@@ -165,13 +165,9 @@ function drawMinimap(): void {
 
 	const cols = w;
 	totalCols = cols;
-
 	const times = exchanges.map((ex): number => ex.sentAtMs);
-	const minT = Math.min(...times);
-	const maxT = Math.max(...times);
+	const [minT, maxT] = minMaxValues(times);
 	const timeRange = maxT - minT || 1;
-
-	// Build buckets
 	const buckets: DomainExchange[][] = Array.from(
 		{ length: cols },
 		(): DomainExchange[] => [],
@@ -183,7 +179,6 @@ function drawMinimap(): void {
 		);
 		buckets[col]?.push(ex);
 	}
-
 	// Draw bars
 	const barY = Math.floor((MINI_H - BH) / MINIMAP_BAR_Y_DIVISOR);
 	for (const [col, bucket] of buckets.entries()) {
@@ -225,8 +220,7 @@ function getWindowExchanges(): DomainExchange[] {
 	}
 	const miniW = miniCanvas.value.width;
 	const times = exchanges.map((ex): number => ex.sentAtMs);
-	const minT = Math.min(...times);
-	const maxT = Math.max(...times);
+	const [minT, maxT] = minMaxValues(times);
 	const timeRange = maxT - minT || 1;
 	const tStart = minT + (selectedColStart / miniW) * timeRange;
 	const tEnd = minT + (selectedColEnd / miniW) * timeRange;
@@ -237,6 +231,38 @@ function getWindowExchanges(): DomainExchange[] {
 		return filtered;
 	}
 	return exchanges;
+}
+
+function minMaxValues(arr: number[]): [number, number] {
+	let max = Number.NEGATIVE_INFINITY;
+	let min = Number.POSITIVE_INFINITY;
+	for (const v of arr) {
+		if (v < min) {
+			min = v;
+		}
+		if (v > max) {
+			max = v;
+		}
+	}
+	return [min, max];
+}
+
+function bucketScore(bucket: DomainExchange[]): number {
+	if (bucket.length === 0) {
+		return 0;
+	}
+	const hasViolation = bucket.some((ex): boolean => ex.violations.length > 0);
+	let maxRtt = Number.NEGATIVE_INFINITY;
+	for (const ex of bucket) {
+		if (ex.rtt > maxRtt) {
+			maxRtt = ex.rtt;
+		}
+	}
+	let violationBonus = 0;
+	if (hasViolation) {
+		violationBonus = VIOLATION_SCORE_BONUS;
+	}
+	return violationBonus + maxRtt * RTT_SCORE_SCALE + bucket.length;
 }
 
 function drawDetail(): void {
@@ -273,10 +299,8 @@ function drawDetail(): void {
 	ctx.fillStyle = bgColor;
 	ctx.fillRect(0, 0, w, newH);
 
-	// Time range for the window
 	const wTimes = windowExchanges.map((ex): number => ex.sentAtMs);
-	const wMinT = Math.min(...wTimes);
-	const wMaxT = Math.max(...wTimes);
+	const [wMinT, wMaxT] = minMaxValues(wTimes);
 	const wRange = wMaxT - wMinT || 1;
 
 	const drawW = w - ML;
@@ -329,11 +353,8 @@ function autoFocus(): void {
 	const cols = w;
 	const exchanges = props.exchanges;
 	const times = exchanges.map((ex): number => ex.sentAtMs);
-	const minT = Math.min(...times);
-	const maxT = Math.max(...times);
+	const [minT, maxT] = minMaxValues(times);
 	const timeRange = maxT - minT || 1;
-
-	// Build buckets
 	const buckets: DomainExchange[][] = Array.from(
 		{ length: cols },
 		(): DomainExchange[] => [],
@@ -345,25 +366,13 @@ function autoFocus(): void {
 		);
 		buckets[col]?.push(ex);
 	}
-
-	// Score: violationBonus + maxRtt * 1000 + count
 	let bestScore = -1;
 	let bestCol = 0;
 	for (const [col, bucket] of buckets.entries()) {
-		if (bucket.length > 0) {
-			const hasViolation = bucket.some(
-				(ex): boolean => ex.violations.length > 0,
-			);
-			const maxRtt = Math.max(...bucket.map((ex): number => ex.rtt));
-			let violationBonus = 0;
-			if (hasViolation) {
-				violationBonus = VIOLATION_SCORE_BONUS;
-			}
-			const score = violationBonus + maxRtt * RTT_SCORE_SCALE + bucket.length;
-			if (score > bestScore) {
-				bestScore = score;
-				bestCol = col;
-			}
+		const score = bucketScore(bucket);
+		if (score > bestScore) {
+			bestScore = score;
+			bestCol = col;
 		}
 	}
 
