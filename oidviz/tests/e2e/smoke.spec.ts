@@ -55,7 +55,7 @@ test("findings view: shows rows after file upload", async ({ page }) => {
 	});
 });
 
-test("sidebar: aside landmark present, all four view buttons visible", async ({
+test("sidebar: aside landmark present, all three view buttons visible", async ({
 	page,
 }) => {
 	await page.goto("/");
@@ -71,11 +71,8 @@ test("sidebar: aside landmark present, all four view buttons visible", async ({
 	const sidebar = page.getByRole("complementary", { name: "Controls" });
 	await expect(sidebar).toBeVisible();
 
-	// All four view buttons visible
+	// All three view buttons visible
 	await expect(page.getByRole("button", { name: "Findings" })).toBeVisible();
-	await expect(
-		page.getByRole("button", { name: "Incident Stack" }),
-	).toBeVisible();
 	await expect(
 		page.getByRole("button", { name: "Minimap + Detail" }),
 	).toBeVisible();
@@ -128,33 +125,3 @@ test("oid tree: at least one trie row visible", async ({ page }) => {
 	});
 });
 
-test("incident stack: rows visible, modal opens/closes", async ({ page }) => {
-	await page.goto("/");
-
-	const fileInput = page.locator('input[type="file"]');
-	await fileInput.setInputFiles(FIXTURE_PATH);
-
-	await expect(page.locator('[data-phase="viewer"]')).toBeVisible({
-		timeout: 10000,
-	});
-
-	// Switch to Incident Stack view
-	await page.getByRole("button", { name: "Incident Stack" }).click();
-
-	// At least one incident row should be visible
-	await expect(page.locator(".incident-row").first()).toBeVisible({
-		timeout: 5000,
-	});
-
-	// Click the first incident row to open the modal
-	await page.locator(".incident-row").first().click();
-
-	// Modal should appear with role="dialog"
-	await expect(page.getByRole("dialog")).toBeVisible({ timeout: 3000 });
-
-	// Press Escape to close the modal
-	await page.keyboard.press("Escape");
-
-	// Modal should be gone
-	await expect(page.getByRole("dialog")).not.toBeVisible({ timeout: 3000 });
-});

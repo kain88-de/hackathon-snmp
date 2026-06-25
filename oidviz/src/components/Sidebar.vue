@@ -26,12 +26,11 @@ const MS_PER_SECOND = 1000;
 
 const viewLabels: Record<ActiveView, string> = {
 	findings: "Findings",
-	incidents: "Incident Stack",
 	minimap: "Minimap + Detail",
 	oidtree: "OID Tree",
 };
 
-const views: ActiveView[] = ["findings", "incidents", "minimap", "oidtree"];
+const views: ActiveView[] = ["findings", "minimap", "oidtree"];
 
 function openFilePicker(): void {
 	fileInputRef.value?.click();

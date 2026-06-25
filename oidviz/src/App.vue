@@ -1,21 +1,17 @@
 <script setup lang="ts">
 import { computed, ref, watch } from "vue";
 import FindingsByCategory from "./components/FindingsByCategory.vue";
-import IncidentModal from "./components/IncidentModal.vue";
-import IncidentStack from "./components/IncidentStack.vue";
 import LandingScreen from "./components/LandingScreen.vue";
 import MinimapDetail from "./components/MinimapDetail.vue";
 import OidTree from "./components/OidTree.vue";
 import Sidebar from "./components/Sidebar.vue";
-import { clusterMatchesFacets, matchesFacets } from "./lib/filters.ts";
-import { buildIncidents } from "./lib/incidentStack.ts";
+import { matchesFacets } from "./lib/filters.ts";
 import type {
 	ActiveView,
 	AppState,
 	DomainExchange,
 	FacetState,
 	FlatRow,
-	Incident,
 	ParseResult,
 	TrieNode,
 	WorkerResponse,
@@ -36,9 +32,6 @@ const facetState = ref<FacetState>({
 	slowMs: 1000,
 });
 const activeView = ref<ActiveView>("findings");
-const selectedIncidentIndex = ref<number | null>(null);
-// Track the DOM element that triggered the modal, so we can restore focus on close
-let modalTriggerEl: HTMLElement | null = null;
 
 let worker: Worker | null = null;
 
@@ -99,61 +92,9 @@ const filteredExchanges = computed((): DomainExchange[] => {
 	);
 });
 
-// Built from full exchange list (not filtered), because clustering is anomaly-driven
-const incidents = computed((): Incident[] => {
-	if (state.value.phase !== "viewer") {
-		return [];
-	}
-	return buildIncidents(state.value.result.exchanges, facetState.value.slowMs);
-});
-
-// Filtered incidents: same filter applied in IncidentStack, used for modal lookup
-const filteredIncidents = computed((): Incident[] =>
-	incidents.value.filter((inc): boolean =>
-		clusterMatchesFacets(inc, facetState.value),
-	),
-);
-
-function onOpenIncident(index: number): void {
-	// Capture the currently focused element as the trigger for focus restoration
-	if (document.activeElement instanceof HTMLElement) {
-		modalTriggerEl = document.activeElement;
-	} else {
-		modalTriggerEl = null;
-	}
-	selectedIncidentIndex.value = index;
-}
-
-function onCloseIncident(): void {
-	selectedIncidentIndex.value = null;
-	// Restore focus to the trigger row
-	modalTriggerEl?.focus();
-	modalTriggerEl = null;
-}
-
-function onNavigateIncident(delta: number): void {
-	if (selectedIncidentIndex.value === null) {
-		return;
-	}
-	const next = selectedIncidentIndex.value + delta;
-	if (next >= 0 && next < filteredIncidents.value.length) {
-		selectedIncidentIndex.value = next;
-	}
-}
-
 function onFocusExchange(_seq: number): void {
 	// no-op for now — placeholder for future navigation
 }
-
-// Clear a stale selectedIncidentIndex when facet changes shrink filteredIncidents
-watch(filteredIncidents, (list): void => {
-	if (
-		selectedIncidentIndex.value !== null &&
-		selectedIncidentIndex.value >= list.length
-	) {
-		selectedIncidentIndex.value = null;
-	}
-});
 
 // OID Tree
 const oidRoot = computed((): TrieNode | null => {
@@ -220,25 +161,6 @@ function onCollapseAll(): void {
 					:exchanges="filteredExchanges"
 					:facet-state="facetState"
 				/>
-				<template v-else-if="activeView === 'incidents'">
-					<IncidentStack
-						:incidents="incidents"
-						:facet-state="facetState"
-						:exchanges="filteredExchanges"
-						@open-incident="onOpenIncident"
-					/>
-					<IncidentModal
-						v-if="selectedIncidentIndex !== null"
-						:incident="filteredIncidents[selectedIncidentIndex]!"
-						:exchanges="state.result.exchanges"
-						:facet-state="facetState"
-						:index="selectedIncidentIndex"
-						:total="filteredIncidents.length"
-						:slow-ms="facetState.slowMs"
-						@close="onCloseIncident"
-						@navigate="onNavigateIncident"
-					/>
-				</template>
 				<MinimapDetail
 					v-else-if="activeView === 'minimap'"
 					:exchanges="filteredExchanges"

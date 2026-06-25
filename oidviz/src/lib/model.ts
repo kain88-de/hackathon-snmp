@@ -33,20 +33,6 @@ export interface FacetState {
 	slowMs: number; // default 1000ms; UI input is seconds
 }
 
-export interface Incident {
-	startIdx: number;
-	endIdx: number;
-	startSeq: number;
-	endSeq: number;
-	members: number[]; // indices into the exchanges array
-	peakRtt: number; // ms
-	retryCount: number; // sum of (attemptCount - 1) over members
-	timeoutCount: number;
-	violationTypes: Set<string>; // Set encodes "distinct" — score uses .size
-	region: string; // a label, NOT OidString
-	score: number;
-}
-
 export interface TrieNodeFlags {
 	slow: boolean;
 	violation: boolean;
@@ -94,4 +80,4 @@ export type AppState =
 	| { phase: "viewer"; result: ParseResult }
 	| { phase: "error"; message: string };
 
-export type ActiveView = "findings" | "incidents" | "minimap" | "oidtree";
+export type ActiveView = "findings" | "minimap" | "oidtree";
