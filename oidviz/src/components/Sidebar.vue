@@ -63,6 +63,12 @@ function onSlowThresholdChange(event: Event): void {
 
 <template>
 	<aside class="sidebar" aria-label="Controls">
+		<!-- Brand -->
+		<div class="sidebar-brand">
+			<span class="sidebar-brand-name">OIDviz</span>
+			<span class="sidebar-brand-sub">.oidtrace viewer</span>
+		</div>
+
 		<!-- File section (viewer phase only) -->
 		<section v-if="appState.phase === 'viewer'" class="sidebar-section">
 			<button class="sidebar-btn" type="button" @click="openFilePicker">
@@ -180,6 +186,29 @@ function onSlowThresholdChange(event: Event): void {
 </template>
 
 <style scoped>
+.sidebar-brand {
+	padding: 16px 12px 14px;
+	border-bottom: 1px solid var(--sidebar-border);
+	display: flex;
+	flex-direction: column;
+	gap: 2px;
+}
+
+.sidebar-brand-name {
+	font-size: 18px;
+	font-weight: 700;
+	color: var(--sidebar-text);
+	letter-spacing: -0.02em;
+	line-height: 1;
+}
+
+.sidebar-brand-sub {
+	font-size: 11px;
+	color: var(--sidebar-muted);
+	font-family: var(--font-mono);
+	letter-spacing: 0.01em;
+}
+
 .sidebar {
 	width: 220px;
 	flex-shrink: 0;

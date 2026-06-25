@@ -23,17 +23,20 @@ types:
 test:
     bun test --path-ignore-patterns "tests/e2e/**" --pass-with-no-tests
 
-ci: lint types fmt-check test
+ci: lint types fmt-check test e2e a11y
 
 e2e:
     bunx playwright test
 
 a11y:
+    #!/usr/bin/env bash
+    set -e
     bun run build
     bunx vite preview --port 4173 &
+    SERVER_PID=$!
+    trap "kill $SERVER_PID 2>/dev/null" EXIT
     sleep 2
     bunx axe http://localhost:4173 --exit
-    kill %1
 
 gen-types:
     bunx json-schema-to-typescript ../docs/trace-format.schema.json -o src/lib/types.gen.ts
