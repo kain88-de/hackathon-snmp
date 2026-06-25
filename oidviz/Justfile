@@ -29,14 +29,7 @@ e2e:
     bunx playwright test
 
 a11y:
-    #!/usr/bin/env bash
-    set -e
-    bun run build
-    bunx vite preview --port 4173 &
-    SERVER_PID=$!
-    trap "kill $SERVER_PID 2>/dev/null" EXIT
-    sleep 2
-    bunx axe http://localhost:4173 --exit
+    bunx playwright test tests/e2e/a11y.spec.ts
 
 gen-types:
     bunx json-schema-to-typescript ../docs/trace-format.schema.json -o src/lib/types.gen.ts

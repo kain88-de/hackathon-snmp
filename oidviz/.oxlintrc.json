@@ -2,6 +2,8 @@
   "rules": {
     "no-magic-numbers": ["warn", { "ignoreEnums": true, "ignore": [0, 1, -1] }],
     "max-lines": "off",
+    "max-params": ["error", { "max": 6 }],
+    "no-ternary": "off",
     "no-undefined": "off",
     "no-null": "off",
     "consistent-type-definitions": "off",
