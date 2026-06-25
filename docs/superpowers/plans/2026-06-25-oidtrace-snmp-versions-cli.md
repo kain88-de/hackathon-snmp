@@ -17,7 +17,7 @@
 - v1 and v3 stubs: exit 2, message to stderr naming the version, no trace file written.
 - All existing flag names and defaults on the v2c path are unchanged.
 - `just test` must pass after every task. `just ci` must pass at the final review step.
-- No implementation code in tests — test only observable outcomes (exit code, stderr text, file presence).
+- Test only observable outcomes: exit code, stderr text, file presence.
 
 ---
 
@@ -28,109 +28,43 @@
 
 ---
 
-### Task 1: Update existing integration tests to the `walk v2c` invocation shape
+### Task 1: Update existing tests to `walk v2c` invocation
 
-**Outcome:** Every existing test calls `main(["walk", "v2c", host, ...])` instead of
-`main(["walk", host, ...])`. Tests fail at this point because the CLI has not changed
-yet — that failure is the proof the tests are meaningful.
+- [ ] Change every `main(["walk", host, ...])` call in `test_cli.py` to
+  `main(["walk", "v2c", host, ...])`.
 
-**Files:**
-- Modify: `oidtrace/tests/integration/test_cli.py`
-
-- [ ] In `test_cli.py`, find every `main(["walk", host, ...])` call and insert `"v2c"` as
-  the second element, making it `main(["walk", "v2c", host, ...])`. Touch no other logic.
-
-- [ ] Run `just test`.
-  Expected: the updated tests fail (the CLI still parses `walk <host>` directly; inserting
-  `"v2c"` makes `host` parse as an unrecognised argument or wrong positional).
-
-- [ ] Commit the test changes alone.
-  Message: `test(cli): update invocations to walk v2c ahead of restructure`
+- [ ] Run `just test` → tests fail (CLI unchanged). Commit test changes alone.
 
 ---
 
-### Task 2: Restructure `_build_parser` and `main` dispatch
+### Task 2: Restructure parser and dispatch
 
-**Outcome:** `oidtrace walk v2c <host> [opts]` is functionally identical to the old
-`oidtrace walk <host> [opts]`. All tests from Task 1 pass. `oidtrace walk` with no
-sub-subcommand prints walk-level help to stderr and exits 2.
+**Tests:**
 
-**Files:**
-- Modify: `oidtrace/src/oidtrace/cli.py`
-- Modify: `oidtrace/tests/integration/test_cli.py`
+| Test | Outcome |
+|------|---------|
+| `main(["walk"])` | exit 2, stderr contains walk-level help |
+| All existing tests (now using `walk v2c`) | exit 0, behaviour unchanged |
 
-**Interfaces produced:**
+**Interfaces:**
+- `_add_shared_args(p: argparse.ArgumentParser) -> None` — shared flags across all three versions: `host`, `--port`, `--out`, `--label`, `--timeout`, `--retries`, `--start-oid`, `--time-budget`, `--give-up-after`, `-v/--verbose`
+- After a v2c parse: `args.version == "v2c"`, all other attribute names unchanged from current
+- After `oidtrace walk` with no sub-subcommand: `args.version is None`
 
-`_add_shared_args(p: argparse.ArgumentParser) -> None`
-Adds these flags to `p`: `host` (positional), `--port`, `--out`, `--label`,
-`--timeout`, `--retries`, `--start-oid`, `--time-budget`, `--give-up-after`, `-v/--verbose`.
-Defaults are identical to those in the current `walk` parser.
-
-After a successful v2c parse:
-- `args.subcommand == "walk"`
-- `args.version == "v2c"`
-- All other attribute names match the current `walk` namespace (e.g. `args.bulk_size`,
-  `args.community`, `args.host`).
-
-After `oidtrace walk` with no sub-subcommand:
-- `args.version is None`
-
-- [ ] Add one new test: `main(["walk"])` returns 2 and stderr contains walk-level usage
-  or help text (check for `"v1"`, `"v2c"`, or `"v3"` OR `"usage"` in stderr). Run it →
-  expect FAIL.
-
-- [ ] Restructure `_build_parser`:
-  - Extract a `_add_shared_args(p)` helper that registers all shared flags.
-  - Make `walk` a sub-parser group (`dest="version"`).
-  - Add `v1`, `v2c`, `v3` as children. Call `_add_shared_args` on each.
-  - `v2c` additionally gets `--community` and `--bulk-size`.
-  - `v1` additionally gets `--community` only.
-  - `v3` additionally gets `--user`, `--auth-proto`, `--auth-pass`, `--priv-proto`,
-    `--priv-pass`.
-
-- [ ] Update `main`:
-  - Dispatch order: `args.subcommand != "walk"` → help + exit 2 (unchanged).
-  - `args.version is None` → print walk-level help to stderr, exit 2.
-  - `args.version == "v2c"` → existing walk logic, unchanged.
-  - `args.version in ("v1", "v3")` → stub (next task).
-
-- [ ] Run `just test`. Expected: all tests pass including the new `main(["walk"])` test.
-
-- [ ] Commit.
-  Message: `feat(cli): restructure walk into v1/v2c/v3 sub-subcommands`
+- [ ] Write the `main(["walk"])` test, run it → FAIL. Implement. Run `just test` → pass. Commit.
 
 ---
 
 ### Task 3: Runtime stubs for v1 and v3
 
-**Outcome:** `oidtrace walk v1 <host>` and `oidtrace walk v3 <host> --user admin`
-parse without argparse error but immediately exit 2. Stderr names the version and
-states it is not yet implemented. No trace file is written.
+**Tests:**
 
-**Files:**
-- Modify: `oidtrace/tests/integration/test_cli.py`
-- Modify: `oidtrace/src/oidtrace/cli.py`
+| Test | Outcome |
+|------|---------|
+| `main(["walk", "v1", "127.0.0.1", "--out", tmp_path])` | exit 2, stderr contains `"v1"` and `"implement"`, no trace file in `tmp_path` |
+| `main(["walk", "v3", "127.0.0.1", "--user", "admin", "--out", tmp_path])` | exit 2, stderr contains `"v3"` and `"implement"`, no trace file in `tmp_path` |
 
-- [ ] Add two failing tests:
-
-  **`test_walk_v1_not_implemented`** — `main(["walk", "v1", "127.0.0.1", "--out",
-  str(tmp_path)])` returns 2; stderr contains `"v1"` and `"implement"`
-  (case-insensitive); no `.oidtrace.jsonl.gz` file exists in `tmp_path`.
-
-  **`test_walk_v3_not_implemented`** — `main(["walk", "v3", "127.0.0.1", "--user",
-  "admin", "--out", str(tmp_path)])` returns 2; stderr contains `"v3"` and
-  `"implement"`; no trace file in `tmp_path`.
-
-- [ ] Run both new tests → expect FAIL (v1/v3 branches currently fall through or are
-  absent).
-
-- [ ] Add the stub branches to `main` for `v1` and `v3`: print a message to stderr
-  naming the version, return 2 before any network or file operations.
-
-- [ ] Run `just test` → all tests pass.
-
-- [ ] Commit.
-  Message: `feat(cli): stub v1 and v3 with not-implemented error`
+- [ ] Write both tests, run → FAIL. Implement stubs. Run `just test` → pass. Commit.
 
 ---
 
@@ -138,7 +72,7 @@ states it is not yet implemented. No trace file is written.
 
 Run `just ci` (ruff → pyrefly → vulture → pytest). Expected: clean pass.
 
-Then verify manually against a real or emulator target:
+Verify manually:
 
 | Command | Expected |
 |---------|----------|
@@ -150,40 +84,36 @@ Then verify manually against a real or emulator target:
 
 #### Test review
 
-Spawn a review agent with the following prompt against the final state of
-`oidtrace/tests/integration/test_cli.py`:
+Spawn a review agent against the final state of `oidtrace/tests/integration/test_cli.py`
+with this prompt:
 
 ---
 
-**Agent prompt:**
-
-Review `oidtrace/tests/integration/test_cli.py` for test quality. The file
-covers CLI integration tests for an SNMP walk tool: the `walk v2c` live path
-(runs a real UDP emulator in-process) and the `walk v1` / `walk v3` stub paths
-(must exit 2 immediately with no network I/O). The tests call `main([...])` directly
-and assert on exit code, stderr content, and file presence in `tmp_path`.
+Review `oidtrace/tests/integration/test_cli.py` for test quality. The file covers CLI
+integration tests for an SNMP walk tool: the `walk v2c` live path (runs a real UDP
+emulator in-process) and the `walk v1` / `walk v3` stub paths (must exit 2 immediately
+with no network I/O). Tests call `main([...])` directly and assert on exit code, stderr
+content, and file presence in `tmp_path`.
 
 Apply the following checklist. For each item, cite the specific test(s) affected and
-explain concretely why it is or is not a problem. Do not flag issues that are
-already guarded by the type checker or linter.
+explain concretely why it is or is not a problem. Do not flag issues already guarded by
+the type checker or linter.
 
 **Anti-patterns to check:**
-- **Brittle mocking** — are any mocks verifying call sequences rather than outcomes?
+- **Brittle mocking** — any mocks verifying call sequences rather than outcomes?
   The emulator-thread pattern is intentional; flag only unexpected `unittest.mock` usage.
 - **Always-passing tests** — do assertions have a realistic chance of failing? Check
   that string-presence assertions (e.g. `"v1" in stderr`) would fail if the stub
   printed the wrong message or nothing at all.
 - **Vague failure messages** — if a test fails, does pytest output tell you what went
-  wrong without reading the source? Flag any assertion where the failure message would
-  be `AssertionError` with no context.
+  wrong without reading the source?
 - **Fixture soup** — is `EmulatorThread` used only where a live network exchange is
   genuinely required? Flag any v1/v3 stub test that starts an emulator unnecessarily.
 - **Test doing multiple things** — can each test be named in one sentence describing
-  one behaviour? Flag tests that assert more than one independent concern.
-- **Wrong level** — do any tests for the v1/v3 stubs reach into argparse internals or
-  patch private functions? The correct level is: call `main([...])`, observe outputs.
-- **Redundant assertions** — do any tests re-check what `just ci` (ruff/pyrefly) already
-  guarantees, such as that a function exists or has the right signature?
+  one behaviour?
+- **Wrong level** — do any v1/v3 stub tests reach into argparse internals or patch
+  private functions? Correct level: call `main([...])`, observe outputs.
+- **Redundant assertions** — do any tests re-check what `just ci` already guarantees?
 
 **Red flags to answer explicitly:**
 1. Does every test fail for a reason someone can act on?
@@ -191,8 +121,8 @@ already guarded by the type checker or linter.
 3. Do test names describe behaviour or mechanism?
 4. Are the v1/v3 stub tests at the right level, or do they over-specify internals?
 
-Conclude with: a short list of issues to fix (with severity: must-fix / nice-to-have),
-and a one-line verdict on whether the test suite earns its place.
+Conclude with: a short list of issues to fix (severity: must-fix / nice-to-have), and a
+one-line verdict on whether the test suite earns its place.
 
 ---
 
