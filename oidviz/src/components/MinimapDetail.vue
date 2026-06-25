@@ -34,6 +34,34 @@ const ARROW_SHIFT_FRACTION = 0.2; // Arrow key shifts window by 20% of span
 const containerEl = ref<HTMLElement | null>(null);
 const miniCanvas = ref<HTMLCanvasElement | null>(null);
 const detailCanvas = ref<HTMLCanvasElement | null>(null);
+const tooltipEl = ref<HTMLDivElement | null>(null);
+
+function escHtml(s: string): string {
+	return s
+		.replaceAll("&", "&amp;")
+		.replaceAll("<", "&lt;")
+		.replaceAll(">", "&gt;")
+		.replaceAll('"', "&quot;");
+}
+
+function showTooltip(html: string, clientX: number, clientY: number): void {
+	const el = tooltipEl.value;
+	if (!el) {
+		return;
+	}
+	el.innerHTML = html;
+	el.style.display = "block";
+	el.style.left = `${clientX + TOOLTIP_X_OFFSET}px`;
+	el.style.top = `${clientY - TOOLTIP_Y_OFFSET}px`;
+}
+
+function hideTooltip(): void {
+	const el = tooltipEl.value;
+	if (!el) {
+		return;
+	}
+	el.style.display = "none";
+}
 
 // Selected time window: column index range [colStart, colEnd)
 // Not wrapped in reactive/ref — plain mutable state for performance
@@ -50,6 +78,9 @@ let dragPanAnchorCol = 0; // column under cursor at pan-start
 let dragPanStartL = 0; // selectedColStart at pan-start
 let dragPanStartR = 0; // selectedColEnd at pan-start
 const EDGE_GRAB_PX = 6; // pixels from edge that counts as edge drag
+const TOOLTIP_X_OFFSET = 12; // px right of cursor
+const TOOLTIP_Y_OFFSET = 4; // px above cursor
+const OID_TRUNCATE_LEN = 40; // max chars before truncating OID in tooltip
 
 function dragModeForCol(col: number): DragMode {
 	const winW = selectedColEnd - selectedColStart;
@@ -424,6 +455,100 @@ function detailRowFromMouseY(clientY: number): number | null {
 	return row;
 }
 
+function worstBucketStatus(bucket: DomainExchange[], slowMs: number): string {
+	for (const ex of bucket) {
+		if (ex.isTimeout) {
+			return "Timeout";
+		}
+	}
+	for (const ex of bucket) {
+		if (ex.violations.length > 0) {
+			return "Violation";
+		}
+	}
+	for (const ex of bucket) {
+		if (ex.rtt > slowMs) {
+			return "Slow";
+		}
+	}
+	for (const ex of bucket) {
+		if (ex.attemptCount > 1) {
+			return "Retry";
+		}
+	}
+	return "Normal";
+}
+
+function exchangeStatus(ex: DomainExchange, slowMs: number): string {
+	if (ex.isTimeout) {
+		return "Timeout";
+	}
+	if (ex.violations.length > 0) {
+		return "Violation";
+	}
+	if (ex.rtt > slowMs) {
+		return "Slow";
+	}
+	if (ex.attemptCount > 1) {
+		return "Retry";
+	}
+	return "Normal";
+}
+
+function onMinimapHover(e: MouseEvent, col: number): void {
+	const exchanges = props.exchanges;
+	if (exchanges.length === 0 || totalCols === 0) {
+		return;
+	}
+	const times = exchanges.map((ex): number => ex.sentAtMs);
+	const [minT, maxT] = minMaxValues(times);
+	const timeRange = maxT - minT || 1;
+	const bucket: DomainExchange[] = exchanges.filter((ex): boolean => {
+		const c = Math.min(
+			totalCols - 1,
+			Math.floor(((ex.sentAtMs - minT) / timeRange) * (totalCols - 1)),
+		);
+		return c === col;
+	});
+	const count = bucket.length;
+	const status = worstBucketStatus(bucket, props.facetState.slowMs);
+	const tMs = minT + (col / totalCols) * timeRange;
+	const relMs = tMs - minT;
+	let plural = "s";
+	if (count === 1) {
+		plural = "";
+	}
+	const html =
+		`<strong>${count} exchange${plural}</strong><br>` +
+		`Status: ${status}<br>` +
+		`+${relMs.toFixed(0)}ms`;
+	showTooltip(html, e.clientX, e.clientY);
+}
+
+function onDetailHover(e: MouseEvent): void {
+	const rowIdx = detailRowFromMouseY(e.clientY);
+	if (rowIdx === null) {
+		hideTooltip();
+		return;
+	}
+	const windowExchanges = getWindowExchanges();
+	const ex = windowExchanges[rowIdx];
+	if (ex === undefined) {
+		hideTooltip();
+		return;
+	}
+	let oid: string = ex.requestOid;
+	if (ex.requestOid.length > OID_TRUNCATE_LEN) {
+		oid = `${ex.requestOid.slice(0, OID_TRUNCATE_LEN)}…`;
+	}
+	const status = exchangeStatus(ex, props.facetState.slowMs);
+	const html =
+		`<strong>${escHtml(oid)}</strong><br>` +
+		`RTT: ${ex.rtt.toFixed(1)}ms<br>` +
+		`Status: ${status}`;
+	showTooltip(html, e.clientX, e.clientY);
+}
+
 function updateCursor(mini: HTMLCanvasElement, col: number): void {
 	const mode = dragModeForCol(col);
 	if (mode === "edge-left" || mode === "edge-right") {
@@ -499,8 +624,10 @@ onMounted((): void => {
 			const col = colFromMouseX(mini, e.clientX);
 			if (!isDragging) {
 				updateCursor(mini, col);
+				onMinimapHover(e, col);
 				return;
 			}
+			hideTooltip();
 			applyDragMove(col, totalCols || mini.width);
 			redraw();
 		});
@@ -526,6 +653,7 @@ onMounted((): void => {
 		// Cancel drag if mouse leaves canvas
 		mini.addEventListener("mouseleave", (): void => {
 			mini.style.cursor = "crosshair";
+			hideTooltip();
 			if (isDragging) {
 				isDragging = false;
 				redraw();
@@ -575,6 +703,14 @@ onMounted((): void => {
 				emit("focus-exchange", target.seq);
 			}
 		});
+
+		detail.addEventListener("mousemove", (e: MouseEvent): void => {
+			onDetailHover(e);
+		});
+
+		detail.addEventListener("mouseleave", (): void => {
+			hideTooltip();
+		});
 	}
 });
 
@@ -594,6 +730,28 @@ watch(
 <template>
 	<div ref="containerEl" class="minimap-detail">
 		<div class="minimap-section">
+			<div class="color-legend">
+				<span class="legend-item">
+					<span class="legend-swatch" style="background: var(--dim-timeout)" />
+					Timeout
+				</span>
+				<span class="legend-item">
+					<span class="legend-swatch" style="background: var(--dim-violation)" />
+					Violation
+				</span>
+				<span class="legend-item">
+					<span class="legend-swatch" style="background: var(--dim-slow)" />
+					Slow
+				</span>
+				<span class="legend-item">
+					<span class="legend-swatch" style="background: var(--dim-retry)" />
+					Retry
+				</span>
+				<span class="legend-item">
+					<span class="legend-swatch" style="background: var(--dim-none)" />
+					Normal
+				</span>
+			</div>
 			<canvas
 				ref="miniCanvas"
 				class="minimap-canvas"
@@ -608,6 +766,7 @@ watch(
 				aria-label="Exchange detail view"
 			/>
 		</div>
+		<div ref="tooltipEl" class="canvas-tooltip" />
 	</div>
 </template>
 
@@ -646,5 +805,44 @@ watch(
 .detail-canvas {
 	display: block;
 	width: 100%;
+	cursor: crosshair;
+}
+
+.color-legend {
+	display: flex;
+	flex-direction: row;
+	gap: 12px;
+	margin-bottom: 4px;
+	font-size: 11px;
+	color: var(--color-text-muted);
+}
+
+.legend-item {
+	display: flex;
+	align-items: center;
+	gap: 4px;
+}
+
+.legend-swatch {
+	display: inline-block;
+	width: 10px;
+	height: 10px;
+	border-radius: 2px;
+	flex-shrink: 0;
+}
+
+.canvas-tooltip {
+	position: fixed;
+	display: none;
+	background: var(--color-surface);
+	border: 1px solid var(--color-border);
+	border-radius: 4px;
+	box-shadow: 0 2px 8px rgba(0, 0, 0, 0.15);
+	padding: 6px 8px;
+	font-size: 11px;
+	line-height: 1.5;
+	pointer-events: none;
+	z-index: 1000;
+	white-space: nowrap;
 }
 </style>
