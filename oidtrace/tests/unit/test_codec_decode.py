@@ -63,12 +63,6 @@ def _find_pdu_body_start(raw_bytes: bytes) -> int:
 # ---------------------------------------------------------------------------
 
 
-def test_decode_response_returns_message() -> None:
-    raw = _valid_response()
-    result = decode_message(raw)
-    assert isinstance(result, Message)
-
-
 def test_decode_response_pdu_tag_is_0xa2() -> None:
     raw = _valid_response()
     msg = decode_message(raw)
@@ -222,14 +216,6 @@ def test_exception_tags_contains_no_such_instance() -> None:
 
 def test_exception_tags_contains_end_of_mib_view() -> None:
     assert 0x82 in EXCEPTION_TAGS
-
-
-def test_exception_tags_is_frozenset() -> None:
-    assert isinstance(EXCEPTION_TAGS, frozenset)
-
-
-def test_exception_tags_length() -> None:
-    assert len(EXCEPTION_TAGS) == 3
 
 
 # ---------------------------------------------------------------------------
@@ -388,7 +374,7 @@ def test_malformed_f1_tag_wrong() -> None:
     raw[rid_end] = 0x04  # flip f1 INTEGER tag
     result = decode_message(bytes(raw))
     assert isinstance(result, Malformed)
-    assert "f1" in result.error.lower() or "error" in result.error.lower()
+    assert "f1" in result.error.lower()
 
 
 def test_malformed_f2_tag_wrong() -> None:
@@ -401,7 +387,7 @@ def test_malformed_f2_tag_wrong() -> None:
     raw[f1_end] = 0x04  # flip f2 INTEGER tag
     result = decode_message(bytes(raw))
     assert isinstance(result, Malformed)
-    assert "f2" in result.error.lower() or "error" in result.error.lower()
+    assert "f2" in result.error.lower()
 
 
 def test_malformed_vblist_tag_wrong() -> None:

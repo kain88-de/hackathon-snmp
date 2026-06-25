@@ -11,7 +11,7 @@ from typing import TYPE_CHECKING
 import pytest
 from traceformat import dump_record
 from traceformat.models import Exchange, Header, Summary
-from traceformat.vocab import EndReason, EventKind
+from traceformat.vocab import EndReason, EventKind, Violation
 
 from oidtrace.oid import Oid
 from oidtrace.tracefile import read_trace
@@ -104,7 +104,7 @@ async def test_fixed_request_id_mismatch_completes(
     # Every exchange must have request-id-mismatch
     for exch in exchange_records:
         assert exch.violations is not None, f"Exchange {exch.seq} has no violations"
-        assert "request-id-mismatch" in exch.violations, (
+        assert str(Violation.REQUEST_ID_MISMATCH) in exch.violations, (
             f"Exchange {exch.seq} missing request-id-mismatch"
         )
 

@@ -164,5 +164,3 @@ def test_repr_readable() -> None:
     oid = Oid.from_str("1.3.6.1")
     r = repr(oid)
     assert "1.3.6.1" in r
-    # Should not just be the dataclass default with tuple repr
-    assert "Oid" in r

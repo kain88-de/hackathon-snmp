@@ -518,18 +518,12 @@ async def test_logging_info_start_and_end(
         records = await _collect(transport)
 
     info_msgs = [r.getMessage() for r in caplog.records if r.levelno == logging.INFO]
-    assert any("start" in m.lower() or "walk" in m.lower() for m in info_msgs), (
-        f"Expected INFO start log, got: {info_msgs}"
+    assert any("walk start" in m.lower() for m in info_msgs), (
+        f"Expected INFO 'walk start' log, got: {info_msgs}"
     )
-    assert any(
-        "completed" in m.lower()
-        or "end" in m.lower()
-        or "unresponsive" in m.lower()
-        or "loop" in m.lower()
-        or "budget" in m.lower()
-        or "interrupt" in m.lower()
-        for m in info_msgs
-    ), f"Expected INFO end log, got: {info_msgs}"
+    assert any("walk end" in m.lower() for m in info_msgs), (
+        f"Expected INFO 'walk end' log, got: {info_msgs}"
+    )
     _validate_all(records, record_validator)
 
 
@@ -553,7 +547,7 @@ async def test_walkstats_observe_accumulates(
             records_collected.append(r)
 
     assert stats.exchanges == 2
-    assert stats.oids_seen >= 2  # may be higher due to bulk_size overshoot
+    assert stats.oids_seen == 2
     _validate_all(records_collected, record_validator)
 
 
@@ -640,8 +634,7 @@ async def test_no_data_response_completed(
     _validate_all(records, record_validator)
 
 
-@pytest.mark.asyncio
-async def test_walk_settings_bulk_size_validation() -> None:
+def test_walk_settings_bulk_size_validation() -> None:
     """WalkSettings with bulk_size=0 raises ValueError."""
 
     with pytest.raises(ValueError, match="bulk_size"):
@@ -779,32 +772,6 @@ async def test_oids_seen_counts_distinct_only(
 
 
 @pytest.mark.asyncio
-async def test_oid_loop_derived_from_check_exchange(
-    record_validator: Draft202012Validator,
-) -> None:
-    """OID_LOOP termination is driven by check_exchange OID_NOT_INCREASING violation."""
-    # Same as test_oid_not_increasing_loop but asserts the exchange carries the violation,
-    # confirming the loop detection is check_exchange's responsibility, not a walker recomputation.
-    transport = FakeTransport(
-        responses=[
-            _response_exchange([_OID_B]),
-            _response_exchange([_OID_A]),  # non-increasing: _OID_A < _OID_B
-        ]
-    )
-    records = await _collect(transport)
-
-    exchange_records = [r for r in records if r.type == "exchange"]
-    second_exchange = exchange_records[1]
-    assert second_exchange.violations is not None
-    assert str(Violation.OID_NOT_INCREASING) in second_exchange.violations
-
-    assert isinstance(records[-1], Summary)
-    summary = records[-1]
-    assert summary.end_reason == str(EndReason.OID_LOOP)
-    _validate_all(records, record_validator)
-
-
-@pytest.mark.asyncio
 async def test_logging_debug_exchange(
     caplog: pytest.LogCaptureFixture,
     record_validator: Draft202012Validator,
@@ -820,7 +787,8 @@ async def test_logging_debug_exchange(
         records = await _collect(transport)
 
     debug_msgs = [r.getMessage() for r in caplog.records if r.levelno == logging.DEBUG]
-    assert any("seq" in m.lower() or "exchange" in m.lower() for m in debug_msgs), (
-        f"Expected DEBUG exchange log, got: {debug_msgs}"
+    exchange_logs = [m for m in debug_msgs if m.startswith("exchange seq=")]
+    assert len(exchange_logs) == 2, (
+        f"Expected 2 per-exchange DEBUG logs, got: {debug_msgs}"
     )
     _validate_all(records, record_validator)

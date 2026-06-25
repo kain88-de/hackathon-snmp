@@ -183,7 +183,7 @@ def test_successful_walk_stdout_summary(tmp_path: Path, capsys: pytest.CaptureFi
     assert ret == 0
     captured = capsys.readouterr()
     out = captured.out
-    assert "completed" in out.lower() or "end_reason" in out.lower() or "end-reason" in out.lower()
+    assert "end_reason" in out
     assert "exchange" in out.lower()
 
 
@@ -258,7 +258,7 @@ def test_unresolvable_host_exit_2_no_file(
 
     assert ret == 2
     captured = capsys.readouterr()
-    assert "resolv" in captured.err.lower() or "resolve" in captured.err.lower()
+    assert "resolve" in captured.err.lower()
     trace_files = list(tmp_path.glob("*.oidtrace.jsonl.gz"))
     assert len(trace_files) == 0, (
         f"No trace file should be created on DNS error, found {trace_files}"
@@ -280,7 +280,7 @@ def test_bad_start_oid_exit_2_no_file(tmp_path: Path, capsys: pytest.CaptureFixt
 
     assert ret == 2
     captured = capsys.readouterr()
-    assert captured.err.strip()  # some error message on stderr
+    assert "start-oid" in captured.err.lower()
     trace_files = list(tmp_path.glob("*.oidtrace.jsonl.gz"))
     assert len(trace_files) == 0, f"No trace file should be created on bad OID, found {trace_files}"
 

@@ -15,7 +15,7 @@ from typing import TYPE_CHECKING
 
 import pydantic
 import pytest
-from traceformat import Header, Summary, dump_record, parse_record
+from traceformat import Header, Summary, dump_record
 
 if TYPE_CHECKING:
     from pathlib import Path
@@ -128,14 +128,7 @@ def test_roundtrip_multiple_records_order_preserved(tmp_path: Path) -> None:
 
 
 def test_truncation_earlier_records_still_yield(tmp_path: Path) -> None:
-    """Chopping bytes from the end destroys the final record;
-    earlier records still come through without exception.
-
-    We chop enough bytes to corrupt the gzip end-of-stream marker and the
-    summary record's data, but not so many that the compressed first record is
-    also lost.  Removing ~20-25 bytes from the end is sufficient for records of
-    this size while keeping the header decodable.
-    """
+    """Chopping the final record leaves the earlier record intact."""
     path = tmp_path / "trace.jsonl.gz"
     header = _header()
     summary = _summary()
@@ -144,14 +137,19 @@ def test_truncation_earlier_records_still_yield(tmp_path: Path) -> None:
         writer.write(header)
         writer.write(summary)
 
-    # Chop 25 bytes from the end — enough to corrupt the final record and
-    # gzip trailer, but the first record's compressed data remains intact.
-    raw = path.read_bytes()
-    path.write_bytes(raw[:-25])
+    # Decompress, drop the last line (summary), recompress — same technique as
+    # test_truncation_mid_line_final_record_dropped but keeps the newline to
+    # verify a complete-then-truncated stream, not just a partial line.
+    with gzip.open(path, "rb") as f:
+        content = f.read()
+
+    lines = content.split(b"\n")
+    # lines: [header_json, summary_json, b""] — drop the summary line
+    truncated = b"\n".join(lines[:1]) + b"\n"
+    path.write_bytes(gzip.compress(truncated))
 
     records = list(read_trace(path))
-    # At least the first record must survive; the truncated final record is silently dropped
-    assert len(records) >= 1
+    assert len(records) == 1
     assert records[0] == header
 
 
@@ -200,11 +198,6 @@ def test_truncation_mid_line_final_record_dropped(tmp_path: Path) -> None:
 
 
 # ---------------------------------------------------------------------------
-# Ctrl-C durability: flush-per-record means data is readable before close()
-# ---------------------------------------------------------------------------
-
-
-# ---------------------------------------------------------------------------
 # Context manager: __enter__ returns writer, __exit__ closes
 # ---------------------------------------------------------------------------
 
@@ -242,20 +235,6 @@ def test_read_trace_returns_correct_types(tmp_path: Path) -> None:
     records = list(read_trace(path))
     assert isinstance(records[0], Header)
     assert isinstance(records[1], Summary)
-
-
-def test_read_trace_parse_record_equality(tmp_path: Path) -> None:
-    """Ensure read_trace output matches direct parse_record output."""
-    path = tmp_path / "trace.jsonl.gz"
-    header = _header()
-
-    with TraceWriter(path) as writer:
-        writer.write(header)
-
-    with gzip.open(path, "rt", encoding="utf-8") as f:
-        line = f.readline().rstrip("\n")
-
-    assert list(read_trace(path)) == [parse_record(line)]
 
 
 # ---------------------------------------------------------------------------

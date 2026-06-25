@@ -2,7 +2,7 @@
 
 from traceformat.vocab import Violation
 
-from oidtrace.codec import EXCEPTION_TAGS, Varbind
+from oidtrace.codec import Varbind
 from oidtrace.oid import Oid
 from oidtrace.violations import check_exchange
 
@@ -10,7 +10,7 @@ from oidtrace.violations import check_exchange
 # Helpers
 # ---------------------------------------------------------------------------
 
-_EXCEPTION_TAG = next(iter(EXCEPTION_TAGS))  # first tag in EXCEPTION_TAGS set
+_EXCEPTION_TAG = 0x80  # NoSuchObject — a known member of EXCEPTION_TAGS
 
 
 def _vb(oid_str: str, tag: int = 0x04) -> Varbind:
