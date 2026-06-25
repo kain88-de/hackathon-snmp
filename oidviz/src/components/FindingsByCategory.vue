@@ -1,7 +1,15 @@
 <script setup lang="ts">
-import { computed, onMounted, ref } from "vue";
+import { type Ref, computed, ref } from "vue";
+import { useVirtualScroll } from "../composables/useVirtualScroll.ts";
 import { categorise } from "../lib/findings.ts";
 import type { DomainExchange, FacetState } from "../lib/model.ts";
+import { rttCssClass } from "../lib/utils.ts";
+import {
+	computeOffsets,
+	sumHeights,
+	varHeightEndIdx,
+	varHeightStartIdx,
+} from "../lib/virtualScroll.ts";
 
 const props = defineProps<{
 	exchanges: DomainExchange[];
@@ -14,44 +22,45 @@ const emit = defineEmits<{
 
 const ROW_HEIGHT = 32;
 const HEADER_HEIGHT = 40;
-const DEFAULT_CONTAINER_HEIGHT = 600;
 
-const slowExpanded = ref(true);
-const timeoutExpanded = ref(true);
-const fastExpanded = ref(true);
+const { containerEl, containerHeight, onScroll, scrollTop } =
+	useVirtualScroll();
+
+type Section = "fast" | "slow" | "timeout";
 
 type VirtualItem =
-	| {
-			kind: "header";
-			label: string;
-			section: "slow" | "timeout" | "fast";
-			expanded: boolean;
-	  }
+	| { expanded: boolean; kind: "header"; label: string; section: Section }
 	| { exchange: DomainExchange; kind: "row" };
+
+const expanded: Record<Section, Ref<boolean>> = {
+	fast: ref(true),
+	slow: ref(true),
+	timeout: ref(true),
+};
 
 const items = computed((): VirtualItem[] => {
 	const findings = categorise(props.exchanges, props.facetState.slowMs);
 	const list: VirtualItem[] = [];
 
 	list.push({
-		expanded: slowExpanded.value,
+		expanded: expanded.slow.value,
 		kind: "header",
 		label: `Slow (${findings.slow.length})`,
 		section: "slow",
 	});
-	if (slowExpanded.value) {
+	if (expanded.slow.value) {
 		for (const ex of findings.slow) {
 			list.push({ exchange: ex, kind: "row" });
 		}
 	}
 
 	list.push({
-		expanded: timeoutExpanded.value,
+		expanded: expanded.timeout.value,
 		kind: "header",
 		label: `Timed out (${findings.timeout.length})`,
 		section: "timeout",
 	});
-	if (timeoutExpanded.value) {
+	if (expanded.timeout.value) {
 		for (const ex of findings.timeout) {
 			list.push({ exchange: ex, kind: "row" });
 		}
@@ -59,12 +68,12 @@ const items = computed((): VirtualItem[] => {
 
 	if (findings.fast.length > 0) {
 		list.push({
-			expanded: fastExpanded.value,
+			expanded: expanded.fast.value,
 			kind: "header",
 			label: `Fast (${findings.fast.length})`,
 			section: "fast",
 		});
-		if (fastExpanded.value) {
+		if (expanded.fast.value) {
 			for (const ex of findings.fast) {
 				list.push({ exchange: ex, kind: "row" });
 			}
@@ -74,56 +83,19 @@ const items = computed((): VirtualItem[] => {
 	return list;
 });
 
-function toggleSection(section: "slow" | "timeout" | "fast"): void {
-	if (section === "slow") {
-		slowExpanded.value = !slowExpanded.value;
-	} else if (section === "timeout") {
-		timeoutExpanded.value = !timeoutExpanded.value;
-	} else {
-		fastExpanded.value = !fastExpanded.value;
-	}
+function toggleSection(section: Section): void {
+	expanded[section].value = !expanded[section].value;
 }
 
 function itemHeight(item: VirtualItem): number {
-	if (item.kind === "header") {
-		return HEADER_HEIGHT;
-	}
-	return ROW_HEIGHT;
+	return item.kind === "header" ? HEADER_HEIGHT : ROW_HEIGHT;
 }
 
-// Pixel offsets for each item
-const itemOffsets = computed((): number[] => {
-	const offsets: number[] = [];
-	let offset = 0;
-	for (const item of items.value) {
-		offsets.push(offset);
-		offset += itemHeight(item);
-	}
-	return offsets;
-});
+const itemOffsets = computed((): number[] =>
+	computeOffsets(items.value, itemHeight),
+);
 
-const totalHeight = computed((): number => {
-	let total = 0;
-	for (const item of items.value) {
-		total += itemHeight(item);
-	}
-	return total;
-});
-
-const scrollTop = ref(0);
-const containerHeight = ref(DEFAULT_CONTAINER_HEIGHT);
-const containerEl = ref<HTMLElement | null>(null);
-
-onMounted((): void => {
-	if (containerEl.value !== null) {
-		containerHeight.value =
-			containerEl.value.clientHeight || DEFAULT_CONTAINER_HEIGHT;
-	}
-});
-
-function onScroll(e: Event): void {
-	scrollTop.value = (e.target as HTMLElement).scrollTop;
-}
+const totalHeight = computed((): number => sumHeights(items.value, itemHeight));
 
 interface VisibleSlice {
 	bottomSpacerHeight: number;
@@ -133,89 +105,28 @@ interface VisibleSlice {
 	topSpacerHeight: number;
 }
 
-function findStartIdx(
-	allItems: VirtualItem[],
-	offsets: number[],
-	scrollY: number,
-): number {
-	let startIdx = 0;
-	for (let i = 0; i < allItems.length; i += 1) {
-		const offset = offsets[i] ?? 0;
-		const item = allItems[i];
-		if (item === undefined) {
-			break;
-		}
-		const itemEnd = offset + itemHeight(item);
-		if (itemEnd <= scrollY) {
-			startIdx = i + 1;
-		} else {
-			break;
-		}
-	}
-	return startIdx;
-}
-
-interface EndIdxOptions {
-	offsets: number[];
-	startIdx: number;
-	totalCount: number;
-	viewEnd: number;
-}
-
-function findEndIdx(opts: EndIdxOptions): number {
-	for (let i = opts.startIdx; i < opts.totalCount; i += 1) {
-		const offset = opts.offsets[i] ?? 0;
-		if (offset >= opts.viewEnd) {
-			return i;
-		}
-	}
-	return opts.totalCount;
-}
-
 const visibleItems = computed((): VisibleSlice => {
 	const scrollY = scrollTop.value;
-	const viewEnd = scrollY + (containerHeight.value || DEFAULT_CONTAINER_HEIGHT);
+	const viewEnd = scrollY + containerHeight.value;
 	const offsets = itemOffsets.value;
 	const allItems = items.value;
 	const total = totalHeight.value;
 
-	const startIdx = findStartIdx(allItems, offsets, scrollY);
-	const endIdx = findEndIdx({
-		offsets,
-		startIdx,
-		totalCount: allItems.length,
-		viewEnd,
-	});
+	const startIdx = varHeightStartIdx(allItems, offsets, itemHeight, scrollY);
+	const endIdx = varHeightEndIdx(offsets, startIdx, allItems.length, viewEnd);
 
-	let topSpacerHeight = 0;
-	if (startIdx > 0) {
-		topSpacerHeight = offsets[startIdx] ?? 0;
-	}
-
-	let bottomStart = total;
-	if (endIdx < allItems.length) {
-		bottomStart = offsets[endIdx] ?? total;
-	}
-	const bottomSpacerHeight = total - bottomStart;
+	const topSpacerHeight = startIdx > 0 ? (offsets[startIdx] ?? 0) : 0;
+	const bottomStart =
+		endIdx < allItems.length ? (offsets[endIdx] ?? total) : total;
 
 	return {
-		bottomSpacerHeight,
+		bottomSpacerHeight: total - bottomStart,
 		endIdx,
 		slice: allItems.slice(startIdx, endIdx),
 		startIdx,
 		topSpacerHeight,
 	};
 });
-
-function rttClass(ex: DomainExchange): string {
-	if (ex.isTimeout) {
-		return "dim-timeout";
-	}
-	if (ex.rtt > props.facetState.slowMs) {
-		return "dim-slow";
-	}
-	return "dim-fast";
-}
 </script>
 
 <template>
@@ -250,7 +161,7 @@ function rttClass(ex: DomainExchange): string {
 					<span class="oid" :title="item.exchange.requestOid">{{
 						item.exchange.requestOid
 					}}</span>
-					<span class="rtt" :class="rttClass(item.exchange)"
+					<span class="rtt" :class="rttCssClass(item.exchange, facetState.slowMs)"
 						>{{ item.exchange.rtt.toFixed(1) }}ms</span
 					>
 					<span

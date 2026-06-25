@@ -1,6 +1,5 @@
 <script setup lang="ts">
-import { onMounted, onUnmounted, watch } from "vue";
-import { ref } from "vue";
+import { onMounted, onUnmounted, ref, watch } from "vue";
 import {
 	AUTOFOCUS_WINDOW_FRACTION,
 	MAX_H,
@@ -240,16 +239,17 @@ function runAutoFocus(): void {
 	}
 }
 
+let resizeObserver: ResizeObserver | null = null;
+
+onUnmounted((): void => {
+	resizeObserver?.disconnect();
+});
+
 onMounted((): void => {
-	const observer = new ResizeObserver((): void => {
-		redraw();
-	});
+	resizeObserver = new ResizeObserver(redraw);
 	if (containerEl.value) {
-		observer.observe(containerEl.value);
+		resizeObserver.observe(containerEl.value);
 	}
-	onUnmounted((): void => {
-		observer.disconnect();
-	});
 
 	redraw();
 	if (props.exchanges.length > 0) {

@@ -38,7 +38,6 @@ let worker: Worker | null = null;
 function onFileSelected(buffer: ArrayBuffer): void {
 	state.value = { phase: "loading" };
 
-	// Terminate any in-flight worker before creating a new one
 	if (worker !== null) {
 		worker.terminate();
 		worker = null;
@@ -64,8 +63,11 @@ function onFileSelected(buffer: ArrayBuffer): void {
 	});
 
 	worker = w;
-	// Transfer the ArrayBuffer so we avoid copying it
 	w.postMessage({ buffer, type: "parse" }, [buffer]);
+}
+
+function onFileError(message: string): void {
+	state.value = { message, phase: "error" };
 }
 
 function onViewChange(view: ActiveView): void {
@@ -76,12 +78,9 @@ function onFacetChange(patch: Partial<FacetState>): void {
 	Object.assign(facetState.value, patch);
 }
 
-function currentResult(): ParseResult | null {
-	if (state.value.phase === "viewer") {
-		return state.value.result;
-	}
-	return null;
-}
+const currentResult = computed((): ParseResult | null =>
+	state.value.phase === "viewer" ? state.value.result : null,
+);
 
 const filteredExchanges = computed((): DomainExchange[] => {
 	if (state.value.phase !== "viewer") {
@@ -93,7 +92,7 @@ const filteredExchanges = computed((): DomainExchange[] => {
 });
 
 function onFocusExchange(_seq: number): void {
-	// no-op for now — placeholder for future navigation
+	// placeholder for future navigation
 }
 
 // OID Tree
@@ -112,11 +111,7 @@ const flatRows = ref<FlatRow[]>([]);
 watch(
 	oidRoot,
 	(root): void => {
-		if (root === null) {
-			flatRows.value = [];
-		} else {
-			flatRows.value = flatten(root);
-		}
+		flatRows.value = root === null ? [] : flatten(root);
 	},
 	{ immediate: true },
 );
@@ -140,10 +135,11 @@ function onCollapseAll(): void {
 	<div id="app" :data-phase="state.phase">
 		<Sidebar
 			:app-state="state"
-			:result="currentResult()"
+			:result="currentResult"
 			:facet-state="facetState"
 			:active-view="activeView"
 			@file-selected="onFileSelected"
+			@file-error="onFileError"
 			@view-change="onViewChange"
 			@facet-change="onFacetChange"
 		/>
@@ -153,6 +149,7 @@ function onCollapseAll(): void {
 				v-if="state.phase === 'landing' || state.phase === 'loading'"
 				:app-state="state"
 				@file-selected="onFileSelected"
+				@file-error="onFileError"
 			/>
 
 			<div v-else-if="state.phase === 'viewer'" class="viewer-content">

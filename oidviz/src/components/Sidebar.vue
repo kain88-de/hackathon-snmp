@@ -1,5 +1,5 @@
 <script setup lang="ts">
-import { ref } from "vue";
+import { computed, ref } from "vue";
 import type {
 	ActiveView,
 	AppState,
@@ -16,6 +16,7 @@ const props = defineProps<{
 
 const emit = defineEmits<{
 	"file-selected": [buffer: ArrayBuffer];
+	"file-error": [message: string];
 	"view-change": [view: ActiveView];
 	"facet-change": [patch: Partial<FacetState>];
 }>();
@@ -42,16 +43,23 @@ function onFileChange(event: Event): void {
 	if (!file) {
 		return;
 	}
-	file.arrayBuffer().then((buffer): void => {
-		emit("file-selected", buffer);
-	});
+	file
+		.arrayBuffer()
+		.then((buffer): void => {
+			emit("file-selected", buffer);
+		})
+		.catch((error: unknown): void => {
+			const message =
+				error instanceof Error ? error.message : "Failed to read file";
+			emit("file-error", message);
+		});
 	// Reset so the same file can be re-selected
 	input.value = "";
 }
 
-function slowThresholdSeconds(): number {
-	return props.facetState.slowMs / MS_PER_SECOND;
-}
+const slowThresholdSeconds = computed(
+	(): number => props.facetState.slowMs / MS_PER_SECOND,
+);
 
 function onSlowThresholdChange(event: Event): void {
 	const seconds = Number((event.target as HTMLInputElement).value);
@@ -165,7 +173,7 @@ function onSlowThresholdChange(event: Event): void {
 					class="sidebar-number-input"
 					min="0.1"
 					step="0.1"
-					:value="slowThresholdSeconds()"
+					:value="slowThresholdSeconds"
 					@change="onSlowThresholdChange"
 				/>
 			</label>

@@ -1,15 +1,13 @@
 <script setup lang="ts">
 import { ref } from "vue";
-
-type AppState =
-	| { phase: "landing" }
-	| { phase: "loading" }
-	| { phase: "viewer"; result: { [k: string]: never } }
-	| { phase: "error"; message: string };
+import type { AppState } from "../lib/model.ts";
 
 defineProps<{ appState: AppState }>();
 
-const emit = defineEmits<{ "file-selected": [buffer: ArrayBuffer] }>();
+const emit = defineEmits<{
+	"file-selected": [buffer: ArrayBuffer];
+	"file-error": [message: string];
+}>();
 
 const isDragOver = ref(false);
 const fileInputRef = ref<HTMLInputElement | undefined>(undefined);
@@ -63,8 +61,10 @@ function readFile(file: File): void {
 		.then((buffer): void => {
 			emit("file-selected", buffer);
 		})
-		.catch((): void => {
-			// error handling is task 2
+		.catch((error: unknown): void => {
+			const message =
+				error instanceof Error ? error.message : "Failed to read file";
+			emit("file-error", message);
 		});
 }
 </script>

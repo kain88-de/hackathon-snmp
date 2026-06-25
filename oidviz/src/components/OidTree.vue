@@ -1,6 +1,13 @@
 <script setup lang="ts">
-import { computed, onMounted, ref } from "vue";
-import type { FacetState, FlatRow, TrieNode } from "../lib/model.ts";
+import { computed } from "vue";
+import { useVirtualScroll } from "../composables/useVirtualScroll.ts";
+import type {
+	DomainExchange,
+	FacetState,
+	FlatRow,
+	TrieNode,
+} from "../lib/model.ts";
+import { rttCssClass, rttCssClassFromRtt } from "../lib/utils.ts";
 
 const props = defineProps<{
 	flatRows: FlatRow[];
@@ -11,23 +18,10 @@ const props = defineProps<{
 const emit = defineEmits<{ reflatten: []; "collapse-all": [] }>();
 
 const ROW_HEIGHT = 32;
-const DEFAULT_CONTAINER_HEIGHT = 600;
 const VIRTUAL_OVERSCAN = 2;
 
-const scrollTop = ref(0);
-const containerHeight = ref(DEFAULT_CONTAINER_HEIGHT);
-const containerEl = ref<HTMLElement | null>(null);
-
-onMounted((): void => {
-	if (containerEl.value !== null) {
-		containerHeight.value =
-			containerEl.value.clientHeight || DEFAULT_CONTAINER_HEIGHT;
-	}
-});
-
-function onScroll(e: Event): void {
-	scrollTop.value = (e.target as HTMLElement).scrollTop;
-}
+const { containerEl, containerHeight, onScroll, scrollTop } =
+	useVirtualScroll();
 
 const totalHeight = computed((): number => props.flatRows.length * ROW_HEIGHT);
 
@@ -40,9 +34,9 @@ interface VisibleSlice {
 
 const visibleItems = computed((): VisibleSlice => {
 	const scrollY = scrollTop.value;
-	const viewEnd = scrollY + (containerHeight.value || DEFAULT_CONTAINER_HEIGHT);
-	const total = totalHeight.value;
+	const viewEnd = scrollY + containerHeight.value;
 	const count = props.flatRows.length;
+	const total = totalHeight.value;
 
 	const startIdx = Math.max(
 		0,
@@ -53,18 +47,16 @@ const visibleItems = computed((): VisibleSlice => {
 		Math.ceil(viewEnd / ROW_HEIGHT) + VIRTUAL_OVERSCAN,
 	);
 
-	const topSpacerHeight = startIdx * ROW_HEIGHT;
-	const bottomSpacerHeight = Math.max(0, total - endIdx * ROW_HEIGHT);
-
 	return {
-		bottomSpacerHeight,
+		bottomSpacerHeight: Math.max(0, total - endIdx * ROW_HEIGHT),
 		slice: props.flatRows.slice(startIdx, endIdx),
 		startIdx,
-		topSpacerHeight,
+		topSpacerHeight: startIdx * ROW_HEIGHT,
 	};
 });
 
 function onNodeClick(node: TrieNode): void {
+	// TrieNode.expanded is intentionally mutable — see model.ts
 	node.expanded = !node.expanded;
 	emit("reflatten");
 }
@@ -86,18 +78,19 @@ function flagClass(row: FlatRow): string[] {
 	return classes;
 }
 
-function rttClass(rtt: number): string {
-	if (rtt > props.facetState.slowMs) {
-		return "dim-slow";
-	}
-	return "dim-fast";
-}
-
 function rowKey(row: FlatRow, idx: number): string {
 	if (row.kind === "node") {
 		return `node-${row.node.fullOid}`;
 	}
 	return `leaf-${idx}-${row.oid}`;
+}
+
+function leafRttClass(ex: DomainExchange): string {
+	return rttCssClass(ex, props.facetState.slowMs);
+}
+
+function nodeRttClass(rtt: number): string {
+	return rttCssClassFromRtt(rtt, props.facetState.slowMs);
 }
 </script>
 
@@ -147,21 +140,12 @@ function rowKey(row: FlatRow, idx: number): string {
 							<span
 								v-if="row.node.stats.maxRtt > 0"
 								class="trie-maxrtt"
-								:class="rttClass(row.node.stats.maxRtt)"
+								:class="nodeRttClass(row.node.stats.maxRtt)"
 							>{{ row.node.stats.maxRtt.toFixed(1) }}ms</span>
 						</span>
-						<span
-							v-if="row.node.flags.slow"
-							class="badge badge-slow"
-						>slow</span>
-						<span
-							v-if="row.node.flags.violation"
-							class="badge badge-violation"
-						>viol</span>
-						<span
-							v-if="row.node.flags.retry"
-							class="badge badge-retry"
-						>retry</span>
+						<span v-if="row.node.flags.slow" class="badge badge-slow">slow</span>
+						<span v-if="row.node.flags.violation" class="badge badge-violation">viol</span>
+						<span v-if="row.node.flags.retry" class="badge badge-retry">retry</span>
 					</div>
 
 					<div
@@ -173,16 +157,13 @@ function rowKey(row: FlatRow, idx: number): string {
 						<span class="trie-leaf-oid" :title="row.exchange.requestOid">{{ row.exchange.requestOid }}</span>
 						<span
 							class="trie-leaf-rtt"
-							:class="rttClass(row.exchange.rtt)"
+							:class="leafRttClass(row.exchange)"
 						>{{ row.exchange.rtt.toFixed(1) }}ms</span>
 						<span
 							v-if="row.exchange.violations.length > 0"
 							class="badge badge-violation"
 						>{{ row.exchange.violations.length }} viol</span>
-						<span
-							v-if="row.shared"
-							class="badge badge-shared"
-						>shared</span>
+						<span v-if="row.shared" class="badge badge-shared">shared</span>
 					</div>
 				</template>
 
@@ -313,6 +294,10 @@ function rowKey(row: FlatRow, idx: number): string {
 
 .dim-fast {
 	color: var(--dim-none);
+}
+
+.dim-timeout {
+	color: var(--dim-timeout);
 }
 
 .badge {
