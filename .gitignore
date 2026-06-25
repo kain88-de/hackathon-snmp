@@ -6,3 +6,4 @@ htmlcov/
 .claude/worktrees/
 oidviz/node_modules/
 oidviz/package-lock.json
+.playwright-mcp
