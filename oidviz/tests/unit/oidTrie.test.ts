@@ -4,6 +4,7 @@ import type { DomainExchange } from "../../src/lib/model.ts";
 import {
 	autoExpand,
 	buildTrie,
+	collapseAll,
 	flatten,
 	rollup,
 } from "../../src/lib/oidTrie.ts";
@@ -25,7 +26,6 @@ function makeExchange(overrides: Partial<DomainExchange> = {}): DomainExchange {
 
 const SLOW_MS = 1000;
 
-// Test 1: buildTrie with empty exchanges → root with no children
 describe("buildTrie", () => {
 	test("empty exchanges → root node with no children and no leaves", () => {
 		const root = buildTrie([]);
@@ -33,7 +33,6 @@ describe("buildTrie", () => {
 		expect(root.leaves).toHaveLength(0);
 	});
 
-	// Test 2: buildTrie with one exchange with one responseOid → leaf under correct path
 	test("one exchange with one responseOid → leaf under correct path", () => {
 		const ex = makeExchange({
 			responseOids: [asOid("1.3.6.1.2.1.1.1.0")],
@@ -57,7 +56,6 @@ describe("buildTrie", () => {
 		expect(cur.leaves[0]!.oid).toBe(asOid("1.3.6.1.2.1.1.1.0"));
 	});
 
-	// Test 3: buildTrie with exchange with no responseOids → leaf under root
 	test("exchange with no responseOids → leaf under root", () => {
 		const ex = makeExchange({
 			requestOid: asOid("1.3.6.1.2.1.1.1.0"),
@@ -69,8 +67,7 @@ describe("buildTrie", () => {
 		expect(root.leaves[0]!.oid).toBe(asOid("1.3.6.1.2.1.1.1.0"));
 	});
 
-	// Test 10: shared: true when exchange appears under multiple responseOids
-	test("shared: true when exchange appears under multiple responseOids", () => {
+	test("exchange with multiple responseOids → shared: true on both placements", () => {
 		const ex = makeExchange({
 			responseOids: [
 				asOid("1.3.6.1.2.1.1.1.0"),
@@ -79,25 +76,22 @@ describe("buildTrie", () => {
 		});
 		const root = buildTrie([ex]);
 
-		// Collect all leaves
-		function collectLeaves(node: ReturnType<typeof buildTrie>): import("../../src/lib/model.ts").TrieLeaf[] {
-			const result: import("../../src/lib/model.ts").TrieLeaf[] = [...node.leaves];
-			for (const child of node.children.values()) {
-				result.push(...collectLeaves(child));
+		// Navigate to the two known leaf nodes and check directly
+		function nav(node: ReturnType<typeof buildTrie>, ...arcs: string[]): ReturnType<typeof buildTrie> {
+			let cur = node;
+			for (const arc of arcs) {
+				cur = cur.children.get(arc)!;
 			}
-			return result;
+			return cur;
 		}
 
-		const leaves = collectLeaves(root);
-		// Both placements should have shared: true
-		for (const leaf of leaves) {
-			expect(leaf.shared).toBe(true);
-		}
-		expect(leaves).toHaveLength(2);
+		const leaf1 = nav(root, "1", "3", "6", "1", "2", "1", "1", "1", "0").leaves[0]!;
+		const leaf2 = nav(root, "1", "3", "6", "1", "2", "1", "1", "2", "0").leaves[0]!;
+		expect(leaf1.shared).toBe(true);
+		expect(leaf2.shared).toBe(true);
 	});
 });
 
-// Test 4: rollup computes stats.count correctly
 describe("rollup", () => {
 	test("stats.count = total leaves in subtree", () => {
 		const ex1 = makeExchange({ seq: 1, responseOids: [asOid("1.3")] });
@@ -107,83 +101,86 @@ describe("rollup", () => {
 		rollup(root, SLOW_MS);
 
 		const node1 = root.children.get("1")!;
-		// node "1" has child "3" which has 1 leaf (ex1)
-		// node "3" has child "6" which has 2 leaves (ex2, ex3)
-		// total under "1" = 3
-		expect(node1.stats.count).toBe(3);
-
 		const node3 = node1.children.get("3")!;
-		expect(node3.stats.count).toBe(3); // 1 own + 2 in child "6"
-
 		const node6 = node3.children.get("6")!;
+		expect(node1.stats.count).toBe(3);
+		expect(node3.stats.count).toBe(3); // 1 own + 2 in child "6"
 		expect(node6.stats.count).toBe(2);
 	});
 
-	// Test 5: rollup computes flags.slow correctly
-	test("flags.slow = true when any leaf has rtt > slowMs", () => {
-		const fast = makeExchange({
-			seq: 1,
-			rtt: 500,
-			responseOids: [asOid("1.3")],
-		});
-		const slow = makeExchange({
-			seq: 2,
-			rtt: 2000,
-			responseOids: [asOid("1.4")],
-		});
-
+	test("slow flag set on node when any leaf has rtt > slowMs", () => {
+		const fast = makeExchange({ seq: 1, rtt: 500, responseOids: [asOid("1.3")] });
+		const slow = makeExchange({ seq: 2, rtt: 2000, responseOids: [asOid("1.4")] });
 		const root = buildTrie([fast, slow]);
 		rollup(root, SLOW_MS);
 
 		const node1 = root.children.get("1")!;
-		// fast under "3", slow under "4" — node "1" should be flagged slow
 		expect(node1.flags.slow).toBe(true);
-
-		const node3 = node1.children.get("3")!;
-		expect(node3.flags.slow).toBe(false);
-
-		const node4 = node1.children.get("4")!;
-		expect(node4.flags.slow).toBe(true);
+		expect(node1.children.get("3")!.flags.slow).toBe(false);
+		expect(node1.children.get("4")!.flags.slow).toBe(true);
 	});
 
-	// Test 6: rollup visits children before own leaves (post-order)
-	test("post-order: children stats are set before parent reads them", () => {
-		const ex = makeExchange({
-			seq: 1,
-			rtt: 2500,
-			responseOids: [asOid("1.3.6")],
-		});
+	test("slow flag on a deep leaf surfaces on its ancestor after rollup", () => {
+		const ex = makeExchange({ seq: 1, rtt: 2500, responseOids: [asOid("1.3.6")] });
 		const root = buildTrie([ex]);
 		rollup(root, SLOW_MS);
 
-		// The deepest node "6" should have slow flag set from its own leaf
-		const node6 = root.children.get("1")!.children.get("3")!.children.get("6")!;
-		expect(node6.flags.slow).toBe(true);
-
-		// The parent "3" should have inherited slow from child "6"
 		const node3 = root.children.get("1")!.children.get("3")!;
+		const node6 = node3.children.get("6")!;
+		expect(node6.flags.slow).toBe(true);
 		expect(node3.flags.slow).toBe(true);
+	});
+
+	test("violation flag set on node when any leaf has violations", () => {
+		const ex = makeExchange({ responseOids: [asOid("1.3")], violations: ["snmp-v1-only"] });
+		const root = buildTrie([ex]);
+		rollup(root, SLOW_MS);
+		expect(root.children.get("1")!.flags.violation).toBe(true);
+	});
+
+	test("retry flag set on node when any leaf has attemptCount > 1", () => {
+		const ex = makeExchange({ responseOids: [asOid("1.3")], attemptCount: 2 });
+		const root = buildTrie([ex]);
+		rollup(root, SLOW_MS);
+		expect(root.children.get("1")!.flags.retry).toBe(true);
+	});
+
+	test("violation flag on a deep leaf surfaces on its ancestor after rollup", () => {
+		const ex = makeExchange({ responseOids: [asOid("1.3.6")], violations: ["snmp-v1-only"] });
+		const root = buildTrie([ex]);
+		rollup(root, SLOW_MS);
+		expect(root.children.get("1")!.flags.violation).toBe(true);
+	});
+
+	test("retry flag on a deep leaf surfaces on its ancestor after rollup", () => {
+		const ex = makeExchange({ responseOids: [asOid("1.3.6")], attemptCount: 3 });
+		const root = buildTrie([ex]);
+		rollup(root, SLOW_MS);
+		expect(root.children.get("1")!.flags.retry).toBe(true);
+	});
+
+	test("violationCount aggregated correctly across siblings", () => {
+		const v1 = makeExchange({ seq: 1, responseOids: [asOid("1.3")], violations: ["v"] });
+		const v2 = makeExchange({ seq: 2, responseOids: [asOid("1.4")], violations: ["v"] });
+		const ok = makeExchange({ seq: 3, responseOids: [asOid("1.5")] });
+		const root = buildTrie([v1, v2, ok]);
+		rollup(root, SLOW_MS);
+		expect(root.children.get("1")!.stats.violationCount).toBe(2);
 	});
 });
 
-// Test 7: flatten skips synthetic root
 describe("flatten", () => {
 	test("skips the synthetic root node", () => {
-		const ex = makeExchange({
-			responseOids: [asOid("1.3")],
-		});
+		const ex = makeExchange({ responseOids: [asOid("1.3")] });
 		const root = buildTrie([ex]);
 		autoExpand(root);
 		const rows = flatten(root);
 
-		// None of the rows should have the synthetic root (arc === "" and fullOid === "")
 		for (const row of rows) {
 			if (row.kind === "node") {
 				expect(row.node.arc).not.toBe("");
 			}
 		}
-		// First row should be arc "1" at depth 0
-		expect(rows[0]).toBeDefined();
 		expect(rows[0]!.kind).toBe("node");
 		if (rows[0]!.kind === "node") {
 			expect(rows[0]!.depth).toBe(0);
@@ -191,22 +188,15 @@ describe("flatten", () => {
 		}
 	});
 
-	// Test 8: flatten only emits children/leaves of expanded nodes
-	test("collapsed nodes hide their children/leaves", () => {
+	test("collapsed nodes hide their children and leaves", () => {
 		const ex1 = makeExchange({ seq: 1, responseOids: [asOid("1.3.6")] });
 		const ex2 = makeExchange({ seq: 2, responseOids: [asOid("1.4.5")] });
 		const root = buildTrie([ex1, ex2]);
 
-		// Expand root children but not their children
-		const node1 = root.children.get("1")!;
-		node1.expanded = true;
-		// node3 and node4 are collapsed (default)
+		root.children.get("1")!.expanded = true;
+		// node3 and node4 remain collapsed (default)
 
-		const rows = flatten(root);
-
-		// Should see node "1" (depth 0) and its direct children "3" and "4" (depth 1)
-		// but NOT "6" or "5" (children of collapsed nodes)
-		const arcs = rows
+		const arcs = flatten(root)
 			.filter((r) => r.kind === "node")
 			.map((r) => (r.kind === "node" ? r.node.arc : ""));
 
@@ -217,24 +207,67 @@ describe("flatten", () => {
 		expect(arcs).not.toContain("5");
 	});
 
-	// Test 9: leaf rows display row.oid (response OID), not exchange.requestOid
-	test("leaf rows display row.oid (response OID), not requestOid", () => {
+	test("leaf row oid is the response OID, not the request OID", () => {
 		const requestOid = asOid("1.2.3.4.5");
 		const responseOid = asOid("1.3.6.1.2.1.1.1.0");
-		const ex = makeExchange({
-			requestOid,
-			responseOids: [responseOid],
-		});
+		const ex = makeExchange({ requestOid, responseOids: [responseOid] });
 		const root = buildTrie([ex]);
 		autoExpand(root);
 		const rows = flatten(root);
 
 		const leafRows = rows.filter((r) => r.kind === "leaf");
 		expect(leafRows).toHaveLength(1);
-		const leaf = leafRows[0]!;
-		if (leaf.kind === "leaf") {
-			expect(leaf.oid).toBe(responseOid);
-			expect(leaf.oid).not.toBe(requestOid);
+		if (leafRows[0]!.kind === "leaf") {
+			expect(leafRows[0]!.oid).toBe(responseOid);
+			expect(leafRows[0]!.oid).not.toBe(requestOid);
 		}
+	});
+
+	test("exchange with no responseOids appears as depth-0 leaf row", () => {
+		const ex = makeExchange({ requestOid: asOid("1.3.6.1.2.1.1.1.0"), responseOids: [] });
+		const root = buildTrie([ex]);
+		autoExpand(root);
+		const rows = flatten(root);
+
+		const leafRows = rows.filter((r) => r.kind === "leaf");
+		expect(leafRows).toHaveLength(1);
+		expect(leafRows[0]!.depth).toBe(0);
+		if (leafRows[0]!.kind === "leaf") {
+			expect(leafRows[0]!.oid).toBe(asOid("1.3.6.1.2.1.1.1.0"));
+		}
+	});
+});
+
+describe("collapseAll", () => {
+	test("sets expanded = false on root and all descendants", () => {
+		const ex1 = makeExchange({ seq: 1, responseOids: [asOid("1.3.6")] });
+		const ex2 = makeExchange({ seq: 2, responseOids: [asOid("1.4.5")] });
+		const root = buildTrie([ex1, ex2]);
+		autoExpand(root);
+
+		expect(root.children.get("1")!.expanded).toBe(true);
+
+		collapseAll(root);
+
+		expect(root.expanded).toBe(false);
+		const node1 = root.children.get("1")!;
+		expect(node1.expanded).toBe(false);
+		for (const child of node1.children.values()) {
+			expect(child.expanded).toBe(false);
+		}
+	});
+
+	test("flatten after collapseAll returns only top-level nodes", () => {
+		const ex = makeExchange({ responseOids: [asOid("1.3.6")] });
+		const root = buildTrie([ex]);
+		autoExpand(root);
+		collapseAll(root);
+
+		const arcs = flatten(root)
+			.filter((r) => r.kind === "node")
+			.map((r) => (r.kind === "node" ? r.node.arc : ""));
+		expect(arcs).toContain("1");
+		expect(arcs).not.toContain("3");
+		expect(arcs).not.toContain("6");
 	});
 });
