@@ -107,6 +107,7 @@ def test_successful_walk_exit_0_and_trace_file(tmp_path: Path) -> None:
         ret = main(
             [
                 "walk",
+                "v2c",
                 host,
                 "--port",
                 str(port),
@@ -134,6 +135,7 @@ def test_successful_walk_header_label(tmp_path: Path) -> None:
         ret = main(
             [
                 "walk",
+                "v2c",
                 host,
                 "--port",
                 str(port),
@@ -166,6 +168,7 @@ def test_successful_walk_stdout_summary(tmp_path: Path, capsys: pytest.CaptureFi
         ret = main(
             [
                 "walk",
+                "v2c",
                 host,
                 "--port",
                 str(port),
@@ -195,6 +198,7 @@ def test_successful_walk_stderr_progress(
         ret = main(
             [
                 "walk",
+                "v2c",
                 host,
                 "--port",
                 str(port),
@@ -222,6 +226,7 @@ def test_verbose_vv_debug_lines_no_progress(
         ret = main(
             [
                 "walk",
+                "v2c",
                 host,
                 "--port",
                 str(port),
@@ -250,6 +255,7 @@ def test_unresolvable_host_exit_2_no_file(
     ret = main(
         [
             "walk",
+            "v2c",
             "host.invalid",
             "--out",
             str(tmp_path),
@@ -270,6 +276,7 @@ def test_bad_start_oid_exit_2_no_file(tmp_path: Path, capsys: pytest.CaptureFixt
     ret = main(
         [
             "walk",
+            "v2c",
             "127.0.0.1",
             "--out",
             str(tmp_path),
@@ -291,6 +298,7 @@ def test_trace_filename_uses_label(tmp_path: Path) -> None:
         main(
             [
                 "walk",
+                "v2c",
                 host,
                 "--port",
                 str(port),
@@ -318,6 +326,7 @@ def test_trace_filename_fallback_walk(tmp_path: Path) -> None:
         main(
             [
                 "walk",
+                "v2c",
                 host,
                 "--port",
                 str(port),
@@ -347,6 +356,7 @@ def test_out_dir_created(tmp_path: Path) -> None:
         ret = main(
             [
                 "walk",
+                "v2c",
                 host,
                 "--port",
                 str(port),
@@ -378,6 +388,7 @@ def test_violation_counts_in_summary(tmp_path: Path, capsys: pytest.CaptureFixtu
         ret = main(
             [
                 "walk",
+                "v2c",
                 host,
                 "--port",
                 str(port),
@@ -408,6 +419,7 @@ def test_verbose_v_info_lines_no_progress_no_debug(
         ret = main(
             [
                 "walk",
+                "v2c",
                 host,
                 "--port",
                 str(port),
