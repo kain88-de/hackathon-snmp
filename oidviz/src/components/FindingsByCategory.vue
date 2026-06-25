@@ -16,36 +16,73 @@ const ROW_HEIGHT = 32;
 const HEADER_HEIGHT = 40;
 const DEFAULT_CONTAINER_HEIGHT = 600;
 
+const slowExpanded = ref(true);
+const timeoutExpanded = ref(true);
+const fastExpanded = ref(true);
+
 type VirtualItem =
-	| { kind: "header"; label: string }
+	| {
+			kind: "header";
+			label: string;
+			section: "slow" | "timeout" | "fast";
+			expanded: boolean;
+	  }
 	| { exchange: DomainExchange; kind: "row" };
 
 const items = computed((): VirtualItem[] => {
 	const findings = categorise(props.exchanges, props.facetState.slowMs);
 	const list: VirtualItem[] = [];
 
-	list.push({ kind: "header", label: `Slow (${findings.slow.length})` });
-	for (const ex of findings.slow) {
-		list.push({ exchange: ex, kind: "row" });
+	list.push({
+		expanded: slowExpanded.value,
+		kind: "header",
+		label: `Slow (${findings.slow.length})`,
+		section: "slow",
+	});
+	if (slowExpanded.value) {
+		for (const ex of findings.slow) {
+			list.push({ exchange: ex, kind: "row" });
+		}
 	}
 
 	list.push({
+		expanded: timeoutExpanded.value,
 		kind: "header",
 		label: `Timed out (${findings.timeout.length})`,
+		section: "timeout",
 	});
-	for (const ex of findings.timeout) {
-		list.push({ exchange: ex, kind: "row" });
+	if (timeoutExpanded.value) {
+		for (const ex of findings.timeout) {
+			list.push({ exchange: ex, kind: "row" });
+		}
 	}
 
 	if (findings.fast.length > 0) {
-		list.push({ kind: "header", label: `Fast (${findings.fast.length})` });
-		for (const ex of findings.fast) {
-			list.push({ exchange: ex, kind: "row" });
+		list.push({
+			expanded: fastExpanded.value,
+			kind: "header",
+			label: `Fast (${findings.fast.length})`,
+			section: "fast",
+		});
+		if (fastExpanded.value) {
+			for (const ex of findings.fast) {
+				list.push({ exchange: ex, kind: "row" });
+			}
 		}
 	}
 
 	return list;
 });
+
+function toggleSection(section: "slow" | "timeout" | "fast"): void {
+	if (section === "slow") {
+		slowExpanded.value = !slowExpanded.value;
+	} else if (section === "timeout") {
+		timeoutExpanded.value = !timeoutExpanded.value;
+	} else {
+		fastExpanded.value = !fastExpanded.value;
+	}
+}
 
 function itemHeight(item: VirtualItem): number {
 	if (item.kind === "header") {
@@ -194,13 +231,16 @@ function rttClass(ex: DomainExchange): string {
 				v-for="(item, i) in visibleItems.slice"
 				:key="item.kind === 'row' ? item.exchange.seq : `header-${visibleItems.startIdx + i}`"
 			>
-				<div
+				<button
 					v-if="item.kind === 'header'"
 					class="section-header"
 					:data-label="item.label"
+					:aria-expanded="item.expanded"
+					@click="toggleSection(item.section)"
 				>
+					<span class="chevron">{{ item.expanded ? "▼" : "▶" }}</span>
 					{{ item.label }}
-				</div>
+				</button>
 				<div
 					v-else
 					class="exchange-row"
@@ -243,13 +283,28 @@ function rttClass(ex: DomainExchange): string {
 	height: 40px;
 	display: flex;
 	align-items: center;
+	gap: 6px;
 	padding: 0 12px;
+	width: 100%;
+	box-sizing: border-box;
 	font-size: 12px;
 	font-weight: 600;
 	color: var(--color-text-muted);
 	background: var(--color-bg);
+	border: none;
 	border-bottom: 1px solid var(--color-border);
 	z-index: 1;
+	cursor: pointer;
+	text-align: left;
+	font-family: var(--font-mono);
+}
+
+.section-header:hover {
+	background: var(--color-primary-bg);
+}
+
+.chevron {
+	font-size: 10px;
 }
 
 .exchange-row {
