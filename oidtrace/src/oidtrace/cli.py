@@ -99,7 +99,7 @@ def _add_shared_args(p: argparse.ArgumentParser) -> None:
     )
 
 
-def _build_parser() -> argparse.ArgumentParser:
+def _build_parser() -> tuple[argparse.ArgumentParser, argparse.ArgumentParser]:
     parser = argparse.ArgumentParser(
         prog="oidtrace",
         description="OIDTrace: record SNMP walks to structured trace files.",
@@ -136,7 +136,7 @@ def _build_parser() -> argparse.ArgumentParser:
     v3.add_argument("--priv-proto", default=None, help="Privacy protocol (e.g. AES).")
     v3.add_argument("--priv-pass", default=None, help="Privacy passphrase.")
 
-    return parser
+    return parser, walk
 
 
 # ---------------------------------------------------------------------------
@@ -146,7 +146,7 @@ def _build_parser() -> argparse.ArgumentParser:
 
 def main(argv: list[str] | None = None) -> int:
     """CLI entry point. Returns exit code."""
-    parser = _build_parser()
+    parser, walk_parser = _build_parser()
     args = parser.parse_args(argv)
 
     if args.subcommand != "walk":
@@ -155,11 +155,6 @@ def main(argv: list[str] | None = None) -> int:
 
     if args.version is None:
         # print walk-level help (shows v1/v2c/v3 sub-commands)
-        walk_parser = next(
-            a
-            for a in parser._subparsers._group_actions  # type: ignore[union-attr]
-            if hasattr(a, "_name_parser_map") and "walk" in a._name_parser_map
-        )._name_parser_map["walk"]
         walk_parser.print_help(sys.stderr)
         return 2
 
