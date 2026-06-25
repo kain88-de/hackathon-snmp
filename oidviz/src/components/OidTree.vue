@@ -170,7 +170,7 @@ function rowKey(row: FlatRow, idx: number): string {
 						:style="{ paddingLeft: (row.depth * 16 + 8) + 'px' }"
 						:data-trie-row="true"
 					>
-						<span class="trie-leaf-oid" :title="row.oid">{{ row.oid }}</span>
+						<span class="trie-leaf-oid" :title="row.exchange.requestOid">{{ row.exchange.requestOid }}</span>
 						<span
 							class="trie-leaf-rtt"
 							:class="rttClass(row.exchange.rtt)"
