@@ -148,7 +148,7 @@ function rowKey(row: FlatRow, idx: number): string {
 								v-if="row.node.stats.maxRtt > 0"
 								class="trie-maxrtt"
 								:class="rttClass(row.node.stats.maxRtt)"
-							>{{ row.node.stats.maxRtt }}ms</span>
+							>{{ row.node.stats.maxRtt.toFixed(1) }}ms</span>
 						</span>
 						<span
 							v-if="row.node.flags.slow"
@@ -174,7 +174,7 @@ function rowKey(row: FlatRow, idx: number): string {
 						<span
 							class="trie-leaf-rtt"
 							:class="rttClass(row.exchange.rtt)"
-						>{{ row.exchange.rtt }}ms</span>
+						>{{ row.exchange.rtt.toFixed(1) }}ms</span>
 						<span
 							v-if="row.exchange.violations.length > 0"
 							class="badge badge-violation"

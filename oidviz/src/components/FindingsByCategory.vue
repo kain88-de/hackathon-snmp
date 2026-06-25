@@ -251,7 +251,7 @@ function rttClass(ex: DomainExchange): string {
 						item.exchange.requestOid
 					}}</span>
 					<span class="rtt" :class="rttClass(item.exchange)"
-						>{{ item.exchange.rtt }}ms</span
+						>{{ item.exchange.rtt.toFixed(1) }}ms</span
 					>
 					<span
 						v-if="item.exchange.violations.length > 0"
@@ -313,7 +313,6 @@ function rttClass(ex: DomainExchange): string {
 	align-items: center;
 	gap: 8px;
 	padding: 0 12px;
-	cursor: pointer;
 	border-bottom: 1px solid var(--color-border);
 	background: var(--color-surface);
 }
