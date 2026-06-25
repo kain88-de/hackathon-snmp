@@ -148,4 +148,53 @@ Then verify manually against a real or emulator target:
 | `oidtrace walk` | Walk-level help on stderr, exit 2 |
 | `oidtrace walk v2c` (no host) | argparse error for missing positional, exit 2 |
 
-Only proceed to merge once `just ci` is clean and all five manual checks pass.
+#### Test review
+
+Spawn a review agent with the following prompt against the final state of
+`oidtrace/tests/integration/test_cli.py`:
+
+---
+
+**Agent prompt:**
+
+Review `oidtrace/tests/integration/test_cli.py` for test quality. The file
+covers CLI integration tests for an SNMP walk tool: the `walk v2c` live path
+(runs a real UDP emulator in-process) and the `walk v1` / `walk v3` stub paths
+(must exit 2 immediately with no network I/O). The tests call `main([...])` directly
+and assert on exit code, stderr content, and file presence in `tmp_path`.
+
+Apply the following checklist. For each item, cite the specific test(s) affected and
+explain concretely why it is or is not a problem. Do not flag issues that are
+already guarded by the type checker or linter.
+
+**Anti-patterns to check:**
+- **Brittle mocking** — are any mocks verifying call sequences rather than outcomes?
+  The emulator-thread pattern is intentional; flag only unexpected `unittest.mock` usage.
+- **Always-passing tests** — do assertions have a realistic chance of failing? Check
+  that string-presence assertions (e.g. `"v1" in stderr`) would fail if the stub
+  printed the wrong message or nothing at all.
+- **Vague failure messages** — if a test fails, does pytest output tell you what went
+  wrong without reading the source? Flag any assertion where the failure message would
+  be `AssertionError` with no context.
+- **Fixture soup** — is `EmulatorThread` used only where a live network exchange is
+  genuinely required? Flag any v1/v3 stub test that starts an emulator unnecessarily.
+- **Test doing multiple things** — can each test be named in one sentence describing
+  one behaviour? Flag tests that assert more than one independent concern.
+- **Wrong level** — do any tests for the v1/v3 stubs reach into argparse internals or
+  patch private functions? The correct level is: call `main([...])`, observe outputs.
+- **Redundant assertions** — do any tests re-check what `just ci` (ruff/pyrefly) already
+  guarantees, such as that a function exists or has the right signature?
+
+**Red flags to answer explicitly:**
+1. Does every test fail for a reason someone can act on?
+2. Is anything being patched that we own (beyond the emulator thread pattern)?
+3. Do test names describe behaviour or mechanism?
+4. Are the v1/v3 stub tests at the right level, or do they over-specify internals?
+
+Conclude with: a short list of issues to fix (with severity: must-fix / nice-to-have),
+and a one-line verdict on whether the test suite earns its place.
+
+---
+
+Only proceed to merge once `just ci` is clean, all five manual checks pass, and the
+test review raises no must-fix issues.
