@@ -788,7 +788,5 @@ async def test_logging_debug_exchange(
 
     debug_msgs = [r.getMessage() for r in caplog.records if r.levelno == logging.DEBUG]
     exchange_logs = [m for m in debug_msgs if m.startswith("exchange seq=")]
-    assert len(exchange_logs) == 2, (
-        f"Expected 2 per-exchange DEBUG logs, got: {debug_msgs}"
-    )
+    assert len(exchange_logs) == 2, f"Expected 2 per-exchange DEBUG logs, got: {debug_msgs}"
     _validate_all(records, record_validator)

@@ -60,6 +60,45 @@ class _ProgressSink:
 # ---------------------------------------------------------------------------
 
 
+def _add_shared_args(p: argparse.ArgumentParser) -> None:
+    """Add shared flags common to all version sub-parsers."""
+    p.add_argument("host", help="Target hostname or IP address.")
+    p.add_argument("--port", type=int, default=161, help="UDP port (default: 161).")
+    p.add_argument("--out", default=".", help="Output directory (default: current dir).")
+    p.add_argument("--label", default=None, help="Human label; used in filename and header.")
+    p.add_argument(
+        "--timeout",
+        type=float,
+        default=2.0,
+        metavar="SECS",
+        help="Per-attempt timeout in seconds (default: 2.0).",
+    )
+    p.add_argument(
+        "--retries", type=int, default=2, help="Retransmissions after first send (default: 2)."
+    )
+    p.add_argument(
+        "--start-oid", default="1.3.6.1", metavar="OID", help="Subtree root OID (default: 1.3.6.1)."
+    )
+    p.add_argument(
+        "--time-budget",
+        type=float,
+        default=None,
+        metavar="SECS",
+        help="Wall-time budget in seconds (default: unlimited).",
+    )
+    p.add_argument(
+        "--give-up-after",
+        type=int,
+        default=3,
+        metavar="N",
+        dest="give_up_after",
+        help="Consecutive misses before UNRESPONSIVE (default: 3).",
+    )
+    p.add_argument(
+        "-v", "--verbose", action="count", default=0, help="Increase verbosity: -v INFO, -vv DEBUG."
+    )
+
+
 def _build_parser() -> argparse.ArgumentParser:
     parser = argparse.ArgumentParser(
         prog="oidtrace",
@@ -68,51 +107,34 @@ def _build_parser() -> argparse.ArgumentParser:
     sub = parser.add_subparsers(dest="subcommand")
 
     walk = sub.add_parser("walk", help="Walk an SNMP agent and record to a trace file.")
-    walk.add_argument("host", help="Target hostname or IP address.")
-    walk.add_argument("--port", type=int, default=161, help="UDP port (default: 161).")
-    walk.add_argument("--out", default=".", help="Output directory (default: current dir).")
-    walk.add_argument("--label", default=None, help="Human label; used in filename and header.")
-    walk.add_argument(
+    ver = walk.add_subparsers(dest="version")
+
+    v2c = ver.add_parser("v2c", help="SNMP v2c walk.")
+    _add_shared_args(v2c)
+    v2c.add_argument(
+        "--community", default="public", help="SNMP v2c community string (default: public)."
+    )
+    v2c.add_argument(
         "--bulk-size",
         type=int,
         default=10,
         metavar="N",
         help="GetBulk max-repetitions (default: 10).",
     )
-    walk.add_argument(
-        "--timeout",
-        type=float,
-        default=2.0,
-        metavar="SECS",
-        help="Per-attempt timeout in seconds (default: 2.0).",
+
+    v1 = ver.add_parser("v1", help="SNMP v1 walk.")
+    _add_shared_args(v1)
+    v1.add_argument(
+        "--community", default="public", help="SNMP v1 community string (default: public)."
     )
-    walk.add_argument(
-        "--retries", type=int, default=2, help="Retransmissions after first send (default: 2)."
-    )
-    walk.add_argument(
-        "--start-oid", default="1.3.6.1", metavar="OID", help="Subtree root OID (default: 1.3.6.1)."
-    )
-    walk.add_argument(
-        "--time-budget",
-        type=float,
-        default=None,
-        metavar="SECS",
-        help="Wall-time budget in seconds (default: unlimited).",
-    )
-    walk.add_argument(
-        "--community", default="public", help="SNMP v2c community string (default: public)."
-    )
-    walk.add_argument(
-        "--give-up-after",
-        type=int,
-        default=3,
-        metavar="N",
-        dest="give_up_after",
-        help="Consecutive misses before UNRESPONSIVE (default: 3).",
-    )
-    walk.add_argument(
-        "-v", "--verbose", action="count", default=0, help="Increase verbosity: -v INFO, -vv DEBUG."
-    )
+
+    v3 = ver.add_parser("v3", help="SNMP v3 walk.")
+    _add_shared_args(v3)
+    v3.add_argument("--user", required=True, help="SNMPv3 username.")
+    v3.add_argument("--auth-proto", default=None, help="Auth protocol (e.g. SHA).")
+    v3.add_argument("--auth-pass", default=None, help="Auth passphrase.")
+    v3.add_argument("--priv-proto", default=None, help="Privacy protocol (e.g. AES).")
+    v3.add_argument("--priv-pass", default=None, help="Privacy passphrase.")
 
     return parser
 
@@ -130,6 +152,21 @@ def main(argv: list[str] | None = None) -> int:
     if args.subcommand != "walk":
         parser.print_help(sys.stderr)
         return 2
+
+    if args.version is None:
+        # print walk-level help (shows v1/v2c/v3 sub-commands)
+        walk_parser = next(
+            a
+            for a in parser._subparsers._group_actions  # type: ignore[union-attr]
+            if hasattr(a, "_name_parser_map") and "walk" in a._name_parser_map
+        )._name_parser_map["walk"]
+        walk_parser.print_help(sys.stderr)
+        return 2
+
+    if args.version in ("v1", "v3"):
+        # stub for Task 3
+        pass
+        return 0
 
     verbosity: int = args.verbose
     level = logging.WARNING

@@ -3,9 +3,11 @@
 from __future__ import annotations
 
 import json
+from typing import TYPE_CHECKING
 
-# pyrefly: ignore [untyped-import]
-from jsonschema import Draft202012Validator
+if TYPE_CHECKING:
+    # pyrefly: ignore [untyped-import]
+    from jsonschema import Draft202012Validator
 
 import oidtrace
 

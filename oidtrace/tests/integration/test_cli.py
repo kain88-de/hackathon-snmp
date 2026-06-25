@@ -449,3 +449,11 @@ def test_no_subcommand_returns_2(capsys: pytest.CaptureFixture[str]) -> None:
     assert ret == 2
     err = capsys.readouterr().err
     assert "walk" in err.lower() or "usage" in err.lower()
+
+
+def test_walk_no_version_returns_2(capsys: pytest.CaptureFixture[str]) -> None:
+    """Calling main(['walk']) with no version prints walk-level help to stderr and returns 2."""
+    ret = main(["walk"])
+    assert ret == 2
+    err = capsys.readouterr().err
+    assert any(tok in err for tok in ("v1", "v2c", "v3", "usage"))
