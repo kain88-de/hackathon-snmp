@@ -23,6 +23,9 @@ types:
 test:
     bun test --path-ignore-patterns "tests/e2e/**" --pass-with-no-tests
 
+coverage:
+    bun test --coverage --coverage-reporter=text --path-ignore-patterns "tests/e2e/**" --pass-with-no-tests
+
 ci: lint types fmt-check test e2e a11y
 
 e2e:
