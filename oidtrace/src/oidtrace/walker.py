@@ -396,6 +396,7 @@ async def walk_records(  # noqa: PLR0912, PLR0913, PLR0915
             )
         elif settings.snmp_version == "3":
             assert v3_params is not None  # discovery succeeded or loop never starts
+            assert settings.v3_user is not None  # enforced by WalkSettings.__post_init__
             raw_request = encode_v3_getbulk(
                 msg_id=random.randint(1, 2**31 - 1),
                 request_id=request_id,
@@ -404,7 +405,7 @@ async def walk_records(  # noqa: PLR0912, PLR0913, PLR0915
                 engine_id=v3_params.engine_id,
                 engine_boots=v3_params.engine_boots,
                 engine_time=v3_params.engine_time,
-                username=v3_params.username,
+                username=settings.v3_user.encode(),
             )
             request_model = tf.Request(
                 pdu=tf.Pdu("getbulk"),
