@@ -1,5 +1,7 @@
 default: ci
 
+hook: ci
+
 fmt:
     uv run ruff format src tests
 

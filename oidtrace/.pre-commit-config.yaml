@@ -2,7 +2,7 @@ repos:
   - repo: local
     hooks:
       - id: ci
-        name: just ci
+        name: just hook
         language: system
-        entry: just ci
+        entry: just hook
         pass_filenames: false
