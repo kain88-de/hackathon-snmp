@@ -25,7 +25,13 @@ from traceformat.vocab import AttemptError, EndReason, EventKind, Violation
 from oidtrace.codec import encode_response
 from oidtrace.oid import Oid
 from oidtrace.transport import Attempt, ExchangeIO
-from oidtrace.walker import WalkSettings, WalkStats, walk_records, walk_with_transport
+from oidtrace.walker import (
+    WalkSettings,
+    WalkStats,
+    _make_settings_model,
+    walk_records,
+    walk_with_transport,
+)
 
 if TYPE_CHECKING:
     from collections.abc import Callable
@@ -639,6 +645,33 @@ def test_walk_settings_bulk_size_validation() -> None:
 
     with pytest.raises(ValueError, match="bulk_size"):
         WalkSettings(bulk_size=0)
+
+
+def test_walk_settings_snmp_version_default() -> None:
+    """WalkSettings() defaults to snmp_version='2c'."""
+    settings = WalkSettings()
+    assert settings.snmp_version == "2c"
+
+
+def test_walk_settings_snmp_version_1_accepted() -> None:
+    """WalkSettings(snmp_version='1') is accepted without error."""
+    settings = WalkSettings(snmp_version="1")
+    assert settings.snmp_version == "1"
+
+
+def test_walk_settings_snmp_version_1_skips_bulk_size_validation() -> None:
+    """WalkSettings(snmp_version='1', bulk_size=0) is accepted (no validation)."""
+    # For SNMP v1, bulk_size validation should be skipped
+    settings = WalkSettings(snmp_version="1", bulk_size=0)
+    assert settings.snmp_version == "1"
+    assert settings.bulk_size == 0
+
+
+def test_make_settings_model_snmp_version_1_emits_zero_bulk_size() -> None:
+    """_make_settings_model with snmp_version='1' emits bulk_size=0."""
+    settings = WalkSettings(snmp_version="1", bulk_size=10)
+    model = _make_settings_model(settings)
+    assert model.bulk_size == 0
 
 
 @pytest.mark.asyncio

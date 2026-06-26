@@ -43,7 +43,7 @@ from collections.abc import AsyncGenerator, Callable, Sequence
 from contextlib import aclosing
 from dataclasses import dataclass, field
 from datetime import UTC, datetime
-from typing import TYPE_CHECKING
+from typing import TYPE_CHECKING, Literal
 
 import traceformat.models as tf
 from traceformat import TraceRecord
@@ -92,13 +92,14 @@ class WalkSettings:
     """Configuration for a single walk.
 
     Attributes:
-        bulk_size: GetBulk max-repetitions (must be >= 1).
+        bulk_size: GetBulk max-repetitions (must be >= 1, or 0 for SNMP v1).
         timeout_s: Per-attempt timeout in seconds.
         retries: Number of retransmissions after the first send.
         start_oid: Subtree root OID; walk stays in this subtree.
         time_budget_s: Optional wall-time budget in seconds; None = unlimited.
         give_up_after: Consecutive response-less exchanges before UNRESPONSIVE.
         community: SNMP v2c community string.
+        snmp_version: SNMP protocol version ("1" for GetNext, "2c" for GetBulk).
     """
 
     bulk_size: int = 10
@@ -108,9 +109,10 @@ class WalkSettings:
     time_budget_s: float | None = None
     give_up_after: int = 3
     community: bytes = b"public"
+    snmp_version: Literal["1", "2c"] = "2c"
 
     def __post_init__(self) -> None:
-        if self.bulk_size < 1:
+        if self.snmp_version == "2c" and self.bulk_size < 1:
             raise ValueError(f"bulk_size must be >= 1, got {self.bulk_size}")
 
 
@@ -182,8 +184,10 @@ def _now(rel: Callable[[], float]) -> float:
 
 
 def _make_settings_model(settings: WalkSettings) -> tf.Settings:
+    # For SNMP v1, emit bulk_size=0 (GetNext walk)
+    bulk_size = 0 if settings.snmp_version == "1" else settings.bulk_size
     fields: dict[str, object] = {
-        "bulk_size": settings.bulk_size,
+        "bulk_size": bulk_size,
         "timeout_s": settings.timeout_s,
         "retries": settings.retries,
         "start_oid": tf.Oid(str(settings.start_oid)),
