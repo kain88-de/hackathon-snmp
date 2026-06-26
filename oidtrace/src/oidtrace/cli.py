@@ -159,9 +159,8 @@ def main(argv: list[str] | None = None) -> int:
         return 2
 
     if args.version in ("v1", "v3"):
-        # stub for Task 3
-        pass
-        return 0
+        print(f"error: SNMP {args.version} not yet implemented", file=sys.stderr)
+        return 2
 
     verbosity: int = args.verbose
     level = logging.WARNING

@@ -457,3 +457,33 @@ def test_walk_no_version_returns_2(capsys: pytest.CaptureFixture[str]) -> None:
     assert ret == 2
     err = capsys.readouterr().err
     assert any(tok in err for tok in ("v1", "v2c", "v3", "usage"))
+
+
+def test_walk_v1_not_implemented(tmp_path: Path, capsys: pytest.CaptureFixture[str]) -> None:
+    """v1 is not yet implemented: exit 2, stderr contains 'v1' and 'implement', no trace file."""
+    ret = main(["walk", "v1", "127.0.0.1", "--out", str(tmp_path)])
+
+    assert ret == 2
+    captured = capsys.readouterr()
+    err = captured.err.lower()
+    assert "v1" in err
+    assert "implement" in err
+    trace_files = list(tmp_path.glob("*.oidtrace.jsonl.gz"))
+    assert len(trace_files) == 0, (
+        f"No trace file should be created for v1 stub, found {trace_files}"
+    )
+
+
+def test_walk_v3_not_implemented(tmp_path: Path, capsys: pytest.CaptureFixture[str]) -> None:
+    """v3 is not yet implemented: exit 2, stderr contains 'v3' and 'implement', no trace file."""
+    ret = main(["walk", "v3", "127.0.0.1", "--user", "admin", "--out", str(tmp_path)])
+
+    assert ret == 2
+    captured = capsys.readouterr()
+    err = captured.err.lower()
+    assert "v3" in err
+    assert "implement" in err
+    trace_files = list(tmp_path.glob("*.oidtrace.jsonl.gz"))
+    assert len(trace_files) == 0, (
+        f"No trace file should be created for v3 stub, found {trace_files}"
+    )
