@@ -514,8 +514,7 @@ def test_v1_walk_header_version(tmp_path: Path) -> None:
     records = list(read_trace(trace_files[0]))
     assert isinstance(records[0], Header)
     header = records[0]
-    assert header.type == "header"
-    assert str(header.snmp.version.value) == "1"
+    assert header.snmp.version.value == "1"
 
 
 def test_walk_v3_not_implemented(tmp_path: Path, capsys: pytest.CaptureFixture[str]) -> None:
