@@ -211,7 +211,7 @@ def main(argv: list[str] | None = None) -> int:
             snmp_version="1",
         )
     elif args.version == "v3":
-        if any([args.auth_proto, args.auth_pass, args.priv_proto, args.priv_pass]):
+        if any((args.auth_proto, args.auth_pass, args.priv_proto, args.priv_pass)):
             print(
                 "warning: auth/priv arguments are ignored; running as noAuthNoPriv",
                 file=sys.stderr,
