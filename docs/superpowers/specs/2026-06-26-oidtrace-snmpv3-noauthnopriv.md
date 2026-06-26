@@ -56,14 +56,22 @@ The walker extracts these three values and reuses them unchanged for all subsequ
 
 ## Component Changes
 
-### 1. `traceformat/models.py` — add `"3"` to Version enum
+### 1. `traceformat/models.py` — extend enums and relax Request.oids
 
 ```python
 class Version(Enum):
     field_1  = "1"
     field_2c = "2c"
-    field_3  = "3"   # NEW
+    field_3  = "3"       # NEW
+
+class Pdu(Enum):
+    get        = "get"
+    getnext    = "getnext"
+    getbulk    = "getbulk"
+    discovery  = "discovery"   # NEW — SNMPv3 engine discovery probe
 ```
+
+`Request.oids`: relax `min_length=1` → `min_length=0`. The discovery request has no OIDs; all other PDU types continue to require at least one.
 
 `records.py`: update `snmp_version` annotation `Literal["1", "2c"] → Literal["1", "2c", "3"]`.
 
@@ -117,22 +125,23 @@ v3_user: str | None = None  # required when snmp_version == "3"
 
 `__post_init__` validation: if `snmp_version == "3"` and `v3_user is None` → `ValueError`.
 
-**`_discover_engine` coroutine** (private, in walker.py):
+**`walk_records` change — discovery recorded as seq=1:**
 
-```python
-async def _discover_engine(transport, settings) -> V3Params:
-```
+When `snmp_version == "3"`, the walk loop runs the discovery exchange **as the first recorded exchange** (seq=1) before the GetBulk loop:
 
-Sends one discovery probe via `transport.exchange`, decodes via `decode_v3_message`, asserts `pdu_tag == 0xA8` (Report), returns `V3Params`. Raises `RuntimeError` on failure (walk aborts before first exchange is recorded).
+1. Encode a discovery probe via `encode_v3_discovery`.
+2. Send via `transport.exchange` (same timeout/retry logic as all exchanges).
+3. Decode via `decode_v3_message` → `(msg, v3_params) | Malformed`.
+4. Yield the exchange record with:
+   - `request.pdu = "discovery"`, `request.oids = []`
+   - `response` populated from the Report PDU varbinds (usmStats counters)
+   - violations checked normally (e.g. malformed, request-id mismatch)
+5. If malformed or no response → `UNRESPONSIVE` after `give_up_after` (same counter).
+6. Extract `V3Params` (engineID, boots, time) for subsequent GetBulk requests.
 
-**`walk_records` change:**
+The GetBulk loop then starts at seq=2. Termination conditions are identical to v2c (EndOfMibView tag 0x82, left-subtree, empty varbinds).
 
-At the top of the generator, before entering the walk loop, if `snmp_version == "3"`:
-```python
-v3 = await _discover_engine(transport, settings)
-```
-
-Inside the loop, the `snmp_version == "3"` branch encodes requests with `encode_v3_getbulk` and decodes responses with `decode_v3_message`. Termination conditions are identical to v2c (EndOfMibView tag 0x82, left-subtree, empty varbinds).
+`check_exchange` is called on the discovery exchange. Because the discovery response is a Report PDU (0xA8) — not a Response PDU (0xA2) — `check_exchange` must not flag the PDU tag mismatch as a violation; `response_pdu_tag` is not currently validated there, so no change is needed.
 
 `_make_settings_model`: for v3, `bulk_size` is passed through unchanged (GetBulk walk, not GetNext). `snmp_version` → `"3"`.
 
@@ -203,5 +212,5 @@ Live-device crosswalk (marked `live_device`, skipped by default): `oidtrace walk
 - `just test` must pass after every task. `just ci` must pass at final review.
 - No auth/priv crypto in this phase. `--auth-proto`/`--auth-pass`/`--priv-proto`/`--priv-pass` are accepted by the CLI but trigger a "noAuthNoPriv only" warning and are not used.
 - `bulk_size = 0` (GetNext) is invalid for v3 in this phase — `WalkSettings.__post_init__` rejects it.
-- Discovery exchange is silent (not recorded in trace).
+- Discovery exchange is recorded as seq=1 with `pdu: "discovery"` and empty `oids`.
 - `decode_message` (v1/v2c) is unchanged in behaviour; only the inner PDU-decoding loop is refactored into a shared helper.
