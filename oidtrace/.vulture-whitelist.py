@@ -25,6 +25,22 @@ from oidtrace.codec import encode_getnext, encode_response
 _ = encode_response
 _ = encode_getnext
 
+# v3 codec symbols — used by emulator (Task 5), walker (Task 7), and CLI (Task 8);
+# vulture only scans src/ so test and support usages are invisible to it.
+from oidtrace.codec import (
+    PDU_REPORT,
+    decode_v3_message,
+    encode_v3_discovery,
+    encode_v3_getbulk,
+    encode_v3_response,
+)
+
+_ = PDU_REPORT
+_ = decode_v3_message
+_ = encode_v3_discovery
+_ = encode_v3_getbulk
+_ = encode_v3_response
+
 # records.system_info_record — format-completeness stub; v1 walker never calls
 # it (out of scope per plan).  Kept public for future hosts.
 from oidtrace.records import system_info_record
