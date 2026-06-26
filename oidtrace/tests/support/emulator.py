@@ -13,7 +13,7 @@ from dataclasses import dataclass, field
 from enum import StrEnum
 from typing import override
 
-from oidtrace.codec import Malformed, decode_message, encode_response
+from oidtrace.codec import PDU_GETNEXT, Malformed, decode_message, encode_response
 from oidtrace.oid import Oid
 
 
@@ -44,6 +44,7 @@ _TreeEntry = tuple[Oid, int, int]
 _IF_TABLE = Oid.from_str("1.3.6.1.2.1.2.2.1")
 _N_COLUMNS = 10
 _INTEGER_TAG = 0x02
+_TAG_NULL = 0x05
 
 
 @dataclass(frozen=True, slots=True)
@@ -108,6 +109,49 @@ class EmuProtocol(asyncio.DatagramProtocol):
     def connection_lost(self, exc: Exception | None) -> None:  # pragma: no cover
         pass
 
+    def _getnext_response(
+        self,
+        request_oid: Oid,
+        idx: int,
+        tree: tuple[_TreeEntry, ...],
+        rid: int,
+    ) -> bytes:
+        """Build a GetNext response: next OID if found, else error_status=2 + Null."""
+        if idx < len(tree):
+            oid, tag, vlen = tree[idx]
+            return encode_response(rid, [(oid, tag, b"\x00" * vlen)])
+        return encode_response(rid, [(request_oid, _TAG_NULL, b"")], error_status=2)
+
+    async def _getbulk_varbinds(
+        self,
+        request_oid: Oid,
+        chunk: list[_TreeEntry],
+        quirks: Quirks,
+        tree: tuple[_TreeEntry, ...],
+    ) -> list[tuple[Oid, int, bytes]] | None:
+        """Build varbinds for a GetBulk response. Returns None to signal silence."""
+        if chunk:
+            if quirks.slow_prefix is not None and quirks.per_oid_delay_s > 0:
+                total_delay = sum(
+                    quirks.per_oid_delay_s
+                    for oid, _, _ in chunk
+                    if oid.in_subtree(quirks.slow_prefix)
+                )
+                if total_delay > 0:
+                    await asyncio.sleep(total_delay)
+            return [(oid, tag, b"\x00" * vlen) for oid, tag, vlen in chunk]
+        # End of MIB
+        match quirks.end_of_mib:
+            case EndOfMib.SILENCE:
+                return None
+            case EndOfMib.WRAP:
+                if not tree:
+                    return None
+                oid, tag, vlen = tree[0]
+                return [(oid, tag, b"\x00" * vlen)]
+            case EndOfMib.EOM:
+                return [(request_oid, 0x82, b"")]
+
     async def _handle(self, data: bytes, addr: tuple[str | bytes | bytearray, int]) -> None:
         device = self._device
         quirks = device.quirks
@@ -124,42 +168,24 @@ class EmuProtocol(asyncio.DatagramProtocol):
             return
 
         request_oid = msg.varbinds[0].oid
-        max_reps = max(msg.f2, 1)
 
         tree = device.tree
         keys = [e[0] for e in tree]
         idx = bisect.bisect_right(keys, request_oid)
-
-        chunk = list(tree[idx : idx + max_reps])
-
-        # Build response varbinds
-        if chunk:
-            # Per-OID delay for OIDs under slow_prefix
-            if quirks.slow_prefix is not None and quirks.per_oid_delay_s > 0:
-                total_delay = sum(
-                    quirks.per_oid_delay_s
-                    for oid, _, _ in chunk
-                    if oid.in_subtree(quirks.slow_prefix)
-                )
-                if total_delay > 0:
-                    await asyncio.sleep(total_delay)
-            varbinds: list[tuple[Oid, int, bytes]] = [
-                (oid, tag, b"\x00" * vlen) for oid, tag, vlen in chunk
-            ]
-        else:
-            # End of MIB
-            match quirks.end_of_mib:
-                case EndOfMib.SILENCE:
-                    return
-                case EndOfMib.WRAP:
-                    if not tree:
-                        return
-                    oid, tag, vlen = tree[0]
-                    varbinds = [(oid, tag, b"\x00" * vlen)]
-                case EndOfMib.EOM:
-                    varbinds = [(request_oid, 0x82, b"")]
-
         rid = quirks.fixed_request_id if quirks.fixed_request_id is not None else msg.request_id
+
+        if msg.pdu_tag == PDU_GETNEXT:
+            response = self._getnext_response(request_oid, idx, tree, rid)
+            assert self._transport is not None
+            self._transport.sendto(response, addr)
+            return
+
+        max_reps = max(msg.f2, 1)
+        chunk = list(tree[idx : idx + max_reps])
+        varbinds = await self._getbulk_varbinds(request_oid, chunk, quirks, tree)
+        if varbinds is None:
+            return
+
         response = encode_response(rid, varbinds)
 
         assert self._transport is not None

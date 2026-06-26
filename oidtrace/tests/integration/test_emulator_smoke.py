@@ -11,7 +11,7 @@ from contextlib import AbstractAsyncContextManager
 from dataclasses import dataclass
 from typing import override
 
-from oidtrace.codec import Malformed, decode_message, encode_getbulk
+from oidtrace.codec import PDU_RESPONSE, Malformed, decode_message, encode_getbulk, encode_getnext
 from oidtrace.oid import Oid
 from tests.support.emulator import EmuDevice, Quirks
 
@@ -77,6 +77,73 @@ async def test_getbulk_returns_requested_count(emulator_factory: _EmuFactory) ->
     msg = decode_message(raw)
     assert not isinstance(msg, Malformed), f"Decode failed: {msg}"
     assert len(msg.varbinds) == bulk_size
+    assert msg.request_id == rid
+
+
+async def _send_getnext(host: str, port: int, oid: Oid, request_id: int = 1) -> bytes:
+    """Send a GetNext and return the raw response bytes."""
+    raw = encode_getnext(request_id, oid)
+    loop = asyncio.get_event_loop()
+
+    received: asyncio.Future[bytes] = loop.create_future()
+
+    class _OneShot(asyncio.DatagramProtocol):
+        def __init__(self) -> None:
+            self._transport: asyncio.DatagramTransport | None = None
+
+        @override
+        def connection_made(self, transport: asyncio.BaseTransport) -> None:
+            assert isinstance(transport, asyncio.DatagramTransport)
+            self._transport = transport
+            transport.sendto(raw)
+
+        @override
+        def datagram_received(self, data: bytes, addr: object) -> None:
+            if not received.done():
+                received.set_result(data)
+
+        @override
+        def error_received(self, exc: Exception) -> None:  # pragma: no cover
+            if not received.done():
+                received.set_exception(exc)
+
+    transport, _ = await loop.create_datagram_endpoint(
+        _OneShot,
+        remote_addr=(host, port),
+    )
+    try:
+        return await asyncio.wait_for(received, timeout=2.0)
+    finally:
+        transport.close()
+
+
+async def test_getnext_before_tree(emulator_factory: _EmuFactory) -> None:
+    """GetNext for OID before the tree returns one varbind and echoes the request_id."""
+    rid = 99
+    start = Oid.from_str("1.3.6.1.2.1.2.2.1")  # one step before the tree
+
+    async with emulator_factory(EmuDevice.simple(n_oids=10)) as (host, port):
+        raw = await _send_getnext(host, port, start, request_id=rid)
+
+    msg = decode_message(raw)
+    assert not isinstance(msg, Malformed), f"Decode failed: {msg}"
+    assert msg.pdu_tag == PDU_RESPONSE
+    assert len(msg.varbinds) == 1
+    assert msg.request_id == rid
+
+
+async def test_getnext_past_last_oid(emulator_factory: _EmuFactory) -> None:
+    """GetNext for the last OID in the tree returns error_status == 2 (noSuchName)."""
+    rid = 77
+    # Use an OID beyond anything in the tree
+    beyond = Oid.from_str("1.3.6.1.2.1.2.2.1.10.999")
+
+    async with emulator_factory(EmuDevice.simple(n_oids=10)) as (host, port):
+        raw = await _send_getnext(host, port, beyond, request_id=rid)
+
+    msg = decode_message(raw)
+    assert not isinstance(msg, Malformed), f"Decode failed: {msg}"
+    assert msg.f1 == 2  # error_status = noSuchName
     assert msg.request_id == rid
 
 
