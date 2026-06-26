@@ -3,8 +3,8 @@
 Subcommand: walk v1|v2c|v3
 
     oidtrace walk v2c <host> [options]   # SNMP v2c (implemented)
-    oidtrace walk v1  <host> [options]   # SNMP v1  (not yet implemented)
-    oidtrace walk v3  <host> [options]   # SNMP v3  (not yet implemented)
+    oidtrace walk v1  <host> [options]   # SNMP v1  (implemented)
+    oidtrace walk v3  <host> [options]   # SNMP v3  noAuthNoPriv (implemented)
 
 Operator errors (bad DNS, bad --start-oid) exit 2 with a stderr message and
 no trace file written.
@@ -160,10 +160,6 @@ def main(argv: list[str] | None = None) -> int:
         print("usage: oidtrace walk {v1,v2c,v3} ...", file=sys.stderr)
         return 2
 
-    if args.version == "v3":
-        print(f"error: SNMP {args.version} not yet implemented", file=sys.stderr)
-        return 2
-
     verbosity: int = args.verbose
     level = logging.WARNING
     if verbosity == 1:
@@ -213,6 +209,22 @@ def main(argv: list[str] | None = None) -> int:
             give_up_after=args.give_up_after,
             community=args.community.encode(),
             snmp_version="1",
+        )
+    elif args.version == "v3":
+        if any([args.auth_proto, args.auth_pass, args.priv_proto, args.priv_pass]):
+            print(
+                "warning: auth/priv arguments are ignored; running as noAuthNoPriv",
+                file=sys.stderr,
+            )
+        settings = WalkSettings(
+            bulk_size=10,
+            timeout_s=args.timeout,
+            retries=args.retries,
+            start_oid=start_oid,
+            time_budget_s=args.time_budget,
+            give_up_after=args.give_up_after,
+            snmp_version="3",
+            v3_user=args.user,
         )
     else:  # v2c
         settings = WalkSettings(

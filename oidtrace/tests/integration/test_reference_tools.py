@@ -292,3 +292,85 @@ async def test_snmpwalk_v3_noauthnopriv(
         f"Expected {device_size} OID lines, got {len(oid_lines)}.\n"
         f"stdout: {proc_result.stdout[:500]!r}"
     )
+
+
+@pytest.mark.asyncio
+async def test_v3_oidtrace_vs_snmpwalk_crosswalk(
+    emulator_factory: _EmuFactory,
+    tmp_path: Path,
+) -> None:
+    """Our v3 OID sequence matches snmpwalk -v3 noAuthNoPriv prefix (trap #13)."""
+    snmpwalk = _require_tool("snmpwalk")
+
+    device_size = 50
+    trace_path = tmp_path / "crosswalk_v3.oidtrace.jsonl.gz"
+
+    async with emulator_factory(EmuDevice.simple(device_size)) as (host, port):
+        # Run our walker
+        await run_walk(
+            host,
+            port,
+            settings=WalkSettings(
+                snmp_version="3", v3_user="noAuthUser", bulk_size=10, timeout_s=2.0
+            ),
+            path=trace_path,
+        )
+
+        # Run snmpwalk -v3 against the same live emulator
+        loop = asyncio.get_event_loop()
+        proc_result = await loop.run_in_executor(
+            None,
+            lambda: subprocess.run(
+                [
+                    snmpwalk,
+                    "-v3",
+                    "-u",
+                    "noAuthUser",
+                    "-l",
+                    "noAuthNoPriv",
+                    "-On",  # numeric OIDs
+                    "-t",
+                    "2",
+                    "-r",
+                    "0",
+                    f"{host}:{port}",
+                    "1.3.6.1",
+                ],
+                capture_output=True,
+                text=True,
+                timeout=30,
+                check=False,
+            ),
+        )
+
+    # Parse snmpwalk output: lines starting with "." → token before first space
+    ref_oids: list[str] = []
+    for line in proc_result.stdout.splitlines():
+        if line.startswith("."):
+            token = line.split()[0]
+            ref_oids.append(token.lstrip("."))
+
+    assert ref_oids, f"snmpwalk -v3 produced no output. stderr: {proc_result.stderr!r}"
+
+    # Parse our trace: exchange varbinds in order, excluding EndOfMibView
+    # Skip the discovery exchange (pdu == "discovery")
+    our_oids: list[str] = []
+    for record in read_trace(trace_path):
+        if record.type == "exchange" and record.response is not None:
+            if record.request.pdu.value == "discovery":
+                continue
+            for vb in record.response.varbinds:
+                if vb.vtype != "EndOfMibView":
+                    our_oids.append(vb.oid.root)
+
+    # Trap #13: our sequence is a prefix of snmpwalk's
+    assert our_oids == ref_oids[: len(our_oids)], (
+        f"OID mismatch.\n"
+        f"  ours ({len(our_oids)}): {our_oids[:5]}...\n"
+        f"  ref  ({len(ref_oids)}): {ref_oids[:5]}..."
+    )
+
+    # And we saw exactly device_size distinct OIDs
+    assert len(set(our_oids)) == device_size, (
+        f"Expected {device_size} distinct OIDs, got {len(set(our_oids))}"
+    )

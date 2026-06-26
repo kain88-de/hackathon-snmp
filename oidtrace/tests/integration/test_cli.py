@@ -517,16 +517,69 @@ def test_v1_walk_header_version(tmp_path: Path) -> None:
     assert header.snmp.version.value == "1"
 
 
-def test_walk_v3_not_implemented(tmp_path: Path, capsys: pytest.CaptureFixture[str]) -> None:
-    """v3 is not yet implemented: exit 2, stderr contains 'v3' and 'implement', no trace file."""
-    ret = main(["walk", "v3", "127.0.0.1", "--user", "admin", "--out", str(tmp_path)])
+def test_v3_walk_exit_0_and_trace_file(tmp_path: Path) -> None:
+    """v3 walk: exit 0, exactly one trace file, header.snmp.version == '3'."""
+    with EmulatorThread() as (host, port):
+        ret = main(
+            [
+                "walk",
+                "v3",
+                host,
+                "--port",
+                str(port),
+                "--out",
+                str(tmp_path),
+                "--user",
+                "noAuthUser",
+                "--timeout",
+                "1.0",
+                "--retries",
+                "1",
+            ]
+        )
 
-    assert ret == 2
-    captured = capsys.readouterr()
-    err = captured.err.lower()
-    assert "v3" in err
-    assert "implement" in err
+    assert ret == 0
+
     trace_files = list(tmp_path.glob("*.oidtrace.jsonl.gz"))
-    assert len(trace_files) == 0, (
-        f"No trace file should be created for v3 stub, found {trace_files}"
+    assert len(trace_files) == 1, f"Expected 1 trace file, found {trace_files}"
+
+    records = list(read_trace(trace_files[0]))
+    assert isinstance(records[0], Header)
+    header = records[0]
+    assert header.snmp.version.value == "3", (
+        f"Expected header.snmp.version == '3', got {header.snmp.version.value!r}"
+    )
+
+
+def test_v3_walk_auth_args_warn_noauthnopriv(
+    tmp_path: Path, capsys: pytest.CaptureFixture[str]
+) -> None:
+    """v3 walk with --auth-proto: exit 0, stderr warning contains 'noAuthNoPriv'."""
+    with EmulatorThread() as (host, port):
+        ret = main(
+            [
+                "walk",
+                "v3",
+                host,
+                "--port",
+                str(port),
+                "--out",
+                str(tmp_path),
+                "--user",
+                "noAuthUser",
+                "--auth-proto",
+                "SHA",
+                "--auth-pass",
+                "x",
+                "--timeout",
+                "1.0",
+                "--retries",
+                "1",
+            ]
+        )
+
+    assert ret == 0
+    captured = capsys.readouterr()
+    assert "noAuthNoPriv" in captured.err, (
+        f"Expected 'noAuthNoPriv' warning in stderr, got: {captured.err!r}"
     )
