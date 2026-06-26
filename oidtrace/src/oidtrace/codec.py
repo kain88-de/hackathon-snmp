@@ -251,18 +251,18 @@ def _read_pdu_f1_f2(pdu_body: bytes, j: int) -> tuple[int, int, int]:
 
 
 def decode_message(raw: bytes) -> Message | Malformed:
-    """Tolerantly decode a raw SNMPv2c datagram.
+    """Tolerantly decode a raw SNMP datagram (v1 or v2c).
 
-    Returns a Message on success, or Malformed if the bytes do not form a
-    valid SNMPv2c message.  Never raises: all parse errors (ValueError from
-    the BER layer) are caught here and returned as Malformed.
+    Returns a Message on success, or Malformed if the bytes cannot be parsed.
+    Never raises: all parse errors (ValueError from the BER layer) are caught
+    here and returned as Malformed.
 
     The boundary is strictly ValueError -- any other exception propagates so
     that our own bugs cannot masquerade as device garbage.
 
     Structure parsed:
         SEQUENCE {
-            INTEGER (version, must be 1)
+            INTEGER (version: 0=v1, 1=v2c — accepted without validation)
             OCTET STRING (community)
             context-constructed PDU {
                 INTEGER (request-id)
