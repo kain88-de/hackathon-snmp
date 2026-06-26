@@ -11,7 +11,17 @@ from contextlib import AbstractAsyncContextManager
 from dataclasses import dataclass
 from typing import override
 
-from oidtrace.codec import PDU_RESPONSE, Malformed, decode_message, encode_getbulk, encode_getnext
+from oidtrace.codec import (
+    PDU_REPORT,
+    PDU_RESPONSE,
+    Malformed,
+    decode_message,
+    decode_v3_message,
+    encode_getbulk,
+    encode_getnext,
+    encode_v3_discovery,
+    encode_v3_getbulk,
+)
 from oidtrace.oid import Oid
 from tests.support.emulator import EmuDevice, Quirks
 
@@ -162,3 +172,93 @@ async def test_fixed_request_id_overrides(emulator_factory: _EmuFactory) -> None
     msg = decode_message(raw)
     assert not isinstance(msg, Malformed), f"Decode failed: {msg}"
     assert msg.request_id == 1
+
+
+async def _send_raw(host: str, port: int, raw: bytes, timeout_s: float = 2.0) -> bytes:
+    """Send a raw UDP datagram and return the response bytes."""
+    loop = asyncio.get_event_loop()
+    received: asyncio.Future[bytes] = loop.create_future()
+
+    class _OneShot(asyncio.DatagramProtocol):
+        def __init__(self) -> None:
+            self._transport: asyncio.DatagramTransport | None = None
+
+        @override
+        def connection_made(self, transport: asyncio.BaseTransport) -> None:
+            assert isinstance(transport, asyncio.DatagramTransport)
+            self._transport = transport
+            transport.sendto(raw)
+
+        @override
+        def datagram_received(self, data: bytes, addr: object) -> None:
+            if not received.done():
+                received.set_result(data)
+
+        @override
+        def error_received(self, exc: Exception) -> None:  # pragma: no cover
+            if not received.done():
+                received.set_exception(exc)
+
+    transport, _ = await loop.create_datagram_endpoint(
+        _OneShot,
+        remote_addr=(host, port),
+    )
+    try:
+        return await asyncio.wait_for(received, timeout=timeout_s)
+    finally:
+        transport.close()
+
+
+async def test_v3_discovery_returns_report(emulator_factory: _EmuFactory) -> None:
+    """Sending an SNMPv3 discovery probe returns a Report PDU echoing the request_id."""
+    async with emulator_factory(EmuDevice.simple()) as (host, port):
+        raw_resp = await _send_raw(host, port, encode_v3_discovery(1, 42))
+
+    result = decode_v3_message(raw_resp)
+    assert not isinstance(result, Malformed), f"Decode failed: {result}"
+    msg, _params = result
+    assert msg.pdu_tag == PDU_REPORT, f"Expected PDU_REPORT, got 0x{msg.pdu_tag:02x}"
+    assert msg.request_id == 42
+
+
+async def test_v3_discovery_response_has_engine_id(emulator_factory: _EmuFactory) -> None:
+    """Discovery response params carry a non-empty engineID."""
+    async with emulator_factory(EmuDevice.simple()) as (host, port):
+        raw_resp = await _send_raw(host, port, encode_v3_discovery(1, 42))
+
+    result = decode_v3_message(raw_resp)
+    assert not isinstance(result, Malformed), f"Decode failed: {result}"
+    _msg, params = result
+    assert params.engine_id != b"", "Expected non-empty engineID in discovery response"
+
+
+async def test_v3_getbulk_after_discovery(emulator_factory: _EmuFactory) -> None:
+    """After discovery, a v3 GetBulk returns a Response PDU with the requested varbind count."""
+    start = Oid.from_str("1.3.6.1.2.1.2.2.1")
+
+    async with emulator_factory(EmuDevice.simple(n_oids=100)) as (host, port):
+        # Step 1: discovery
+        raw_disc = await _send_raw(host, port, encode_v3_discovery(1, 42))
+        disc_result = decode_v3_message(raw_disc)
+        assert not isinstance(disc_result, Malformed), f"Discovery decode failed: {disc_result}"
+        _disc_msg, params = disc_result
+
+        # Step 2: GetBulk using engine_id from discovery
+        raw_bulk = encode_v3_getbulk(
+            msg_id=2,
+            request_id=99,
+            oid=start,
+            max_repetitions=5,
+            engine_id=params.engine_id,
+            engine_boots=params.engine_boots,
+            engine_time=params.engine_time,
+            username=b"",
+        )
+        raw_resp = await _send_raw(host, port, raw_bulk)
+
+    result = decode_v3_message(raw_resp)
+    assert not isinstance(result, Malformed), f"Decode failed: {result}"
+    msg, _params = result
+    assert msg.pdu_tag == PDU_RESPONSE, f"Expected PDU_RESPONSE, got 0x{msg.pdu_tag:02x}"
+    assert msg.request_id == 99
+    assert len(msg.varbinds) == 5

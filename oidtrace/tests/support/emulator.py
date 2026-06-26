@@ -13,8 +13,23 @@ from dataclasses import dataclass, field
 from enum import StrEnum
 from typing import override
 
-from oidtrace.codec import PDU_GETNEXT, Malformed, decode_message, encode_response
+from oidtrace.codec import (
+    PDU_GET,
+    PDU_GETBULK,
+    PDU_GETNEXT,
+    PDU_REPORT,
+    Malformed,
+    Message,
+    V3Params,
+    decode_message,
+    decode_v3_message,
+    encode_response,
+    encode_v3_response,
+)
 from oidtrace.oid import Oid
+
+_EMU_ENGINE_ID: bytes = b"\x80\x00\x00\x00\x01testemu\x00"
+_USM_STATS_UNKNOWN_USER_NAMES = Oid.from_str("1.3.6.1.6.3.15.1.1.4.0")
 
 
 class EndOfMib(StrEnum):
@@ -162,6 +177,13 @@ class EmuProtocol(asyncio.DatagramProtocol):
         if quirks.drop_all:
             return
 
+        # Try v3 first; fall through to v1/v2c if not a valid v3 message.
+        v3_result = decode_v3_message(data)
+        if not isinstance(v3_result, Malformed):
+            msg, params = v3_result
+            await self._handle_v3(msg, params, addr)
+            return
+
         msg = decode_message(data)
         if isinstance(msg, Malformed):
             return
@@ -194,4 +216,43 @@ class EmuProtocol(asyncio.DatagramProtocol):
         assert self._transport is not None
         self._transport.sendto(response, addr)
         if quirks.duplicate_responses:
+            self._transport.sendto(response, addr)
+
+    async def _handle_v3(
+        self,
+        msg: Message,
+        params: V3Params,
+        addr: tuple[str | bytes | bytearray, int],
+    ) -> None:
+        # Discovery: GetRequest with empty varbinds → Report PDU
+        if msg.pdu_tag == PDU_GET and not msg.varbinds:
+            response = encode_v3_response(
+                msg_id=params.msg_id,
+                request_id=msg.request_id,
+                varbinds=[(_USM_STATS_UNKNOWN_USER_NAMES, 0x41, b"\x00\x00\x00\x00")],
+                engine_id=_EMU_ENGINE_ID,
+                pdu_tag=PDU_REPORT,
+            )
+            assert self._transport is not None
+            self._transport.sendto(response, addr)
+            return
+
+        # GetBulk: reuse existing helper
+        if msg.pdu_tag == PDU_GETBULK and msg.varbinds:
+            request_oid = msg.varbinds[0].oid
+            tree = self._device.tree
+            keys = [e[0] for e in tree]
+            idx = bisect.bisect_right(keys, request_oid)
+            max_reps = max(msg.f2, 1)
+            chunk = list(tree[idx : idx + max_reps])
+            varbinds = await self._getbulk_varbinds(request_oid, chunk, self._device.quirks, tree)
+            if varbinds is None:
+                return
+            response = encode_v3_response(
+                msg_id=params.msg_id,
+                request_id=msg.request_id,
+                varbinds=varbinds,
+                engine_id=_EMU_ENGINE_ID,
+            )
+            assert self._transport is not None
             self._transport.sendto(response, addr)
