@@ -76,6 +76,38 @@ async def test_clean_50_oid_walk(
 
 
 @pytest.mark.asyncio
+async def test_v1_clean_20_oid_walk(
+    emulator_factory: _EmuFactory,
+    record_validator: Draft202012Validator,
+    tmp_path: Path,
+) -> None:
+    """SNMP v1 GetNext walk over a 20-OID emulator → COMPLETED, oids_seen==20."""
+
+    device = EmuDevice.simple(n_oids=20)
+    trace_path = tmp_path / "trace.oidtrace.jsonl.gz"
+
+    async with emulator_factory(device) as (host, port):
+        end_reason = await run_walk(
+            host,
+            port,
+            settings=WalkSettings(snmp_version="1"),
+            path=trace_path,
+        )
+
+    assert end_reason == EndReason.COMPLETED
+
+    records = list(read_trace(trace_path))
+    assert isinstance(records[0], Header)
+    assert isinstance(records[-1], Summary)
+
+    summary = records[-1]
+    assert summary.oids_seen == 20
+    assert summary.end_reason == str(EndReason.COMPLETED)
+
+    _validate_all(records, record_validator)
+
+
+@pytest.mark.asyncio
 async def test_fixed_request_id_mismatch_completes(
     emulator_factory: _EmuFactory,
     record_validator: Draft202012Validator,

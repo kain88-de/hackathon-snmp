@@ -111,6 +111,21 @@ def _eom_exchange(after_oid: Oid, request_id: int = 42) -> ExchangeIO:
     )
 
 
+def _nosuchname_exchange(after_oid: Oid, request_id: int = 42) -> ExchangeIO:
+    """SNMP v1 end-of-MIB: noSuchName (error_status=2) + Null varbind (tag 0x05)."""
+    raw = encode_response(
+        request_id,
+        [(after_oid, 0x05, b"")],
+        error_status=2,
+        version=0,
+    )
+    return ExchangeIO(
+        attempts=(Attempt(sent_at=0.001, received_at=0.002),),
+        response=(0.002, raw),
+        strays=(),
+    )
+
+
 def _no_response_exchange() -> ExchangeIO:
     """Timed-out exchange with no response."""
     return ExchangeIO(
@@ -801,6 +816,64 @@ async def test_oids_seen_counts_distinct_only(
     assert summary.end_reason == str(EndReason.OID_LOOP)
     # _OID_A appeared in exchange 1 (counted) and exchange 2 (same OID — duplicate, not counted)
     assert summary.oids_seen == 1
+    _validate_all(records, record_validator)
+
+
+@pytest.mark.asyncio
+async def test_v1_walk_header_version_is_1(
+    record_validator: Draft202012Validator,
+) -> None:
+    """SNMP v1 walk: one data reply then noSuchName → Header.snmp.version == '1'."""
+    transport = FakeTransport(
+        responses=[
+            _response_exchange([_OID_A]),
+            _nosuchname_exchange(_OID_A),
+        ]
+    )
+    records = await _collect(transport, settings=WalkSettings(snmp_version="1"))
+
+    header = records[0]
+    assert header.type == "header"
+    assert header.snmp.version.value == "1"
+    _validate_all(records, record_validator)
+
+
+@pytest.mark.asyncio
+async def test_v1_walk_nosuchname_completed(
+    record_validator: Draft202012Validator,
+) -> None:
+    """SNMP v1 walk: one data reply then noSuchName → Summary.end_reason == 'completed'."""
+    transport = FakeTransport(
+        responses=[
+            _response_exchange([_OID_A]),
+            _nosuchname_exchange(_OID_A),
+        ]
+    )
+    records = await _collect(transport, settings=WalkSettings(snmp_version="1"))
+
+    summary = records[-1]
+    assert summary.type == "summary"
+    assert summary.end_reason == str(EndReason.COMPLETED)
+    _validate_all(records, record_validator)
+
+
+@pytest.mark.asyncio
+async def test_v1_walk_exchange_pdu_is_getnext(
+    record_validator: Draft202012Validator,
+) -> None:
+    """SNMP v1 walk: any exchange uses Request.pdu == 'getnext'."""
+    transport = FakeTransport(
+        responses=[
+            _response_exchange([_OID_A]),
+            _nosuchname_exchange(_OID_A),
+        ]
+    )
+    records = await _collect(transport, settings=WalkSettings(snmp_version="1"))
+
+    exchange_records = [r for r in records if r.type == "exchange"]
+    assert exchange_records
+    for exch in exchange_records:
+        assert exch.request.pdu == Pdu.getnext
     _validate_all(records, record_validator)
 
 

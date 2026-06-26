@@ -56,6 +56,7 @@ from oidtrace.codec import (
     Varbind,
     decode_message,
     encode_getbulk,
+    encode_getnext,
 )
 from oidtrace.oid import Oid
 from oidtrace.records import (
@@ -280,7 +281,7 @@ async def walk_records(  # noqa: PLR0912, PLR0913, PLR0915
         session_id=sid,
         run=run,
         runs_total=runs_total,
-        snmp_version="2c",
+        snmp_version=settings.snmp_version,
         settings=_make_settings_model(settings),
     )
 
@@ -305,21 +306,37 @@ async def walk_records(  # noqa: PLR0912, PLR0913, PLR0915
         seq += 1
         request_id = random.randint(1, 2**31 - 1)
 
-        raw_request = encode_getbulk(
-            request_id,
-            cursor,
-            non_repeaters=0,
-            max_repetitions=settings.bulk_size,
-            community=settings.community,
-        )
-
-        request_model = tf.Request(
-            pdu=tf.Pdu("getbulk"),
-            request_id=request_id,
-            oids=[tf.Oid(str(cursor))],
-            non_repeaters=0,
-            max_repetitions=settings.bulk_size,
-        )
+        if settings.snmp_version == "1":
+            raw_request = encode_getnext(
+                request_id,
+                cursor,
+                community=settings.community,
+            )
+            # Omit non_repeaters/max_repetitions entirely (GetNext has neither);
+            # model_validate sets _fields_set to exactly the supplied keys so
+            # exclude_unset keeps them absent rather than emitting null.
+            request_model = tf.Request.model_validate(
+                {
+                    "pdu": "getnext",
+                    "request_id": request_id,
+                    "oids": [tf.Oid(str(cursor))],
+                }
+            )
+        else:
+            raw_request = encode_getbulk(
+                request_id,
+                cursor,
+                non_repeaters=0,
+                max_repetitions=settings.bulk_size,
+                community=settings.community,
+            )
+            request_model = tf.Request(
+                pdu=tf.Pdu("getbulk"),
+                request_id=request_id,
+                oids=[tf.Oid(str(cursor))],
+                non_repeaters=0,
+                max_repetitions=settings.bulk_size,
+            )
 
         exchange_io: ExchangeIO = await transport.exchange(
             raw_request,
@@ -406,6 +423,14 @@ async def walk_records(  # noqa: PLR0912, PLR0913, PLR0915
 
         if exchange_io.response is None or malformed_model is not None:
             continue
+
+        # SNMP v1 end-of-MIB: noSuchName (error_status=2). This must be checked
+        # BEFORE any varbind processing — v1 responses do not use EndOfMibView
+        # tags, they signal end-of-MIB via error_status=2 with a Null varbind.
+        if settings.snmp_version == "1" and decoded_msg is not None and decoded_msg.f1 == 2:  # noqa: PLR2004
+            log.info("walk completed: noSuchName (v1 end-of-MIB)")
+            end_reason = EndReason.COMPLETED
+            break
 
         vbs: list[Varbind] = list(varbinds_from_response)
 
