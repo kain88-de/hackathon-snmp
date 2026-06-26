@@ -1,8 +1,10 @@
 """CLI entry point for oidtrace.
 
-Subcommand: walk
+Subcommand: walk v1|v2c|v3
 
-    oidtrace walk <host> [options]
+    oidtrace walk v2c <host> [options]   # SNMP v2c (implemented)
+    oidtrace walk v1  <host> [options]   # SNMP v1  (not yet implemented)
+    oidtrace walk v3  <host> [options]   # SNMP v3  (not yet implemented)
 
 Operator errors (bad DNS, bad --start-oid) exit 2 with a stderr message and
 no trace file written.
