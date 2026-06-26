@@ -16,7 +16,16 @@ import pytest
 from pyasn1.codec.ber import decoder  # type: ignore[import-untyped]
 from pysnmp.proto.api import v2c  # type: ignore[import-untyped]
 
-from oidtrace.codec import PDU_GETBULK, PDU_RESPONSE, encode_getbulk, encode_response
+from oidtrace.codec import (
+    PDU_GETBULK,
+    PDU_GETNEXT,
+    PDU_RESPONSE,
+    Message,
+    decode_message,
+    encode_getbulk,
+    encode_getnext,
+    encode_response,
+)
 from oidtrace.oid import Oid
 
 # ---------------------------------------------------------------------------
@@ -50,6 +59,7 @@ def _get_response_pdu(msg: object) -> object:
 
 def test_pdu_tag_constants() -> None:
     assert PDU_GETBULK == 0xA5
+    assert PDU_GETNEXT == 0xA3
     assert PDU_RESPONSE == 0xA2
 
 
@@ -170,6 +180,78 @@ def test_encode_getbulk_version_is_1() -> None:
     raw = encode_getbulk(1, _OID_1_3_6_1, non_repeaters=0, max_repetitions=10)
     # version INTEGER 1 encodes as 02 01 01
     assert bytes([0x02, 0x01, 0x01]) in raw
+
+
+# ---------------------------------------------------------------------------
+# encode_getnext — spec-driven decode + content assertions
+# ---------------------------------------------------------------------------
+
+
+def test_encode_getnext_spec_decode() -> None:
+    """Packet parses via decode_message with pdu_tag == PDU_GETNEXT."""
+    raw = encode_getnext(42, _OID_1_3_6_1)
+    msg = decode_message(raw)
+    assert isinstance(msg, Message)
+    assert msg.pdu_tag == PDU_GETNEXT
+
+
+def test_encode_getnext_request_id() -> None:
+    """Request ID is preserved in the GetNext PDU."""
+    raw = encode_getnext(42, _OID_1_3_6_1)
+    msg = decode_message(raw)
+    assert isinstance(msg, Message)
+    assert msg.request_id == 42
+
+
+def test_encode_getnext_varbind_count() -> None:
+    """GetNext always has exactly one varbind (the OID with NULL)."""
+    raw = encode_getnext(42, _OID_1_3_6_1)
+    msg = decode_message(raw)
+    assert isinstance(msg, Message)
+    assert len(msg.varbinds) == 1
+
+
+def test_encode_getnext_varbind_oid() -> None:
+    """The varbind OID must match what was requested."""
+    raw = encode_getnext(42, _OID_1_3_6_1)
+    msg = decode_message(raw)
+    assert isinstance(msg, Message)
+    assert msg.varbinds[0].oid == _OID_1_3_6_1
+
+
+def test_encode_getnext_version_is_0() -> None:
+    """SNMPv1 GetNext messages encode version as INTEGER 0 (version-1)."""
+    raw = encode_getnext(1, _OID_1_3_6_1)
+    # version INTEGER 0 encodes as 02 01 00
+    assert bytes([0x02, 0x01, 0x00]) in raw
+
+
+def test_encode_getnext_wire_pdu_tag() -> None:
+    """GetNext PDU uses tag 0xA3."""
+    raw = encode_getnext(1, _OID_1_3_6_1)
+    assert 0xA3 in raw
+
+
+def test_encode_getnext_community_default_public() -> None:
+    """Default community is b'public'."""
+    raw = encode_getnext(1, _OID_1_3_6_1)
+    assert b"public" in raw
+
+
+def test_encode_getnext_community_custom() -> None:
+    """Custom community string is embedded in the packet."""
+    raw = encode_getnext(1, _OID_1_3_6_1, community=b"private")
+    assert b"private" in raw
+    assert b"public" not in raw
+
+
+def test_encode_getnext_different_oid() -> None:
+    """GetNext works with different OIDs."""
+    raw = encode_getnext(7, _OID_1_3_6_1_2_1_1_1_0)
+    msg = decode_message(raw)
+    assert isinstance(msg, Message)
+    assert msg.request_id == 7
+    assert msg.varbinds[0].oid == _OID_1_3_6_1_2_1_1_1_0
 
 
 # ---------------------------------------------------------------------------

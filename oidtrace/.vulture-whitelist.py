@@ -18,11 +18,12 @@ RESPONSE_FROM_UNEXPECTED_SOURCE = Violation.RESPONSE_FROM_UNEXPECTED_SOURCE
 # EventKind member with no v1 producer yet (kept for future tasks).
 WALK_ABORTED_BY_USER = EventKind.WALK_ABORTED_BY_USER
 
-# codec.encode_response — the emulator seed (tests/support/emulator.py and
-# unit tests consume it heavily; vulture only scans src/).
-from oidtrace.codec import encode_response
+# codec.encode_response, encode_getnext — the emulator seed and SNMP v1 GetNext request
+# encoder (tests/support/emulator.py and unit tests consume them; vulture only scans src/).
+from oidtrace.codec import encode_getnext, encode_response
 
 _ = encode_response
+_ = encode_getnext
 
 # records.system_info_record — format-completeness stub; v1 walker never calls
 # it (out of scope per plan).  Kept public for future hosts.

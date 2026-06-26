@@ -1,7 +1,12 @@
-"""SNMP v2c message codec — encode and tolerant decode.
+"""SNMP v1/v2c message codec — encode and tolerant decode.
 
 SNMPv2c message structure (BER SEQUENCE):
     version     INTEGER 1           (version-2c)
+    community   OCTET STRING
+    data        PDU
+
+SNMPv1 GetNext message structure (BER SEQUENCE):
+    version     INTEGER 0           (version-1)
     community   OCTET STRING
     data        PDU
 
@@ -9,6 +14,10 @@ GetBulk PDU (tag 0xA5):
     request-id        INTEGER
     non-repeaters     INTEGER
     max-repetitions   INTEGER
+    variable-bindings SEQUENCE OF SEQUENCE(OID, NULL)
+
+GetNext PDU (tag 0xA3):
+    request-id        INTEGER
     variable-bindings SEQUENCE OF SEQUENCE(OID, NULL)
 
 Response PDU (tag 0xA2):
@@ -31,6 +40,7 @@ if TYPE_CHECKING:
     from oidtrace.oid import Oid
 
 PDU_GETBULK: int = 0xA5
+PDU_GETNEXT: int = 0xA3
 PDU_RESPONSE: int = 0xA2
 
 # v2c exception tags (§ 5 of trace-format.md)
@@ -154,6 +164,31 @@ def encode_getbulk(
     )
 
 
+def encode_getnext(
+    request_id: int,
+    oid: Oid,
+    community: bytes = b"public",
+) -> bytes:
+    """Encode an SNMPv1 GetNext request.
+
+    Returns a complete BER-encoded SNMP message with version byte 0 (SNMP v1).
+
+    Args:
+        request_id: Integer request identifier.
+        oid: The OID for the GetNext request (single varbind, NULL value).
+        community: Community string (default b"public").
+    """
+    varbind_list = tlv(_TAG_SEQUENCE, tlv(_TAG_SEQUENCE, encode_oid(oid) + tlv(_TAG_NULL, b"")))
+    pdu = tlv(
+        PDU_GETNEXT,
+        encode_int(request_id) + varbind_list,
+    )
+    return tlv(
+        _TAG_SEQUENCE,
+        encode_int(0) + tlv(_TAG_OCTET_STRING, community) + pdu,
+    )
+
+
 def encode_response(
     request_id: int,
     varbinds: Sequence[tuple[Oid, int, bytes]],
@@ -187,6 +222,30 @@ def encode_response(
         _TAG_SEQUENCE,
         encode_int(1) + tlv(_TAG_OCTET_STRING, community) + pdu,
     )
+
+
+def _read_pdu_f1_f2(pdu_tag: int, pdu_body: bytes, j: int) -> tuple[int, int, int]:
+    """Read f1 and f2 fields from PDU body, or return zeros for GetNext.
+
+    For SNMPv1 GetNext (0xA3), f1 and f2 are absent and set to 0.
+    For v2c PDUs (0xA2, 0xA5), read them as INTEGERs after request-id.
+
+    Returns (f1, f2, next_j).
+    """
+    if pdu_tag == PDU_GETNEXT:
+        return 0, 0, j
+
+    f1_tag, f1_body, j = read_tlv(pdu_body, j)
+    if f1_tag != _TAG_INTEGER:
+        raise ValueError(f"Expected f1 INTEGER tag 0x02, got 0x{f1_tag:02x}")
+    f1 = decode_int(f1_body)
+
+    f2_tag, f2_body, j = read_tlv(pdu_body, j)
+    if f2_tag != _TAG_INTEGER:
+        raise ValueError(f"Expected f2 INTEGER tag 0x02, got 0x{f2_tag:02x}")
+    f2 = decode_int(f2_body)
+
+    return f1, f2, j
 
 
 def decode_message(raw: bytes) -> Message | Malformed:
@@ -241,15 +300,7 @@ def decode_message(raw: bytes) -> Message | Malformed:
             raise ValueError(f"Expected request-id INTEGER tag 0x02, got 0x{rid_tag:02x}")
         request_id = decode_int(rid_body)
 
-        f1_tag, f1_body, j = read_tlv(pdu_body, j)
-        if f1_tag != _TAG_INTEGER:
-            raise ValueError(f"Expected f1 INTEGER tag 0x02, got 0x{f1_tag:02x}")
-        f1 = decode_int(f1_body)
-
-        f2_tag, f2_body, j = read_tlv(pdu_body, j)
-        if f2_tag != _TAG_INTEGER:
-            raise ValueError(f"Expected f2 INTEGER tag 0x02, got 0x{f2_tag:02x}")
-        f2 = decode_int(f2_body)
+        f1, f2, j = _read_pdu_f1_f2(pdu_tag, pdu_body, j)
 
         vblist_tag, vblist_body, _j = read_tlv(pdu_body, j)
         if vblist_tag != _TAG_SEQUENCE:
