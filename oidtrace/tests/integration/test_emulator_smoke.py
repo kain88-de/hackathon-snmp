@@ -145,6 +145,8 @@ async def test_getnext_past_last_oid(emulator_factory: _EmuFactory) -> None:
     assert not isinstance(msg, Malformed), f"Decode failed: {msg}"
     assert msg.f1 == 2  # error_status = noSuchName
     assert msg.request_id == rid
+    assert len(msg.varbinds) == 1
+    assert msg.varbinds[0].tag == 0x05  # Null, not EndOfMibView (0x82)
 
 
 async def test_fixed_request_id_overrides(emulator_factory: _EmuFactory) -> None:
