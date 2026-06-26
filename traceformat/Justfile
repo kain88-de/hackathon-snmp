@@ -1,5 +1,7 @@
 default: ci
 
+hook: lint test
+
 fmt:
     uv run ruff format src tests
 

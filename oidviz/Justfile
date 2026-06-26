@@ -1,5 +1,7 @@
 set shell := ["bash", "-cu"]
 
+hook: lint types fmt-check test
+
 dev:
     bun run dev
 

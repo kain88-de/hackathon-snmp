@@ -1,23 +1,8 @@
 repos:
   - repo: local
     hooks:
-      - id: biome-format
-        name: biome format check
+      - id: hook
+        name: just hook
         language: system
-        entry: bunx biome check --linter-enabled=false src/
-        files: \.(ts|js|tsx|jsx|vue)$
-        pass_filenames: false
-
-      - id: biome-lint
-        name: biome lint
-        language: system
-        entry: bunx biome check --formatter-enabled=false --error-on-warnings src/
-        files: \.(ts|js|tsx|jsx|vue)$
-        pass_filenames: false
-
-      - id: oxlint
-        name: oxlint
-        language: system
-        entry: bunx oxlint -D all -c .oxlintrc.json --ignore-pattern "src/lib/types.gen.ts" src/
-        files: \.(ts|js|tsx|jsx|vue)$
+        entry: just hook
         pass_filenames: false
