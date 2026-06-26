@@ -99,7 +99,7 @@ def _add_shared_args(p: argparse.ArgumentParser) -> None:
     )
 
 
-def _build_parser() -> tuple[argparse.ArgumentParser, argparse.ArgumentParser]:
+def _build_parser() -> argparse.ArgumentParser:
     parser = argparse.ArgumentParser(
         prog="oidtrace",
         description="OIDTrace: record SNMP walks to structured trace files.",
@@ -136,7 +136,7 @@ def _build_parser() -> tuple[argparse.ArgumentParser, argparse.ArgumentParser]:
     v3.add_argument("--priv-proto", default=None, help="Privacy protocol (e.g. AES).")
     v3.add_argument("--priv-pass", default=None, help="Privacy passphrase.")
 
-    return parser, walk
+    return parser
 
 
 # ---------------------------------------------------------------------------
@@ -146,7 +146,7 @@ def _build_parser() -> tuple[argparse.ArgumentParser, argparse.ArgumentParser]:
 
 def main(argv: list[str] | None = None) -> int:
     """CLI entry point. Returns exit code."""
-    parser, walk_parser = _build_parser()
+    parser = _build_parser()
     args = parser.parse_args(argv)
 
     if args.subcommand != "walk":
@@ -155,7 +155,7 @@ def main(argv: list[str] | None = None) -> int:
 
     if args.version is None:
         # print walk-level help (shows v1/v2c/v3 sub-commands)
-        walk_parser.print_help(sys.stderr)
+        print("usage: oidtrace walk {v1,v2c,v3} ...", file=sys.stderr)
         return 2
 
     if args.version in ("v1", "v3"):
