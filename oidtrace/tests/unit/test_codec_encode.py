@@ -59,7 +59,7 @@ def _get_response_pdu(msg: object) -> object:
 
 def test_pdu_tag_constants() -> None:
     assert PDU_GETBULK == 0xA5
-    assert PDU_GETNEXT == 0xA3
+    assert PDU_GETNEXT == 0xA1  # RFC 1157 GetNextRequest-PDU = context [1]
     assert PDU_RESPONSE == 0xA2
 
 
@@ -227,9 +227,9 @@ def test_encode_getnext_version_is_0() -> None:
 
 
 def test_encode_getnext_wire_pdu_tag() -> None:
-    """GetNext PDU uses tag 0xA3."""
+    """GetNext PDU uses tag 0xA1 (RFC 1157 GetNextRequest-PDU = context [1])."""
     raw = encode_getnext(1, _OID_1_3_6_1)
-    assert 0xA3 in raw
+    assert 0xA1 in raw
 
 
 def test_encode_getnext_community_default_public() -> None:

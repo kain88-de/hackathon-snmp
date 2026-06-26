@@ -115,12 +115,15 @@ class EmuProtocol(asyncio.DatagramProtocol):
         idx: int,
         tree: tuple[_TreeEntry, ...],
         rid: int,
+        version: int = 0,
     ) -> bytes:
         """Build a GetNext response: next OID if found, else error_status=2 + Null."""
         if idx < len(tree):
             oid, tag, vlen = tree[idx]
-            return encode_response(rid, [(oid, tag, b"\x00" * vlen)])
-        return encode_response(rid, [(request_oid, _TAG_NULL, b"")], error_status=2)
+            return encode_response(rid, [(oid, tag, b"\x00" * vlen)], version=version)
+        return encode_response(
+            rid, [(request_oid, _TAG_NULL, b"")], error_status=2, version=version
+        )
 
     async def _getbulk_varbinds(
         self,
@@ -175,7 +178,7 @@ class EmuProtocol(asyncio.DatagramProtocol):
         rid = quirks.fixed_request_id if quirks.fixed_request_id is not None else msg.request_id
 
         if msg.pdu_tag == PDU_GETNEXT:
-            response = self._getnext_response(request_oid, idx, tree, rid)
+            response = self._getnext_response(request_oid, idx, tree, rid, version=0)
             assert self._transport is not None
             self._transport.sendto(response, addr)
             return

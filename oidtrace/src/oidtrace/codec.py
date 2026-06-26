@@ -16,8 +16,10 @@ GetBulk PDU (tag 0xA5):
     max-repetitions   INTEGER
     variable-bindings SEQUENCE OF SEQUENCE(OID, NULL)
 
-GetNext PDU (tag 0xA3):
+GetNext PDU (tag 0xA1):
     request-id        INTEGER
+    error-status      INTEGER (0)
+    error-index       INTEGER (0)
     variable-bindings SEQUENCE OF SEQUENCE(OID, NULL)
 
 Response PDU (tag 0xA2):
@@ -40,7 +42,7 @@ if TYPE_CHECKING:
     from oidtrace.oid import Oid
 
 PDU_GETBULK: int = 0xA5
-PDU_GETNEXT: int = 0xA3
+PDU_GETNEXT: int = 0xA1  # RFC 1157 GetNextRequest-PDU = context [1] = 0xA1; 0xA3 is SetRequest
 PDU_RESPONSE: int = 0xA2
 
 # v2c exception tags (§ 5 of trace-format.md)
@@ -181,7 +183,7 @@ def encode_getnext(
     varbind_list = tlv(_TAG_SEQUENCE, tlv(_TAG_SEQUENCE, encode_oid(oid) + tlv(_TAG_NULL, b"")))
     pdu = tlv(
         PDU_GETNEXT,
-        encode_int(request_id) + varbind_list,
+        encode_int(request_id) + encode_int(0) + encode_int(0) + varbind_list,
     )
     return tlv(
         _TAG_SEQUENCE,
@@ -189,14 +191,15 @@ def encode_getnext(
     )
 
 
-def encode_response(
+def encode_response(  # noqa: PLR0913
     request_id: int,
     varbinds: Sequence[tuple[Oid, int, bytes]],
     community: bytes = b"public",
     error_status: int = 0,
     error_index: int = 0,
+    version: int = 1,
 ) -> bytes:
-    """Encode an SNMPv2c Response message (used by the emulator).
+    """Encode an SNMP Response message (used by the emulator).
 
     Args:
         request_id: Integer request identifier.
@@ -206,6 +209,7 @@ def encode_response(
         community: Community string (default b"public").
         error_status: Error status integer (default 0 = noError).
         error_index: Error index integer (default 0).
+        version: SNMP version byte (0 = v1, 1 = v2c; default 1).
     """
     encoded_vbs = b"".join(
         tlv(_TAG_SEQUENCE, encode_oid(oid) + tlv(tag, value_bytes))
@@ -220,21 +224,19 @@ def encode_response(
     )
     return tlv(
         _TAG_SEQUENCE,
-        encode_int(1) + tlv(_TAG_OCTET_STRING, community) + pdu,
+        encode_int(version) + tlv(_TAG_OCTET_STRING, community) + pdu,
     )
 
 
-def _read_pdu_f1_f2(pdu_tag: int, pdu_body: bytes, j: int) -> tuple[int, int, int]:
-    """Read f1 and f2 fields from PDU body, or return zeros for GetNext.
+def _read_pdu_f1_f2(pdu_body: bytes, j: int) -> tuple[int, int, int]:
+    """Read f1 and f2 fields from PDU body.
 
-    For SNMPv1 GetNext (0xA3), f1 and f2 are absent and set to 0.
-    For v2c PDUs (0xA2, 0xA5), read them as INTEGERs after request-id.
+    All SNMP PDU types (GetNext, GetResponse, GetBulk) include error-status
+    and error-index (or non-repeaters/max-repetitions for GetBulk) after the
+    request-id.  Requests send them as zeros; we read them unconditionally.
 
     Returns (f1, f2, next_j).
     """
-    if pdu_tag == PDU_GETNEXT:
-        return 0, 0, j
-
     f1_tag, f1_body, j = read_tlv(pdu_body, j)
     if f1_tag != _TAG_INTEGER:
         raise ValueError(f"Expected f1 INTEGER tag 0x02, got 0x{f1_tag:02x}")
@@ -300,7 +302,7 @@ def decode_message(raw: bytes) -> Message | Malformed:
             raise ValueError(f"Expected request-id INTEGER tag 0x02, got 0x{rid_tag:02x}")
         request_id = decode_int(rid_body)
 
-        f1, f2, j = _read_pdu_f1_f2(pdu_tag, pdu_body, j)
+        f1, f2, j = _read_pdu_f1_f2(pdu_body, j)
 
         vblist_tag, vblist_body, _j = read_tlv(pdu_body, j)
         if vblist_tag != _TAG_SEQUENCE:
