@@ -84,12 +84,14 @@ class V3Params:
         engine_boots: The authoritativeEngineBoots counter.
         engine_time: The authoritativeEngineTime value.
         msg_id: The msgID from msgGlobalData (needed to echo in response PDUs).
+        username: The msgSecurityParameters username (needed to echo in responses).
     """
 
     engine_id: bytes
     engine_boots: int
     engine_time: int
     msg_id: int
+    username: bytes = b""
 
 
 @dataclass(frozen=True, slots=True)
@@ -656,10 +658,14 @@ def decode_v3_message(raw: bytes) -> tuple[Message, V3Params] | Malformed:  # no
         if boots_tag != _TAG_INTEGER:
             raise ValueError(f"Expected engineBoots INTEGER tag 0x02, got 0x{boots_tag:02x}")
         engine_boots = decode_int(boots_body)
-        time_tag, time_body, _u = read_tlv(usm_body, u)
+        time_tag, time_body, u = read_tlv(usm_body, u)
         if time_tag != _TAG_INTEGER:
             raise ValueError(f"Expected engineTime INTEGER tag 0x02, got 0x{time_tag:02x}")
         engine_time = decode_int(time_body)
+        uname_tag, uname_body, _u = read_tlv(usm_body, u)
+        if uname_tag != _TAG_OCTET_STRING:
+            raise ValueError(f"Expected username OCTET STRING tag 0x04, got 0x{uname_tag:02x}")
+        username = uname_body
 
         # ScopedPDU — must be plain SEQUENCE (0x30); 0x04 = encrypted (Priv)
         scoped_tag, scoped_body, _i = read_tlv(outer_body, i)
@@ -685,6 +691,7 @@ def decode_v3_message(raw: bytes) -> tuple[Message, V3Params] | Malformed:  # no
             engine_boots=engine_boots,
             engine_time=engine_time,
             msg_id=msg_id,
+            username=username,
         )
         msg = Message(
             pdu_tag=pdu_tag,

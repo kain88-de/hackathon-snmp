@@ -231,7 +231,33 @@ class EmuProtocol(asyncio.DatagramProtocol):
                 request_id=msg.request_id,
                 varbinds=[(_USM_STATS_UNKNOWN_USER_NAMES, 0x41, b"\x00\x00\x00\x00")],
                 engine_id=_EMU_ENGINE_ID,
+                username=params.username,
                 pdu_tag=PDU_REPORT,
+            )
+            assert self._transport is not None
+            self._transport.sendto(response, addr)
+            return
+
+        # GetNext: SNMPv3 walk uses GetNext instead of GetBulk
+        if msg.pdu_tag == PDU_GETNEXT and msg.varbinds:
+            request_oid = msg.varbinds[0].oid
+            tree = self._device.tree
+            keys = [e[0] for e in tree]
+            idx = bisect.bisect_right(keys, request_oid)
+
+            if idx < len(tree):
+                oid, tag, vlen = tree[idx]
+                varbinds = [(oid, tag, b"\x00" * vlen)]
+            else:
+                varbinds = [(request_oid, _TAG_NULL, b"")]
+
+            response = encode_v3_response(
+                msg_id=params.msg_id,
+                request_id=msg.request_id,
+                varbinds=varbinds,
+                engine_id=_EMU_ENGINE_ID,
+                username=params.username,
+                error_status=0 if idx < len(tree) else 2,
             )
             assert self._transport is not None
             self._transport.sendto(response, addr)
@@ -253,6 +279,7 @@ class EmuProtocol(asyncio.DatagramProtocol):
                 request_id=msg.request_id,
                 varbinds=varbinds,
                 engine_id=_EMU_ENGINE_ID,
+                username=params.username,
             )
             assert self._transport is not None
             self._transport.sendto(response, addr)
