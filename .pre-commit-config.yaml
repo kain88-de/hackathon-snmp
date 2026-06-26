@@ -1,0 +1,14 @@
+# Workspace root — light hygiene hooks run on all files across all sub-projects.
+# Sub-project configs add language-specific checks (ruff, biome, etc.).
+repos:
+  - repo: builtin
+    hooks:
+      - id: check-merge-conflict
+      - id: end-of-file-fixer
+      - id: trailing-whitespace
+      - id: check-added-large-files
+        args: [--maxkb=500]
+      - id: detect-private-key
+      - id: check-toml
+      - id: check-yaml
+      - id: check-json
