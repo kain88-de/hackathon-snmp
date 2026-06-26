@@ -463,6 +463,17 @@ def encode_v3_response(  # noqa: PLR0913
     )
 
 
+def _expect_tlv(buf: bytes, i: int, tag: int, name: str) -> tuple[bytes, int]:
+    """Read one TLV and assert its tag, returning (body, next_i).
+
+    Raises ValueError with a consistent message if the tag does not match.
+    """
+    got_tag, body, next_i = read_tlv(buf, i)
+    if got_tag != tag:
+        raise ValueError(f"Expected {name} tag 0x{tag:02x}, got 0x{got_tag:02x}")
+    return body, next_i
+
+
 def _read_pdu_f1_f2(pdu_body: bytes, j: int) -> tuple[int, int, int]:
     """Read f1 and f2 fields from PDU body.
 
@@ -472,14 +483,10 @@ def _read_pdu_f1_f2(pdu_body: bytes, j: int) -> tuple[int, int, int]:
 
     Returns (f1, f2, next_j).
     """
-    f1_tag, f1_body, j = read_tlv(pdu_body, j)
-    if f1_tag != _TAG_INTEGER:
-        raise ValueError(f"Expected f1 INTEGER tag 0x02, got 0x{f1_tag:02x}")
+    f1_body, j = _expect_tlv(pdu_body, j, _TAG_INTEGER, "f1 INTEGER")
     f1 = decode_int(f1_body)
 
-    f2_tag, f2_body, j = read_tlv(pdu_body, j)
-    if f2_tag != _TAG_INTEGER:
-        raise ValueError(f"Expected f2 INTEGER tag 0x02, got 0x{f2_tag:02x}")
+    f2_body, j = _expect_tlv(pdu_body, j, _TAG_INTEGER, "f2 INTEGER")
     f2 = decode_int(f2_body)
 
     return f1, f2, j
@@ -495,27 +502,18 @@ def _decode_pdu(pdu_body: bytes) -> tuple[int, int, int, tuple[Varbind, ...]]:
     """
     j = 0
 
-    rid_tag, rid_body, j = read_tlv(pdu_body, j)
-    if rid_tag != _TAG_INTEGER:
-        raise ValueError(f"Expected request-id INTEGER tag 0x02, got 0x{rid_tag:02x}")
+    rid_body, j = _expect_tlv(pdu_body, j, _TAG_INTEGER, "request-id INTEGER")
     request_id = decode_int(rid_body)
 
     f1, f2, j = _read_pdu_f1_f2(pdu_body, j)
 
-    vblist_tag, vblist_body, _j = read_tlv(pdu_body, j)
-    if vblist_tag != _TAG_SEQUENCE:
-        raise ValueError(f"Expected varbind-list SEQUENCE tag 0x30, got 0x{vblist_tag:02x}")
+    vblist_body, _j = _expect_tlv(pdu_body, j, _TAG_SEQUENCE, "varbind-list SEQUENCE")
 
     varbinds: list[Varbind] = []
     k = 0
     while k < len(vblist_body):
-        vb_tag, vb_body, k = read_tlv(vblist_body, k)
-        if vb_tag != _TAG_SEQUENCE:
-            raise ValueError(f"Expected varbind SEQUENCE tag 0x30, got 0x{vb_tag:02x}")
-        m = 0
-        oid_tag, oid_body, m = read_tlv(vb_body, m)
-        if oid_tag != _TAG_OID:
-            raise ValueError(f"Expected OID tag 0x06, got 0x{oid_tag:02x}")
+        vb_body, k = _expect_tlv(vblist_body, k, _TAG_SEQUENCE, "varbind SEQUENCE")
+        oid_body, m = _expect_tlv(vb_body, 0, _TAG_OID, "OID")
         oid = decode_oid(oid_body)
         val_tag, val_body, _m = read_tlv(vb_body, m)
         varbinds.append(Varbind(oid=oid, tag=val_tag, value=val_body))
@@ -548,19 +546,12 @@ def decode_message(raw: bytes) -> Message | Malformed:
         }
     """
     try:
-        outer_tag, outer_body, _ = read_tlv(raw, 0)
-        if outer_tag != _TAG_SEQUENCE:
-            raise ValueError(f"Expected outer SEQUENCE tag 0x30, got 0x{outer_tag:02x}")
+        outer_body, _ = _expect_tlv(raw, 0, _TAG_SEQUENCE, "outer SEQUENCE")
 
         i = 0
 
-        ver_tag, _ver_body, i = read_tlv(outer_body, i)
-        if ver_tag != _TAG_INTEGER:
-            raise ValueError(f"Expected version INTEGER tag 0x02, got 0x{ver_tag:02x}")
-
-        comm_tag, _comm_body, i = read_tlv(outer_body, i)
-        if comm_tag != _TAG_OCTET_STRING:
-            raise ValueError(f"Expected community OCTET STRING tag 0x04, got 0x{comm_tag:02x}")
+        _ver_body, i = _expect_tlv(outer_body, i, _TAG_INTEGER, "version INTEGER")
+        _comm_body, i = _expect_tlv(outer_body, i, _TAG_OCTET_STRING, "community OCTET STRING")
 
         pdu_tag, pdu_body, _i = read_tlv(outer_body, i)
         if (pdu_tag & 0xE0) != 0xA0:  # noqa: PLR2004
@@ -583,7 +574,7 @@ def decode_message(raw: bytes) -> Message | Malformed:
         return Malformed(raw=raw, error=str(exc))
 
 
-def decode_v3_message(raw: bytes) -> tuple[Message, V3Params] | Malformed:  # noqa: PLR0912, PLR0915
+def decode_v3_message(raw: bytes) -> tuple[Message, V3Params] | Malformed:
     """Tolerantly decode a raw SNMPv3 (noAuthNoPriv) datagram.
 
     Returns a (Message, V3Params) tuple on success, or Malformed if the bytes
@@ -617,55 +608,32 @@ def decode_v3_message(raw: bytes) -> tuple[Message, V3Params] | Malformed:  # no
         }
     """
     try:
-        outer_tag, outer_body, _ = read_tlv(raw, 0)
-        if outer_tag != _TAG_SEQUENCE:
-            raise ValueError(f"Expected outer SEQUENCE tag 0x30, got 0x{outer_tag:02x}")
+        outer_body, _ = _expect_tlv(raw, 0, _TAG_SEQUENCE, "outer SEQUENCE")
 
         i = 0
 
         # version must be 3
-        ver_tag, ver_body, i = read_tlv(outer_body, i)
-        if ver_tag != _TAG_INTEGER:
-            raise ValueError(f"Expected version INTEGER tag 0x02, got 0x{ver_tag:02x}")
+        ver_body, i = _expect_tlv(outer_body, i, _TAG_INTEGER, "version INTEGER")
         version = decode_int(ver_body)
         if version != 3:  # noqa: PLR2004
             raise ValueError(f"Expected SNMPv3 version 3, got {version}")
 
         # msgGlobalData SEQUENCE
-        gd_tag, gd_body, i = read_tlv(outer_body, i)
-        if gd_tag != _TAG_SEQUENCE:
-            raise ValueError(f"Expected msgGlobalData SEQUENCE tag 0x30, got 0x{gd_tag:02x}")
-        gd_i = 0
-        msg_id_tag, msg_id_body, gd_i = read_tlv(gd_body, gd_i)
-        if msg_id_tag != _TAG_INTEGER:
-            raise ValueError(f"Expected msgID INTEGER tag 0x02, got 0x{msg_id_tag:02x}")
+        gd_body, i = _expect_tlv(outer_body, i, _TAG_SEQUENCE, "msgGlobalData SEQUENCE")
+        msg_id_body, _gd_i = _expect_tlv(gd_body, 0, _TAG_INTEGER, "msgID INTEGER")
         msg_id = decode_int(msg_id_body)
         # skip msgMaxSize, msgFlags, msgSecurityModel
 
         # USM OCTET STRING containing BER-encoded SEQUENCE
-        usm_os_tag, usm_os_body, i = read_tlv(outer_body, i)
-        if usm_os_tag != _TAG_OCTET_STRING:
-            raise ValueError(f"Expected USM OCTET STRING tag 0x04, got 0x{usm_os_tag:02x}")
-        usm_tag, usm_body, _ = read_tlv(usm_os_body, 0)
-        if usm_tag != _TAG_SEQUENCE:
-            raise ValueError(f"Expected USM inner SEQUENCE tag 0x30, got 0x{usm_tag:02x}")
+        usm_os_body, i = _expect_tlv(outer_body, i, _TAG_OCTET_STRING, "USM OCTET STRING")
+        usm_body, _ = _expect_tlv(usm_os_body, 0, _TAG_SEQUENCE, "USM inner SEQUENCE")
         u = 0
-        eid_tag, eid_body, u = read_tlv(usm_body, u)
-        if eid_tag != _TAG_OCTET_STRING:
-            raise ValueError(f"Expected engineID OCTET STRING tag 0x04, got 0x{eid_tag:02x}")
-        engine_id = eid_body
-        boots_tag, boots_body, u = read_tlv(usm_body, u)
-        if boots_tag != _TAG_INTEGER:
-            raise ValueError(f"Expected engineBoots INTEGER tag 0x02, got 0x{boots_tag:02x}")
+        engine_id, u = _expect_tlv(usm_body, u, _TAG_OCTET_STRING, "engineID OCTET STRING")
+        boots_body, u = _expect_tlv(usm_body, u, _TAG_INTEGER, "engineBoots INTEGER")
         engine_boots = decode_int(boots_body)
-        time_tag, time_body, u = read_tlv(usm_body, u)
-        if time_tag != _TAG_INTEGER:
-            raise ValueError(f"Expected engineTime INTEGER tag 0x02, got 0x{time_tag:02x}")
+        time_body, u = _expect_tlv(usm_body, u, _TAG_INTEGER, "engineTime INTEGER")
         engine_time = decode_int(time_body)
-        uname_tag, uname_body, _u = read_tlv(usm_body, u)
-        if uname_tag != _TAG_OCTET_STRING:
-            raise ValueError(f"Expected username OCTET STRING tag 0x04, got 0x{uname_tag:02x}")
-        username = uname_body
+        username, _u = _expect_tlv(usm_body, u, _TAG_OCTET_STRING, "username OCTET STRING")
 
         # ScopedPDU — must be plain SEQUENCE (0x30); 0x04 = encrypted (Priv)
         scoped_tag, scoped_body, _i = read_tlv(outer_body, i)

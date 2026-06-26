@@ -394,34 +394,30 @@ async def walk_records(  # noqa: PLR0912, PLR0913, PLR0915
                     "oids": [tf.Oid(str(cursor))],
                 }
             )
-        elif settings.snmp_version == "3":
-            assert v3_params is not None  # discovery succeeded or loop never starts
-            assert settings.v3_user is not None  # enforced by WalkSettings.__post_init__
-            raw_request = encode_v3_getbulk(
-                msg_id=random.randint(1, 2**31 - 1),
-                request_id=request_id,
-                oid=cursor,
-                max_repetitions=settings.bulk_size,
-                engine_id=v3_params.engine_id,
-                engine_boots=v3_params.engine_boots,
-                engine_time=v3_params.engine_time,
-                username=settings.v3_user.encode(),
-            )
-            request_model = tf.Request(
-                pdu=tf.Pdu("getbulk"),
-                request_id=request_id,
-                oids=[tf.Oid(str(cursor))],
-                non_repeaters=0,
-                max_repetitions=settings.bulk_size,
-            )
         else:
-            raw_request = encode_getbulk(
-                request_id,
-                cursor,
-                non_repeaters=0,
-                max_repetitions=settings.bulk_size,
-                community=settings.community,
-            )
+            # v2c and v3 share the same GetBulk request model; only the wire
+            # encoding (community vs. USM) differs between them.
+            if settings.snmp_version == "3":
+                assert v3_params is not None  # discovery succeeded or loop never starts
+                assert settings.v3_user is not None  # enforced by WalkSettings.__post_init__
+                raw_request = encode_v3_getbulk(
+                    msg_id=random.randint(1, 2**31 - 1),
+                    request_id=request_id,
+                    oid=cursor,
+                    max_repetitions=settings.bulk_size,
+                    engine_id=v3_params.engine_id,
+                    engine_boots=v3_params.engine_boots,
+                    engine_time=v3_params.engine_time,
+                    username=settings.v3_user.encode(),
+                )
+            else:
+                raw_request = encode_getbulk(
+                    request_id,
+                    cursor,
+                    non_repeaters=0,
+                    max_repetitions=settings.bulk_size,
+                    community=settings.community,
+                )
             request_model = tf.Request(
                 pdu=tf.Pdu("getbulk"),
                 request_id=request_id,
@@ -483,13 +479,11 @@ async def walk_records(  # noqa: PLR0912, PLR0913, PLR0915
         if malformed_model is not None:
             exchange_violations.append(Violation.MALFORMED_BER)
         elif decoded_msg is not None and response_request_id is not None:
-            assert isinstance(decoded_msg, Message)
-            typed_varbinds: list[Varbind] = list(varbinds_from_response)
             exchange_violations = check_exchange(
                 sent_id=request_id,
                 returned_id=response_request_id,
                 prev_oid=cursor,
-                varbinds=typed_varbinds,
+                varbinds=varbinds_from_response,
                 response_raw=exchange_io.response[1] if exchange_io.response else b"",
                 strays=[raw for _, raw in exchange_io.strays],
             )
@@ -497,7 +491,6 @@ async def walk_records(  # noqa: PLR0912, PLR0913, PLR0915
         for v in exchange_violations:
             violation_counts[v] = violation_counts.get(v, 0) + 1
 
-        typed_vbs: list[Varbind] = list(varbinds_from_response)
         yield exchange_record(
             seq=seq,
             request=request_model,
@@ -505,7 +498,7 @@ async def walk_records(  # noqa: PLR0912, PLR0913, PLR0915
             response_request_id=response_request_id,
             response_error_status=response_error_status,
             response_error_index=response_error_index,
-            varbinds=typed_vbs,
+            varbinds=varbinds_from_response,
             strays=model_strays,
             violations=exchange_violations,
             malformed=malformed_model,
@@ -528,20 +521,18 @@ async def walk_records(  # noqa: PLR0912, PLR0913, PLR0915
             end_reason = EndReason.COMPLETED
             break
 
-        vbs: list[Varbind] = list(varbinds_from_response)
-
-        if not vbs:
+        if not varbinds_from_response:
             log.info("walk completed: empty varbind response")
             end_reason = EndReason.COMPLETED
             break
 
-        if any(vb.tag == 0x82 for vb in vbs):  # noqa: PLR2004
+        if any(vb.tag == 0x82 for vb in varbinds_from_response):  # noqa: PLR2004
             log.info("walk completed: EndOfMibView")
             end_reason = EndReason.COMPLETED
             break
 
         # Find the last non-exception varbind (the new cursor candidate)
-        data_vbs = [vb for vb in vbs if vb.tag not in EXCEPTION_TAGS]
+        data_vbs = [vb for vb in varbinds_from_response if vb.tag not in EXCEPTION_TAGS]
 
         # If all varbinds are exception tags (shouldn't normally happen after EOM check above)
         if not data_vbs:
