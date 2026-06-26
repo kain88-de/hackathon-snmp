@@ -41,9 +41,11 @@ if TYPE_CHECKING:
 
     from oidtrace.oid import Oid
 
+PDU_GET: int = 0xA0  # GetRequest — SNMPv3 discovery probe
 PDU_GETBULK: int = 0xA5
 PDU_GETNEXT: int = 0xA1  # RFC 1157 GetNextRequest-PDU = context [1] = 0xA1; 0xA3 is SetRequest
 PDU_RESPONSE: int = 0xA2
+PDU_REPORT: int = 0xA8  # SNMPv3 Report PDU — discovery response
 
 # v2c exception tags (§ 5 of trace-format.md)
 EXCEPTION_TAGS: frozenset[int] = frozenset({0x80, 0x81, 0x82})
@@ -71,6 +73,23 @@ _TAG_NAMES: dict[int, str] = {
     0x81: "NoSuchInstance",
     0x82: "EndOfMibView",
 }
+
+
+@dataclass(frozen=True, slots=True)
+class V3Params:
+    """Extracted USM parameters from a decoded SNMPv3 message.
+
+    Attributes:
+        engine_id: The authoritativeEngineID (may be empty in discovery response).
+        engine_boots: The authoritativeEngineBoots counter.
+        engine_time: The authoritativeEngineTime value.
+        msg_id: The msgID from msgGlobalData (needed to echo in response PDUs).
+    """
+
+    engine_id: bytes
+    engine_boots: int
+    engine_time: int
+    msg_id: int
 
 
 @dataclass(frozen=True, slots=True)
@@ -225,6 +244,220 @@ def encode_response(  # noqa: PLR0913
     return tlv(
         _TAG_SEQUENCE,
         encode_int(version) + tlv(_TAG_OCTET_STRING, community) + pdu,
+    )
+
+
+def _encode_msg_global_data(msg_id: int) -> bytes:
+    """Encode SNMPv3 msgGlobalData SEQUENCE.
+
+    Structure (RFC 3412):
+        SEQUENCE {
+            INTEGER msgID
+            INTEGER msgMaxSize (fixed 65507)
+            OCTET STRING msgFlags (0x04 = reportable, noAuth, noPriv)
+            INTEGER msgSecurityModel (3 = USM)
+        }
+    """
+    return tlv(
+        _TAG_SEQUENCE,
+        encode_int(msg_id)
+        + encode_int(65507)
+        + tlv(_TAG_OCTET_STRING, bytes([0x04]))
+        + encode_int(3),
+    )
+
+
+def _encode_usm_params(
+    engine_id: bytes,
+    engine_boots: int,
+    engine_time: int,
+    username: bytes,
+) -> bytes:
+    """Encode SNMPv3 USM security parameters (RFC 3414).
+
+    Returns the OCTET STRING containing the BER-encoded SEQUENCE of USM fields.
+
+    Structure (inside the OCTET STRING):
+        SEQUENCE {
+            OCTET STRING msgAuthoritativeEngineID
+            INTEGER msgAuthoritativeEngineBoots
+            INTEGER msgAuthoritativeEngineTime
+            OCTET STRING msgUserName
+            OCTET STRING msgAuthenticationParameters (empty = noAuth)
+            OCTET STRING msgPrivacyParameters (empty = noPriv)
+        }
+    """
+    usm_sequence = tlv(
+        _TAG_SEQUENCE,
+        tlv(_TAG_OCTET_STRING, engine_id)
+        + encode_int(engine_boots)
+        + encode_int(engine_time)
+        + tlv(_TAG_OCTET_STRING, username)
+        + tlv(_TAG_OCTET_STRING, b"")
+        + tlv(_TAG_OCTET_STRING, b""),
+    )
+    return tlv(_TAG_OCTET_STRING, usm_sequence)
+
+
+def _encode_scoped_pdu(context_engine_id: bytes, pdu: bytes) -> bytes:
+    """Encode SNMPv3 ScopedPDU SEQUENCE.
+
+    Structure (RFC 3412):
+        SEQUENCE {
+            OCTET STRING contextEngineID
+            OCTET STRING contextName (empty for noAuthNoPriv)
+            PDU (GetRequest, GetBulk, etc.)
+        }
+    """
+    return tlv(
+        _TAG_SEQUENCE,
+        tlv(_TAG_OCTET_STRING, context_engine_id) + tlv(_TAG_OCTET_STRING, b"") + pdu,
+    )
+
+
+def encode_v3_discovery(msg_id: int, request_id: int) -> bytes:
+    """Encode an SNMPv3 discovery probe (GetRequest with empty varbinds).
+
+    Discovery probe:
+    - msgFlags = 0x04 (reportable, noAuth, noPriv)
+    - All USM fields empty/zero except msg_id
+    - GetRequest (0xA0) PDU with empty VarBindList
+    - contextEngineID empty
+
+    Args:
+        msg_id: Message identifier (random, per-message).
+        request_id: Request identifier (echoed by the agent).
+
+    Returns:
+        Complete SNMPv3 message bytes (64 bytes for canonical inputs).
+    """
+    # GetRequest PDU with empty varbinds
+    varbind_list = tlv(_TAG_SEQUENCE, b"")
+    pdu = tlv(
+        PDU_GET,
+        encode_int(request_id) + encode_int(0) + encode_int(0) + varbind_list,
+    )
+
+    # ScopedPDU with empty contextEngineID
+    scoped_pdu = _encode_scoped_pdu(b"", pdu)
+
+    # USM params: all fields empty/zero
+    usm_params = _encode_usm_params(b"", 0, 0, b"")
+
+    # msgGlobalData
+    msg_global = _encode_msg_global_data(msg_id)
+
+    # Outer SEQUENCE: version 3, msgGlobalData, USM params, ScopedPDU
+    return tlv(
+        _TAG_SEQUENCE,
+        encode_int(3) + msg_global + usm_params + scoped_pdu,
+    )
+
+
+def encode_v3_getbulk(  # noqa: PLR0913
+    msg_id: int,
+    request_id: int,
+    oid: Oid,
+    max_repetitions: int,
+    engine_id: bytes,
+    engine_boots: int,
+    engine_time: int,
+    username: bytes,
+) -> bytes:
+    """Encode an SNMPv3 GetBulk request.
+
+    Args:
+        msg_id: Message identifier.
+        request_id: Request identifier.
+        oid: The start OID for the bulk walk (single varbind, NULL value).
+        max_repetitions: Maximum repetitions per varbind.
+        engine_id: AuthoritativeEngineID (from discovery).
+        engine_boots: AuthoritativeEngineBoots (from discovery).
+        engine_time: AuthoritativeEngineTime (from discovery).
+        username: Username for this request.
+
+    Returns:
+        Complete SNMPv3 message bytes.
+    """
+    # GetBulk PDU with the requested OID and max_repetitions
+    varbind_list = tlv(_TAG_SEQUENCE, tlv(_TAG_SEQUENCE, encode_oid(oid) + tlv(_TAG_NULL, b"")))
+    pdu = tlv(
+        PDU_GETBULK,
+        encode_int(request_id)
+        + encode_int(0)  # non_repeaters
+        + encode_int(max_repetitions)
+        + varbind_list,
+    )
+
+    # ScopedPDU with contextEngineID from discovery
+    scoped_pdu = _encode_scoped_pdu(engine_id, pdu)
+
+    # USM params with discovery values
+    usm_params = _encode_usm_params(engine_id, engine_boots, engine_time, username)
+
+    # msgGlobalData
+    msg_global = _encode_msg_global_data(msg_id)
+
+    # Outer SEQUENCE: version 3, msgGlobalData, USM params, ScopedPDU
+    return tlv(
+        _TAG_SEQUENCE,
+        encode_int(3) + msg_global + usm_params + scoped_pdu,
+    )
+
+
+def encode_v3_response(  # noqa: PLR0913
+    msg_id: int,
+    request_id: int,
+    varbinds: Sequence[tuple[Oid, int, bytes]],
+    engine_id: bytes,
+    username: bytes = b"",
+    error_status: int = 0,
+    error_index: int = 0,
+    pdu_tag: int = PDU_RESPONSE,
+) -> bytes:
+    """Encode an SNMPv3 Response or Report PDU (used by the emulator).
+
+    Args:
+        msg_id: Message identifier (echoed from request).
+        request_id: Request identifier (echoed from request).
+        varbinds: Sequence of (oid, tag, value_bytes) tuples.
+        engine_id: AuthoritativeEngineID to embed in response.
+        username: Username (default b"").
+        error_status: Error status (default 0 = noError).
+        error_index: Error index (default 0).
+        pdu_tag: PDU tag (default PDU_RESPONSE=0xA2; use PDU_REPORT=0xA8 for discovery response).
+
+    Returns:
+        Complete SNMPv3 message bytes.
+    """
+    # Encode varbinds
+    encoded_vbs = b"".join(
+        tlv(_TAG_SEQUENCE, encode_oid(oid) + tlv(tag, value_bytes))
+        for oid, tag, value_bytes in varbinds
+    )
+
+    # Response or Report PDU
+    pdu = tlv(
+        pdu_tag,
+        encode_int(request_id)
+        + encode_int(error_status)
+        + encode_int(error_index)
+        + tlv(_TAG_SEQUENCE, encoded_vbs),
+    )
+
+    # ScopedPDU with contextEngineID from discovery
+    scoped_pdu = _encode_scoped_pdu(engine_id, pdu)
+
+    # USM params with discovery values
+    usm_params = _encode_usm_params(engine_id, 0, 0, username)
+
+    # msgGlobalData
+    msg_global = _encode_msg_global_data(msg_id)
+
+    # Outer SEQUENCE: version 3, msgGlobalData, USM params, ScopedPDU
+    return tlv(
+        _TAG_SEQUENCE,
+        encode_int(3) + msg_global + usm_params + scoped_pdu,
     )
 
 
