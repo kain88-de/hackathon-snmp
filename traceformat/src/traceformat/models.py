@@ -37,6 +37,7 @@ class Session(BaseModel):
 class Version(Enum):
     field_1 = "1"
     field_2c = "2c"
+    field_3 = "3"
 
 
 class Snmp(BaseModel):
@@ -84,12 +85,13 @@ class Pdu(Enum):
     get = "get"
     getnext = "getnext"
     getbulk = "getbulk"
+    discovery = "discovery"
 
 
 class Request(BaseModel):
     pdu: Pdu
     request_id: int
-    oids: list[Oid] = Field(..., min_length=1)
+    oids: list[Oid] = Field(..., min_length=0)
     non_repeaters: int | None = Field(default=None, ge=0)
     max_repetitions: int | None = Field(default=None, ge=0)
 

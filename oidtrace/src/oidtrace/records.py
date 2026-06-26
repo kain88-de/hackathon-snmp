@@ -35,7 +35,7 @@ def header_record(  # noqa: PLR0913
     session_id: str,
     run: int,
     runs_total: int,
-    snmp_version: Literal["1", "2c"],
+    snmp_version: Literal["1", "2c", "3"],
     settings: tf.Settings,
 ) -> tf.Header:
     """Build a Header record.
@@ -47,7 +47,7 @@ def header_record(  # noqa: PLR0913
         session_id: UUID string shared by all files in a matrix run.
         run: This run's index (1-based).
         runs_total: Total number of runs in the matrix.
-        snmp_version: SNMP version string ("1" or "2c").
+        snmp_version: SNMP version string ("1", "2c", or "3").
         settings: Pre-built Settings model.
 
     Returns:

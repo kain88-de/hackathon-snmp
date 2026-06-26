@@ -105,6 +105,22 @@ def test_header_record_schema_validates(record_validator: Draft202012Validator) 
     _validate(r, record_validator)
 
 
+def test_header_record_snmp_version_3(record_validator: Draft202012Validator) -> None:
+    """header_record should accept snmp_version="3" and set Version.field_3."""
+    r = header_record(
+        tool="oidtrace/0.1.0",
+        started_at=_STARTED_AT,
+        label="lab-device",
+        session_id="550e8400-e29b-41d4-a716-446655440000",
+        run=1,
+        runs_total=1,
+        snmp_version="3",
+        settings=_SETTINGS,
+    )
+    assert r.snmp.version.value == "3"
+    _validate(r, record_validator)
+
+
 def test_header_record_type_is_header() -> None:
     r = header_record(
         tool="oidtrace/0.1.0",
