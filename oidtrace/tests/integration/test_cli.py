@@ -459,19 +459,63 @@ def test_walk_no_version_returns_2(capsys: pytest.CaptureFixture[str]) -> None:
     assert any(tok in err for tok in ("v1", "v2c", "v3", "usage"))
 
 
-def test_walk_v1_not_implemented(tmp_path: Path, capsys: pytest.CaptureFixture[str]) -> None:
-    """v1 is not yet implemented: exit 2, stderr contains 'v1' and 'implement', no trace file."""
-    ret = main(["walk", "v1", "127.0.0.1", "--out", str(tmp_path)])
+def test_v1_walk_exit_0_and_trace_file(tmp_path: Path) -> None:
+    """v1 walk: exit 0, exactly one trace file."""
+    with EmulatorThread() as (host, port):
+        ret = main(
+            [
+                "walk",
+                "v1",
+                host,
+                "--port",
+                str(port),
+                "--out",
+                str(tmp_path),
+                "--timeout",
+                "1.0",
+                "--retries",
+                "1",
+                "--give-up-after",
+                "2",
+            ]
+        )
 
-    assert ret == 2
-    captured = capsys.readouterr()
-    err = captured.err.lower()
-    assert "v1" in err
-    assert "implement" in err
+    assert ret == 0
+
+    # Exactly one trace file written
     trace_files = list(tmp_path.glob("*.oidtrace.jsonl.gz"))
-    assert len(trace_files) == 0, (
-        f"No trace file should be created for v1 stub, found {trace_files}"
-    )
+    assert len(trace_files) == 1, f"Expected 1 trace file, found {trace_files}"
+
+
+def test_v1_walk_header_version(tmp_path: Path) -> None:
+    """v1 walk: trace header has snmp.version == '1'."""
+    with EmulatorThread() as (host, port):
+        ret = main(
+            [
+                "walk",
+                "v1",
+                host,
+                "--port",
+                str(port),
+                "--out",
+                str(tmp_path),
+                "--timeout",
+                "1.0",
+                "--retries",
+                "1",
+                "--give-up-after",
+                "2",
+            ]
+        )
+
+    assert ret == 0
+    trace_files = list(tmp_path.glob("*.oidtrace.jsonl.gz"))
+    assert len(trace_files) == 1
+    records = list(read_trace(trace_files[0]))
+    assert isinstance(records[0], Header)
+    header = records[0]
+    assert header.type == "header"
+    assert str(header.snmp.version.value) == "1"
 
 
 def test_walk_v3_not_implemented(tmp_path: Path, capsys: pytest.CaptureFixture[str]) -> None:

@@ -160,7 +160,7 @@ def main(argv: list[str] | None = None) -> int:
         print("usage: oidtrace walk {v1,v2c,v3} ...", file=sys.stderr)
         return 2
 
-    if args.version in ("v1", "v3"):
+    if args.version == "v3":
         print(f"error: SNMP {args.version} not yet implemented", file=sys.stderr)
         return 2
 
@@ -204,15 +204,26 @@ def main(argv: list[str] | None = None) -> int:
 
     log.info("trace path: %s", trace_path)
 
-    settings = WalkSettings(
-        bulk_size=args.bulk_size,
-        timeout_s=args.timeout,
-        retries=args.retries,
-        start_oid=start_oid,
-        time_budget_s=args.time_budget,
-        give_up_after=args.give_up_after,
-        community=args.community.encode(),
-    )
+    if args.version == "v1":
+        settings = WalkSettings(
+            timeout_s=args.timeout,
+            retries=args.retries,
+            start_oid=start_oid,
+            time_budget_s=args.time_budget,
+            give_up_after=args.give_up_after,
+            community=args.community.encode(),
+            snmp_version="1",
+        )
+    else:  # v2c
+        settings = WalkSettings(
+            bulk_size=args.bulk_size,
+            timeout_s=args.timeout,
+            retries=args.retries,
+            start_oid=start_oid,
+            time_budget_s=args.time_budget,
+            give_up_after=args.give_up_after,
+            community=args.community.encode(),
+        )
 
     extra_sinks: list[RecordSink] = []
     if verbosity == 0:
