@@ -5,6 +5,15 @@ reflect real wire format, then replayed by FakeTransport.
 
 Every test validates all produced records against the JSON schema via
 the record_validator fixture.
+
+Request-id echo
+---------------
+FakeTransport accepts responses as either ExchangeIO objects (static) or
+callables ``(raw_request: bytes) -> ExchangeIO`` (dynamic).  Dynamic responses
+decode the outgoing request to mirror its request_id back in the reply, so
+check_exchange sees sent_id == returned_id and produces zero violations —
+the clean path.  Static ExchangeIO objects are used for tests that deliberately
+exercise malformed or no-response exchanges where the request_id is irrelevant.
 """
 
 from __future__ import annotations
@@ -12,6 +21,7 @@ from __future__ import annotations
 import asyncio
 import json
 import logging
+from collections.abc import Callable
 from contextlib import aclosing
 from dataclasses import dataclass, field
 from typing import TYPE_CHECKING
@@ -24,6 +34,9 @@ from traceformat.vocab import AttemptError, EndReason, EventKind, Violation
 
 from oidtrace.codec import (
     PDU_REPORT,
+    Malformed,
+    decode_message,
+    decode_v3_message,
     encode_response,
     encode_v3_response,
 )
@@ -38,8 +51,6 @@ from oidtrace.walker import (
 )
 
 if TYPE_CHECKING:
-    from collections.abc import Callable
-
     # pyrefly: ignore [untyped-import]
     from jsonschema import Draft202012Validator
     from traceformat import TraceRecord
@@ -49,6 +60,10 @@ if TYPE_CHECKING:
 # FakeTransport
 # ---------------------------------------------------------------------------
 
+# A response entry is either a static ExchangeIO or a callable that receives
+# the raw request bytes and returns an ExchangeIO (used for request_id echo).
+_ResponseEntry = ExchangeIO | Callable[[bytes], ExchangeIO]
+
 
 @dataclass
 class FakeTransport:
@@ -57,18 +72,22 @@ class FakeTransport:
     Implements the Transport protocol: async exchange(raw, *, timeout_s, retries).
     Responses are consumed in order; AssertionError if more exchanges are made
     than scripted.
+
+    Each entry in ``responses`` may be either a plain ExchangeIO or a
+    callable ``(raw_request: bytes) -> ExchangeIO``.  Callables receive the
+    bytes the walker sent so they can echo request_id back in the reply.
     """
 
-    responses: list[ExchangeIO] = field(default_factory=list)
+    responses: list[_ResponseEntry] = field(default_factory=list)
     _index: int = field(default=0, init=False)
 
     async def exchange(self, raw: bytes, *, timeout_s: float, retries: int) -> ExchangeIO:  # noqa: ARG002
         assert self._index < len(self.responses), (
             f"FakeTransport exhausted at index {self._index}: no more scripted responses"
         )
-        result = self.responses[self._index]
+        entry = self.responses[self._index]
         self._index += 1
-        return result
+        return entry(raw) if callable(entry) else entry
 
 
 # ---------------------------------------------------------------------------
@@ -94,40 +113,58 @@ def _make_rel(start: float = 0.0) -> Callable[[], float]:
     return rel
 
 
-def _response_exchange(oids: list[Oid], request_id: int = 42) -> ExchangeIO:
-    """Build an ExchangeIO with a real encoded response."""
-    varbinds = [(oid, _INTEGER_TAG, b"\x00\x00\x00\x01") for oid in oids]
-    raw = encode_response(request_id, varbinds)
-    return ExchangeIO(
-        attempts=(Attempt(sent_at=0.001, received_at=0.002),),
-        response=(0.002, raw),
-        strays=(),
-    )
+def _response_exchange(oids: list[Oid]) -> Callable[[bytes], ExchangeIO]:
+    """Return a dynamic response factory that echoes the request_id."""
+
+    def factory(raw: bytes) -> ExchangeIO:
+        decoded = decode_message(raw)
+        request_id = 42 if isinstance(decoded, Malformed) else decoded.request_id
+        varbinds = [(oid, _INTEGER_TAG, b"\x00\x00\x00\x01") for oid in oids]
+        response_raw = encode_response(request_id, varbinds)
+        return ExchangeIO(
+            attempts=(Attempt(sent_at=0.001, received_at=0.002),),
+            response=(0.002, response_raw),
+            strays=(),
+        )
+
+    return factory
 
 
-def _eom_exchange(after_oid: Oid, request_id: int = 42) -> ExchangeIO:
-    """EndOfMibView response (tag 0x82) after the given OID."""
-    raw = encode_response(request_id, [(after_oid, 0x82, b"")])
-    return ExchangeIO(
-        attempts=(Attempt(sent_at=0.001, received_at=0.002),),
-        response=(0.002, raw),
-        strays=(),
-    )
+def _eom_exchange(after_oid: Oid) -> Callable[[bytes], ExchangeIO]:
+    """Return a dynamic EOM factory that echoes the request_id."""
+
+    def factory(raw: bytes) -> ExchangeIO:
+        decoded = decode_message(raw)
+        request_id = 42 if isinstance(decoded, Malformed) else decoded.request_id
+        response_raw = encode_response(request_id, [(after_oid, 0x82, b"")])
+        return ExchangeIO(
+            attempts=(Attempt(sent_at=0.001, received_at=0.002),),
+            response=(0.002, response_raw),
+            strays=(),
+        )
+
+    return factory
 
 
-def _nosuchname_exchange(after_oid: Oid, request_id: int = 42) -> ExchangeIO:
-    """SNMP v1 end-of-MIB: noSuchName (error_status=2) + Null varbind (tag 0x05)."""
-    raw = encode_response(
-        request_id,
-        [(after_oid, 0x05, b"")],
-        error_status=2,
-        version=0,
-    )
-    return ExchangeIO(
-        attempts=(Attempt(sent_at=0.001, received_at=0.002),),
-        response=(0.002, raw),
-        strays=(),
-    )
+def _nosuchname_exchange(after_oid: Oid) -> Callable[[bytes], ExchangeIO]:
+    """Return a dynamic noSuchName factory that echoes the request_id."""
+
+    def factory(raw: bytes) -> ExchangeIO:
+        decoded = decode_message(raw)
+        request_id = 42 if isinstance(decoded, Malformed) else decoded.request_id
+        response_raw = encode_response(
+            request_id,
+            [(after_oid, 0x05, b"")],
+            error_status=2,
+            version=0,
+        )
+        return ExchangeIO(
+            attempts=(Attempt(sent_at=0.001, received_at=0.002),),
+            response=(0.002, response_raw),
+            strays=(),
+        )
+
+    return factory
 
 
 def _no_response_exchange() -> ExchangeIO:
@@ -889,51 +926,79 @@ _V3_ENGINE_ID = b"\x80\x00\x00\x00\x01testemu\x00"
 _USM_STATS_OID = Oid.from_str("1.3.6.1.6.3.15.1.1.4.0")
 
 
-def _v3_discovery_exchange() -> ExchangeIO:
-    """Discovery Report response carrying the engine id."""
-    raw = encode_v3_response(
-        msg_id=1,
-        request_id=42,
-        varbinds=[(_USM_STATS_OID, 0x41, b"\x00\x00\x00\x00")],
-        engine_id=_V3_ENGINE_ID,
-        pdu_tag=PDU_REPORT,
-    )
-    return ExchangeIO(
-        attempts=(Attempt(sent_at=0.001, received_at=0.002),),
-        response=(0.002, raw),
-        strays=(),
-    )
+def _v3_discovery_exchange() -> Callable[[bytes], ExchangeIO]:
+    """Return a dynamic factory for a discovery Report response.
+
+    Echoes the request_id from the outgoing discovery probe so
+    check_exchange sees no REQUEST_ID_MISMATCH.
+    """
+
+    def factory(raw: bytes) -> ExchangeIO:
+        decoded = decode_v3_message(raw)
+        request_id = 42 if isinstance(decoded, Malformed) else decoded[0].request_id
+        response_raw = encode_v3_response(
+            msg_id=1,
+            request_id=request_id,
+            varbinds=[(_USM_STATS_OID, 0x41, b"\x00\x00\x00\x00")],
+            engine_id=_V3_ENGINE_ID,
+            pdu_tag=PDU_REPORT,
+        )
+        return ExchangeIO(
+            attempts=(Attempt(sent_at=0.001, received_at=0.002),),
+            response=(0.002, response_raw),
+            strays=(),
+        )
+
+    return factory
 
 
-def _v3_response_exchange(oids: list[Oid], request_id: int = 42) -> ExchangeIO:
-    """GetBulk Response over v3."""
-    varbinds = [(oid, _INTEGER_TAG, b"\x00\x00\x00\x01") for oid in oids]
-    raw = encode_v3_response(
-        msg_id=1,
-        request_id=request_id,
-        varbinds=varbinds,
-        engine_id=_V3_ENGINE_ID,
-    )
-    return ExchangeIO(
-        attempts=(Attempt(sent_at=0.001, received_at=0.002),),
-        response=(0.002, raw),
-        strays=(),
-    )
+def _v3_response_exchange(oids: list[Oid]) -> Callable[[bytes], ExchangeIO]:
+    """Return a dynamic factory for a GetBulk Response over v3.
+
+    Echoes the request_id so check_exchange sees no REQUEST_ID_MISMATCH.
+    """
+
+    def factory(raw: bytes) -> ExchangeIO:
+        decoded = decode_v3_message(raw)
+        request_id = 42 if isinstance(decoded, Malformed) else decoded[0].request_id
+        varbinds = [(oid, _INTEGER_TAG, b"\x00\x00\x00\x01") for oid in oids]
+        response_raw = encode_v3_response(
+            msg_id=1,
+            request_id=request_id,
+            varbinds=varbinds,
+            engine_id=_V3_ENGINE_ID,
+        )
+        return ExchangeIO(
+            attempts=(Attempt(sent_at=0.001, received_at=0.002),),
+            response=(0.002, response_raw),
+            strays=(),
+        )
+
+    return factory
 
 
-def _v3_eom_exchange(after_oid: Oid, request_id: int = 42) -> ExchangeIO:
-    """EndOfMibView (tag 0x82) over v3."""
-    raw = encode_v3_response(
-        msg_id=1,
-        request_id=request_id,
-        varbinds=[(after_oid, 0x82, b"")],
-        engine_id=_V3_ENGINE_ID,
-    )
-    return ExchangeIO(
-        attempts=(Attempt(sent_at=0.001, received_at=0.002),),
-        response=(0.002, raw),
-        strays=(),
-    )
+def _v3_eom_exchange(after_oid: Oid) -> Callable[[bytes], ExchangeIO]:
+    """Return a dynamic factory for an EndOfMibView response over v3.
+
+    Echoes the request_id so check_exchange sees no REQUEST_ID_MISMATCH.
+    """
+
+    def factory(raw: bytes) -> ExchangeIO:
+        decoded = decode_v3_message(raw)
+        request_id = 42 if isinstance(decoded, Malformed) else decoded[0].request_id
+        response_raw = encode_v3_response(
+            msg_id=1,
+            request_id=request_id,
+            varbinds=[(after_oid, 0x82, b"")],
+            engine_id=_V3_ENGINE_ID,
+        )
+        return ExchangeIO(
+            attempts=(Attempt(sent_at=0.001, received_at=0.002),),
+            response=(0.002, response_raw),
+            strays=(),
+        )
+
+    return factory
 
 
 def test_walk_settings_v3_requires_user() -> None:
@@ -1006,6 +1071,31 @@ async def test_v3_walk_second_exchange_is_getbulk(
     second = exchanges[1]
     assert second.seq == 2
     assert second.request.pdu == Pdu.getbulk
+    _validate_all(records, record_validator)
+
+
+@pytest.mark.asyncio
+async def test_v3_getbulk_clean_path_no_violations(
+    record_validator: Draft202012Validator,
+) -> None:
+    """v3 GetBulk walk with echoed request_id produces zero violations on every exchange."""
+    transport = FakeTransport(
+        responses=[
+            _v3_discovery_exchange(),
+            _v3_response_exchange([_OID_A, _OID_B]),
+            _v3_eom_exchange(_OID_B),
+        ]
+    )
+    records = await _collect(transport, settings=WalkSettings(snmp_version="3", v3_user="probe"))
+
+    exchanges = [r for r in records if r.type == "exchange"]
+    # All three exchanges (discovery + 2 GetBulk) must be violation-free.
+    for exch in exchanges:
+        assert exch.violations is None or exch.violations == [], (
+            f"Unexpected violations on seq={exch.seq}: {exch.violations}"
+        )
+    assert isinstance(records[-1], Summary)
+    assert records[-1].end_reason == str(EndReason.COMPLETED)
     _validate_all(records, record_validator)
 
 
