@@ -53,10 +53,14 @@ from oidtrace.codec import (
     EXCEPTION_TAGS,
     Malformed,
     Message,
+    V3Params,
     Varbind,
     decode_message,
+    decode_v3_message,
     encode_getbulk,
     encode_getnext,
+    encode_v3_discovery,
+    encode_v3_getbulk,
 )
 from oidtrace.oid import Oid
 from oidtrace.records import (
@@ -100,7 +104,8 @@ class WalkSettings:
         time_budget_s: Optional wall-time budget in seconds; None = unlimited.
         give_up_after: Consecutive response-less exchanges before UNRESPONSIVE.
         community: SNMP v2c community string.
-        snmp_version: SNMP protocol version ("1" for GetNext, "2c" for GetBulk).
+        snmp_version: SNMP protocol version ("1" GetNext, "2c"/"3" GetBulk).
+        v3_user: SNMPv3 USM username; required when snmp_version == "3".
     """
 
     bulk_size: int = 10
@@ -110,11 +115,14 @@ class WalkSettings:
     time_budget_s: float | None = None
     give_up_after: int = 3
     community: bytes = b"public"
-    snmp_version: Literal["1", "2c"] = "2c"
+    snmp_version: Literal["1", "2c", "3"] = "2c"
+    v3_user: str | None = None
 
     def __post_init__(self) -> None:
-        if self.snmp_version == "2c" and self.bulk_size < 1:
+        if self.snmp_version in ("2c", "3") and self.bulk_size < 1:
             raise ValueError(f"bulk_size must be >= 1, got {self.bulk_size}")
+        if self.snmp_version == "3" and self.v3_user is None:
+            raise ValueError("v3_user is required when snmp_version == '3'")
 
 
 # ---------------------------------------------------------------------------
@@ -291,6 +299,70 @@ async def walk_records(  # noqa: PLR0912, PLR0913, PLR0915
     violation_counts: dict[Violation, int] = {}
     oids_seen_set: set[Oid] = set()  # distinct in-subtree OIDs
     end_reason: EndReason | None = None
+    v3_params: V3Params | None = None
+
+    # --- SNMPv3 discovery (recorded as seq=1; the GetBulk loop starts at seq=2) ---
+    if settings.snmp_version == "3":
+        assert settings.v3_user is not None  # enforced by WalkSettings.__post_init__
+        seq = 1
+        msg_id = random.randint(1, 2**31 - 1)
+        request_id = random.randint(1, 2**31 - 1)
+        raw_request = encode_v3_discovery(msg_id, request_id)
+        exchange_io = await transport.exchange(
+            raw_request,
+            timeout_s=settings.timeout_s,
+            retries=settings.retries,
+        )
+        log.debug(
+            "exchange seq=1 request_id=%d response=%s (v3 discovery)",
+            request_id,
+            "yes" if exchange_io.response is not None else "no",
+        )
+
+        discovery_attempts = [_transport_attempt_to_model(a) for a in exchange_io.attempts]
+        discovery_strays = [
+            tf.StrayResponse(received_at=tf.Reltime(round(ts, 6))) for ts, _ in exchange_io.strays
+        ]
+        discovery_request = tf.Request.model_validate(
+            {"pdu": "discovery", "request_id": request_id, "oids": []}
+        )
+
+        response_rid: int | None = None
+        response_es: int | None = None
+        response_ei: int | None = None
+        discovery_vbs: list[Varbind] = []
+        if exchange_io.response is not None:
+            decoded = decode_v3_message(exchange_io.response[1])
+            if isinstance(decoded, Malformed):
+                consecutive_no_response += 1
+            else:
+                msg, v3_params = decoded
+                response_rid = msg.request_id
+                response_es = msg.f1
+                response_ei = msg.f2
+                discovery_vbs = list(msg.varbinds)
+                consecutive_no_response = 0
+        else:
+            consecutive_no_response += 1
+
+        yield exchange_record(
+            seq=seq,
+            request=discovery_request,
+            attempts=discovery_attempts,
+            response_request_id=response_rid,
+            response_error_status=response_es,
+            response_error_index=response_ei,
+            varbinds=discovery_vbs,
+            strays=discovery_strays,
+            violations=[],
+            malformed=None,
+        )
+
+        # Without engine parameters we cannot encode any GetBulk — discovery
+        # failure (no response or malformed Report) terminates the walk.
+        if v3_params is None:
+            log.info("walk unresponsive: v3 discovery failed (no engine params)")
+            end_reason = EndReason.UNRESPONSIVE
 
     while end_reason is None:
         # --- Time budget check (at loop top — zero-exchange trace intentional) ---
@@ -321,6 +393,25 @@ async def walk_records(  # noqa: PLR0912, PLR0913, PLR0915
                     "request_id": request_id,
                     "oids": [tf.Oid(str(cursor))],
                 }
+            )
+        elif settings.snmp_version == "3":
+            assert v3_params is not None  # discovery succeeded or loop never starts
+            raw_request = encode_v3_getbulk(
+                msg_id=random.randint(1, 2**31 - 1),
+                request_id=request_id,
+                oid=cursor,
+                max_repetitions=settings.bulk_size,
+                engine_id=v3_params.engine_id,
+                engine_boots=v3_params.engine_boots,
+                engine_time=v3_params.engine_time,
+                username=v3_params.username,
+            )
+            request_model = tf.Request(
+                pdu=tf.Pdu("getbulk"),
+                request_id=request_id,
+                oids=[tf.Oid(str(cursor))],
+                non_repeaters=0,
+                max_repetitions=settings.bulk_size,
             )
         else:
             raw_request = encode_getbulk(
@@ -365,7 +456,11 @@ async def walk_records(  # noqa: PLR0912, PLR0913, PLR0915
 
         if exchange_io.response is not None:
             _received_at, raw_response = exchange_io.response
-            msg = decode_message(raw_response)
+            if settings.snmp_version == "3":
+                decoded = decode_v3_message(raw_response)
+                msg = decoded if isinstance(decoded, Malformed) else decoded[0]
+            else:
+                msg = decode_message(raw_response)
             if isinstance(msg, Malformed):
                 malformed_model = tf.Malformed(
                     error=msg.error,

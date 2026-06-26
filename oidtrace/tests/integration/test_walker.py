@@ -108,6 +108,51 @@ async def test_v1_clean_20_oid_walk(
 
 
 @pytest.mark.asyncio
+async def test_v3_clean_20_oid_walk(
+    emulator_factory: _EmuFactory,
+    record_validator: Draft202012Validator,
+    tmp_path: Path,
+) -> None:
+    """SNMPv3 noAuthNoPriv walk over a 20-OID emulator → COMPLETED, oids_seen==20.
+
+    The first exchange must be the discovery probe (pdu=discovery, seq=1).
+    """
+
+    device = EmuDevice.simple(n_oids=20)
+    trace_path = tmp_path / "trace.oidtrace.jsonl.gz"
+
+    async with emulator_factory(device) as (host, port):
+        end_reason = await run_walk(
+            host,
+            port,
+            settings=WalkSettings(snmp_version="3", v3_user="probe", bulk_size=10),
+            path=trace_path,
+        )
+
+    assert end_reason == EndReason.COMPLETED
+
+    records = list(read_trace(trace_path))
+    assert isinstance(records[0], Header)
+    assert records[0].snmp.version.value == "3"
+    assert isinstance(records[-1], Summary)
+
+    summary = records[-1]
+    assert summary.oids_seen == 20
+    assert summary.end_reason == str(EndReason.COMPLETED)
+
+    # First exchange is the discovery probe.
+    exchange_records = [r for r in records if isinstance(r, Exchange)]
+    assert exchange_records[0].seq == 1
+    assert exchange_records[0].request.pdu.value == "discovery"
+    assert exchange_records[0].request.oids == []
+    # The GetBulk loop starts at seq=2.
+    assert exchange_records[1].seq == 2
+    assert exchange_records[1].request.pdu.value == "getbulk"
+
+    _validate_all(records, record_validator)
+
+
+@pytest.mark.asyncio
 async def test_fixed_request_id_mismatch_completes(
     emulator_factory: _EmuFactory,
     record_validator: Draft202012Validator,

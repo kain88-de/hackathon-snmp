@@ -22,7 +22,11 @@ from traceformat.models import Attempt as TfAttempt
 from traceformat.models import Exchange, Pdu, Reltime, Request, Summary
 from traceformat.vocab import AttemptError, EndReason, EventKind, Violation
 
-from oidtrace.codec import encode_response
+from oidtrace.codec import (
+    PDU_REPORT,
+    encode_response,
+    encode_v3_response,
+)
 from oidtrace.oid import Oid
 from oidtrace.transport import Attempt, ExchangeIO
 from oidtrace.walker import (
@@ -874,6 +878,158 @@ async def test_v1_walk_exchange_pdu_is_getnext(
     assert exchange_records
     for exch in exchange_records:
         assert exch.request.pdu == Pdu.getnext
+    _validate_all(records, record_validator)
+
+
+# ---------------------------------------------------------------------------
+# SNMPv3 tests
+# ---------------------------------------------------------------------------
+
+_V3_ENGINE_ID = b"\x80\x00\x00\x00\x01testemu\x00"
+_USM_STATS_OID = Oid.from_str("1.3.6.1.6.3.15.1.1.4.0")
+
+
+def _v3_discovery_exchange() -> ExchangeIO:
+    """Discovery Report response carrying the engine id."""
+    raw = encode_v3_response(
+        msg_id=1,
+        request_id=42,
+        varbinds=[(_USM_STATS_OID, 0x41, b"\x00\x00\x00\x00")],
+        engine_id=_V3_ENGINE_ID,
+        pdu_tag=PDU_REPORT,
+    )
+    return ExchangeIO(
+        attempts=(Attempt(sent_at=0.001, received_at=0.002),),
+        response=(0.002, raw),
+        strays=(),
+    )
+
+
+def _v3_response_exchange(oids: list[Oid], request_id: int = 42) -> ExchangeIO:
+    """GetBulk Response over v3."""
+    varbinds = [(oid, _INTEGER_TAG, b"\x00\x00\x00\x01") for oid in oids]
+    raw = encode_v3_response(
+        msg_id=1,
+        request_id=request_id,
+        varbinds=varbinds,
+        engine_id=_V3_ENGINE_ID,
+    )
+    return ExchangeIO(
+        attempts=(Attempt(sent_at=0.001, received_at=0.002),),
+        response=(0.002, raw),
+        strays=(),
+    )
+
+
+def _v3_eom_exchange(after_oid: Oid, request_id: int = 42) -> ExchangeIO:
+    """EndOfMibView (tag 0x82) over v3."""
+    raw = encode_v3_response(
+        msg_id=1,
+        request_id=request_id,
+        varbinds=[(after_oid, 0x82, b"")],
+        engine_id=_V3_ENGINE_ID,
+    )
+    return ExchangeIO(
+        attempts=(Attempt(sent_at=0.001, received_at=0.002),),
+        response=(0.002, raw),
+        strays=(),
+    )
+
+
+def test_walk_settings_v3_requires_user() -> None:
+    """snmp_version='3' without v3_user raises ValueError mentioning v3_user."""
+    with pytest.raises(ValueError, match="v3_user"):
+        WalkSettings(snmp_version="3")
+
+
+def test_walk_settings_v3_bulk_size_validation() -> None:
+    """snmp_version='3' with bulk_size=0 raises ValueError mentioning bulk_size."""
+    with pytest.raises(ValueError, match="bulk_size"):
+        WalkSettings(snmp_version="3", v3_user="x", bulk_size=0)
+
+
+@pytest.mark.asyncio
+async def test_v3_walk_header_version_is_3(
+    record_validator: Draft202012Validator,
+) -> None:
+    """SNMPv3 walk: Header.snmp.version == '3'."""
+    transport = FakeTransport(
+        responses=[
+            _v3_discovery_exchange(),
+            _v3_eom_exchange(_START_OID),
+        ]
+    )
+    records = await _collect(transport, settings=WalkSettings(snmp_version="3", v3_user="probe"))
+
+    header = records[0]
+    assert header.type == "header"
+    assert header.snmp.version.value == "3"
+    _validate_all(records, record_validator)
+
+
+@pytest.mark.asyncio
+async def test_v3_walk_first_exchange_is_discovery(
+    record_validator: Draft202012Validator,
+) -> None:
+    """First exchange is the discovery probe: seq=1, pdu=discovery, oids=[]."""
+    transport = FakeTransport(
+        responses=[
+            _v3_discovery_exchange(),
+            _v3_eom_exchange(_START_OID),
+        ]
+    )
+    records = await _collect(transport, settings=WalkSettings(snmp_version="3", v3_user="probe"))
+
+    exchanges = [r for r in records if r.type == "exchange"]
+    first = exchanges[0]
+    assert first.seq == 1
+    assert first.request.pdu == Pdu.discovery
+    assert first.request.oids == []
+    _validate_all(records, record_validator)
+
+
+@pytest.mark.asyncio
+async def test_v3_walk_second_exchange_is_getbulk(
+    record_validator: Draft202012Validator,
+) -> None:
+    """Second exchange is the first GetBulk: seq=2, pdu=getbulk."""
+    transport = FakeTransport(
+        responses=[
+            _v3_discovery_exchange(),
+            _v3_response_exchange([_OID_A]),
+            _v3_eom_exchange(_OID_A),
+        ]
+    )
+    records = await _collect(transport, settings=WalkSettings(snmp_version="3", v3_user="probe"))
+
+    exchanges = [r for r in records if r.type == "exchange"]
+    second = exchanges[1]
+    assert second.seq == 2
+    assert second.request.pdu == Pdu.getbulk
+    _validate_all(records, record_validator)
+
+
+@pytest.mark.asyncio
+async def test_v3_discovery_no_response_unresponsive(
+    record_validator: Draft202012Validator,
+) -> None:
+    """Discovery no-response with give_up_after=1 → UNRESPONSIVE, no main loop."""
+    transport = FakeTransport(responses=[_no_response_exchange()])
+    records = await _collect(
+        transport,
+        settings=WalkSettings(
+            snmp_version="3", v3_user="probe", give_up_after=1, timeout_s=0.01, retries=0
+        ),
+    )
+
+    assert isinstance(records[-1], Summary)
+    summary = records[-1]
+    assert summary.end_reason == str(EndReason.UNRESPONSIVE)
+    # Only the discovery exchange (seq=1) was attempted.
+    exchanges = [r for r in records if r.type == "exchange"]
+    assert len(exchanges) == 1
+    assert exchanges[0].seq == 1
+    assert exchanges[0].request.pdu == Pdu.discovery
     _validate_all(records, record_validator)
 
 
