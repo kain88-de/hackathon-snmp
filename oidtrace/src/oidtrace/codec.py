@@ -483,6 +483,44 @@ def _read_pdu_f1_f2(pdu_body: bytes, j: int) -> tuple[int, int, int]:
     return f1, f2, j
 
 
+def _decode_pdu(pdu_body: bytes) -> tuple[int, int, int, tuple[Varbind, ...]]:
+    """Parse a PDU body and return (request_id, f1, f2, varbinds).
+
+    Shared by decode_message and decode_v3_message.
+
+    Raises:
+        ValueError: on any structural parse error.
+    """
+    j = 0
+
+    rid_tag, rid_body, j = read_tlv(pdu_body, j)
+    if rid_tag != _TAG_INTEGER:
+        raise ValueError(f"Expected request-id INTEGER tag 0x02, got 0x{rid_tag:02x}")
+    request_id = decode_int(rid_body)
+
+    f1, f2, j = _read_pdu_f1_f2(pdu_body, j)
+
+    vblist_tag, vblist_body, _j = read_tlv(pdu_body, j)
+    if vblist_tag != _TAG_SEQUENCE:
+        raise ValueError(f"Expected varbind-list SEQUENCE tag 0x30, got 0x{vblist_tag:02x}")
+
+    varbinds: list[Varbind] = []
+    k = 0
+    while k < len(vblist_body):
+        vb_tag, vb_body, k = read_tlv(vblist_body, k)
+        if vb_tag != _TAG_SEQUENCE:
+            raise ValueError(f"Expected varbind SEQUENCE tag 0x30, got 0x{vb_tag:02x}")
+        m = 0
+        oid_tag, oid_body, m = read_tlv(vb_body, m)
+        if oid_tag != _TAG_OID:
+            raise ValueError(f"Expected OID tag 0x06, got 0x{oid_tag:02x}")
+        oid = decode_oid(oid_body)
+        val_tag, val_body, _m = read_tlv(vb_body, m)
+        varbinds.append(Varbind(oid=oid, tag=val_tag, value=val_body))
+
+    return request_id, f1, f2, tuple(varbinds)
+
+
 def decode_message(raw: bytes) -> Message | Malformed:
     """Tolerantly decode a raw SNMP datagram (v1 or v2c).
 
@@ -528,41 +566,135 @@ def decode_message(raw: bytes) -> Message | Malformed:
                 f"Expected context-constructed PDU tag (0xA0-0xBF), got 0x{pdu_tag:02x}"
             )
 
-        j = 0
-
-        rid_tag, rid_body, j = read_tlv(pdu_body, j)
-        if rid_tag != _TAG_INTEGER:
-            raise ValueError(f"Expected request-id INTEGER tag 0x02, got 0x{rid_tag:02x}")
-        request_id = decode_int(rid_body)
-
-        f1, f2, j = _read_pdu_f1_f2(pdu_body, j)
-
-        vblist_tag, vblist_body, _j = read_tlv(pdu_body, j)
-        if vblist_tag != _TAG_SEQUENCE:
-            raise ValueError(f"Expected varbind-list SEQUENCE tag 0x30, got 0x{vblist_tag:02x}")
-
-        varbinds: list[Varbind] = []
-        k = 0
-        while k < len(vblist_body):
-            vb_tag, vb_body, k = read_tlv(vblist_body, k)
-            if vb_tag != _TAG_SEQUENCE:
-                raise ValueError(f"Expected varbind SEQUENCE tag 0x30, got 0x{vb_tag:02x}")
-            m = 0
-            oid_tag, oid_body, m = read_tlv(vb_body, m)
-            if oid_tag != _TAG_OID:
-                raise ValueError(f"Expected OID tag 0x06, got 0x{oid_tag:02x}")
-            oid = decode_oid(oid_body)
-            val_tag, val_body, _m = read_tlv(vb_body, m)
-            varbinds.append(Varbind(oid=oid, tag=val_tag, value=val_body))
+        request_id, f1, f2, varbinds = _decode_pdu(pdu_body)
 
         return Message(
             pdu_tag=pdu_tag,
             request_id=request_id,
             f1=f1,
             f2=f2,
-            varbinds=tuple(varbinds),
+            varbinds=varbinds,
             raw=raw,
         )
+
+    except ValueError as exc:
+        return Malformed(raw=raw, error=str(exc))
+
+
+def decode_v3_message(raw: bytes) -> tuple[Message, V3Params] | Malformed:  # noqa: PLR0912, PLR0915
+    """Tolerantly decode a raw SNMPv3 (noAuthNoPriv) datagram.
+
+    Returns a (Message, V3Params) tuple on success, or Malformed if the bytes
+    cannot be parsed.  Never raises: all parse errors are caught and returned
+    as Malformed.
+
+    Structure parsed:
+        SEQUENCE {
+            INTEGER (version: must be 3)
+            SEQUENCE (msgGlobalData) {
+                INTEGER (msgID)
+                INTEGER (msgMaxSize — ignored)
+                OCTET STRING (msgFlags — ignored)
+                INTEGER (msgSecurityModel — ignored)
+            }
+            OCTET STRING (USM params containing a BER SEQUENCE) {
+                SEQUENCE {
+                    OCTET STRING (engineID)
+                    INTEGER (engineBoots)
+                    INTEGER (engineTime)
+                    OCTET STRING (username — ignored)
+                    OCTET STRING (authParams — ignored)
+                    OCTET STRING (privParams — ignored)
+                }
+            }
+            SEQUENCE (ScopedPDU — tag must be 0x30; 0x04 means encrypted) {
+                OCTET STRING (contextEngineID — ignored)
+                OCTET STRING (contextName — ignored)
+                PDU
+            }
+        }
+    """
+    try:
+        outer_tag, outer_body, _ = read_tlv(raw, 0)
+        if outer_tag != _TAG_SEQUENCE:
+            raise ValueError(f"Expected outer SEQUENCE tag 0x30, got 0x{outer_tag:02x}")
+
+        i = 0
+
+        # version must be 3
+        ver_tag, ver_body, i = read_tlv(outer_body, i)
+        if ver_tag != _TAG_INTEGER:
+            raise ValueError(f"Expected version INTEGER tag 0x02, got 0x{ver_tag:02x}")
+        version = decode_int(ver_body)
+        if version != 3:  # noqa: PLR2004
+            raise ValueError(f"Expected SNMPv3 version 3, got {version}")
+
+        # msgGlobalData SEQUENCE
+        gd_tag, gd_body, i = read_tlv(outer_body, i)
+        if gd_tag != _TAG_SEQUENCE:
+            raise ValueError(f"Expected msgGlobalData SEQUENCE tag 0x30, got 0x{gd_tag:02x}")
+        gd_i = 0
+        msg_id_tag, msg_id_body, gd_i = read_tlv(gd_body, gd_i)
+        if msg_id_tag != _TAG_INTEGER:
+            raise ValueError(f"Expected msgID INTEGER tag 0x02, got 0x{msg_id_tag:02x}")
+        msg_id = decode_int(msg_id_body)
+        # skip msgMaxSize, msgFlags, msgSecurityModel
+
+        # USM OCTET STRING containing BER-encoded SEQUENCE
+        usm_os_tag, usm_os_body, i = read_tlv(outer_body, i)
+        if usm_os_tag != _TAG_OCTET_STRING:
+            raise ValueError(f"Expected USM OCTET STRING tag 0x04, got 0x{usm_os_tag:02x}")
+        usm_tag, usm_body, _ = read_tlv(usm_os_body, 0)
+        if usm_tag != _TAG_SEQUENCE:
+            raise ValueError(f"Expected USM inner SEQUENCE tag 0x30, got 0x{usm_tag:02x}")
+        u = 0
+        eid_tag, eid_body, u = read_tlv(usm_body, u)
+        if eid_tag != _TAG_OCTET_STRING:
+            raise ValueError(f"Expected engineID OCTET STRING tag 0x04, got 0x{eid_tag:02x}")
+        engine_id = eid_body
+        boots_tag, boots_body, u = read_tlv(usm_body, u)
+        if boots_tag != _TAG_INTEGER:
+            raise ValueError(f"Expected engineBoots INTEGER tag 0x02, got 0x{boots_tag:02x}")
+        engine_boots = decode_int(boots_body)
+        time_tag, time_body, _u = read_tlv(usm_body, u)
+        if time_tag != _TAG_INTEGER:
+            raise ValueError(f"Expected engineTime INTEGER tag 0x02, got 0x{time_tag:02x}")
+        engine_time = decode_int(time_body)
+
+        # ScopedPDU — must be plain SEQUENCE (0x30); 0x04 = encrypted (Priv)
+        scoped_tag, scoped_body, _i = read_tlv(outer_body, i)
+        if scoped_tag == _TAG_OCTET_STRING:
+            raise ValueError("ScopedPDU is encrypted (Priv); noAuthNoPriv decoder cannot decrypt")
+        if scoped_tag != _TAG_SEQUENCE:
+            raise ValueError(f"Expected ScopedPDU SEQUENCE tag 0x30, got 0x{scoped_tag:02x}")
+
+        # Skip contextEngineID and contextName, then parse the PDU
+        s = 0
+        _, _, s = read_tlv(scoped_body, s)  # contextEngineID
+        _, _, s = read_tlv(scoped_body, s)  # contextName
+        pdu_tag, pdu_body, _s = read_tlv(scoped_body, s)
+        if (pdu_tag & 0xE0) != 0xA0:  # noqa: PLR2004
+            raise ValueError(
+                f"Expected context-constructed PDU tag (0xA0-0xBF), got 0x{pdu_tag:02x}"
+            )
+
+        request_id, f1, f2, varbinds = _decode_pdu(pdu_body)
+
+        params = V3Params(
+            engine_id=engine_id,
+            engine_boots=engine_boots,
+            engine_time=engine_time,
+            msg_id=msg_id,
+        )
+        msg = Message(
+            pdu_tag=pdu_tag,
+            request_id=request_id,
+            f1=f1,
+            f2=f2,
+            varbinds=varbinds,
+            raw=raw,
+        )
+        return msg, params
 
     except ValueError as exc:
         return Malformed(raw=raw, error=str(exc))
