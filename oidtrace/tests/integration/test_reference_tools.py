@@ -398,7 +398,7 @@ async def test_snmpwalk_v3_authnopriv(
     async with emulator_factory(
         EmuDevice.simple(n_oids=device_size, auth_users={b"authuser": ("MD5", kul)})
     ) as (host, port):
-        loop = asyncio.get_event_loop()
+        loop = asyncio.get_running_loop()
         proc_result = await loop.run_in_executor(
             None,
             lambda: subprocess.run(
@@ -469,7 +469,7 @@ async def test_snmpwalk_v3_authnopriv_crosswalk(
         )
 
         # Run snmpwalk -v3 authNoPriv against the same live emulator
-        loop = asyncio.get_event_loop()
+        loop = asyncio.get_running_loop()
         proc_result = await loop.run_in_executor(
             None,
             lambda: subprocess.run(
@@ -511,13 +511,27 @@ async def test_snmpwalk_v3_authnopriv_crosswalk(
     # Parse our trace: exchange varbinds in order, excluding EndOfMibView
     # Skip the discovery exchange (pdu == "discovery")
     our_oids: list[str] = []
+    getbulk_exchanges_with_response = 0
+    getbulk_exchanges_total = 0
     for record in read_trace(trace_path):
-        if record.type == "exchange" and record.response is not None:
+        if record.type == "exchange":
             if record.request.pdu.value == "discovery":
                 continue
-            for vb in record.response.varbinds:
-                if vb.vtype != "EndOfMibView":
-                    our_oids.append(vb.oid.root)
+            getbulk_exchanges_total += 1
+            if record.response is not None:
+                getbulk_exchanges_with_response += 1
+                for vb in record.response.varbinds:
+                    if vb.vtype != "EndOfMibView":
+                        our_oids.append(vb.oid.root)
+
+    # Verify authenticated exchange: if auth_params were wrong the emulator would
+    # silently drop our requests. All GetBulk exchanges must have received a response.
+    assert getbulk_exchanges_total > 0, "No GetBulk exchanges in trace — walk did not start"
+    assert getbulk_exchanges_with_response == getbulk_exchanges_total, (
+        f"Only {getbulk_exchanges_with_response}/{getbulk_exchanges_total} GetBulk exchanges "
+        f"got responses — authenticated exchange not verified "
+        f"(emulator drops unauthenticated requests)"
+    )
 
     # Trap #13: our sequence is a prefix of snmpwalk's
     assert our_oids == ref_oids[: len(our_oids)], (
@@ -535,10 +549,11 @@ async def test_snmpwalk_v3_authnopriv_crosswalk(
 @pytest.mark.asyncio
 async def test_oidtrace_v3_authnopriv_real_ap(tmp_path: Path) -> None:
     """Smoke test: oidtrace walk v3 against real AP with authNoPriv returns completed trace."""
+    _require_tool("snmpwalk")
     # Check that the AP is reachable before attempting the walk
-    loop = asyncio.get_event_loop()
+    loop = asyncio.get_running_loop()
     try:
-        await loop.run_in_executor(
+        ping_result = await loop.run_in_executor(
             None,
             lambda: subprocess.run(
                 ["ping", "-c", "1", "-W", "1", _AP_HOST],
@@ -549,6 +564,8 @@ async def test_oidtrace_v3_authnopriv_real_ap(tmp_path: Path) -> None:
         )
     except (OSError, subprocess.TimeoutExpired):
         pytest.skip(f"Real AP {_AP_HOST} not reachable")
+    if ping_result.returncode != 0:
+        pytest.skip(f"AP {_AP_HOST} unreachable")
 
     # Set up trace file path
     trace_path = tmp_path / "real_ap.oidtrace.jsonl.gz"
