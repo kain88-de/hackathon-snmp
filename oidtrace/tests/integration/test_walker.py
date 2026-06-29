@@ -17,7 +17,7 @@ from oidtrace.auth import password_to_key
 from oidtrace.oid import Oid
 from oidtrace.tracefile import read_trace
 from oidtrace.walker import WalkSettings, run_walk
-from tests.support.emulator import _EMU_ENGINE_ID, EmuDevice, EndOfMib, Quirks
+from tests.support.emulator import EMU_ENGINE_ID, EmuDevice, EndOfMib, Quirks
 
 if TYPE_CHECKING:
     from pathlib import Path
@@ -395,7 +395,7 @@ async def test_v3_authnopriv_20_oid_walk(
     tmp_path: Path,
 ) -> None:
     """SNMPv3 authNoPriv walk over a 20-OID auth emulator → COMPLETED, oids_seen==20."""
-    kul = password_to_key(b"testpass1", _EMU_ENGINE_ID, "MD5")
+    kul = password_to_key(b"testpass1", EMU_ENGINE_ID, "MD5")
     device = EmuDevice.simple(n_oids=20, auth_users={b"authuser": ("MD5", kul)})
     trace_path = tmp_path / "trace.oidtrace.jsonl.gz"
 

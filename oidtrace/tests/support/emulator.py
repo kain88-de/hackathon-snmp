@@ -30,7 +30,7 @@ from oidtrace.codec import (
 )
 from oidtrace.oid import Oid
 
-_EMU_ENGINE_ID: bytes = b"\x80\x00\x00\x00\x01testemu\x00"
+EMU_ENGINE_ID: bytes = b"\x80\x00\x00\x00\x01testemu\x00"
 _USM_STATS_UNKNOWN_USER_NAMES = Oid.from_str("1.3.6.1.6.3.15.1.1.4.0")
 
 
@@ -258,7 +258,7 @@ class EmuProtocol(asyncio.DatagramProtocol):
                 msg_id=params.msg_id,
                 request_id=msg.request_id,
                 varbinds=[(_USM_STATS_UNKNOWN_USER_NAMES, 0x41, b"\x00\x00\x00\x00")],
-                engine_id=_EMU_ENGINE_ID,
+                engine_id=EMU_ENGINE_ID,
                 username=params.username,
                 pdu_tag=PDU_REPORT,
             )
@@ -283,7 +283,7 @@ class EmuProtocol(asyncio.DatagramProtocol):
                 msg_id=params.msg_id,
                 request_id=msg.request_id,
                 varbinds=varbinds,
-                engine_id=_EMU_ENGINE_ID,
+                engine_id=EMU_ENGINE_ID,
                 username=params.username,
                 error_status=0 if idx < len(tree) else 2,
                 auth=needs_auth,
@@ -310,7 +310,7 @@ class EmuProtocol(asyncio.DatagramProtocol):
                 msg_id=params.msg_id,
                 request_id=msg.request_id,
                 varbinds=varbinds,
-                engine_id=_EMU_ENGINE_ID,
+                engine_id=EMU_ENGINE_ID,
                 username=params.username,
                 auth=needs_auth,
             )

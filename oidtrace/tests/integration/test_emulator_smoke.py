@@ -28,7 +28,7 @@ from oidtrace.codec import (
     verify_auth,
 )
 from oidtrace.oid import Oid
-from tests.support.emulator import _EMU_ENGINE_ID, EmuDevice, Quirks
+from tests.support.emulator import EMU_ENGINE_ID, EmuDevice, Quirks
 
 _EmuFactory = Callable[..., AbstractAsyncContextManager[tuple[str, int]]]
 
@@ -272,7 +272,7 @@ async def test_v3_getbulk_after_discovery(emulator_factory: _EmuFactory) -> None
 async def test_v3_authnopriv_getbulk_correct_key(emulator_factory: _EmuFactory) -> None:
     """Auth GetBulk with correct MAC returns a signed response."""
     start = Oid.from_str("1.3.6.1.2.1.2.2.1")
-    kul = password_to_key(b"testpass1", _EMU_ENGINE_ID, "MD5")
+    kul = password_to_key(b"testpass1", EMU_ENGINE_ID, "MD5")
 
     async with emulator_factory(
         EmuDevice.simple(n_oids=10, auth_users={b"authuser": ("MD5", kul)})
@@ -318,8 +318,8 @@ async def test_v3_authnopriv_getbulk_wrong_key_silently_dropped(
 ) -> None:
     """Auth GetBulk signed with wrong key is silently dropped (no response)."""
     start = Oid.from_str("1.3.6.1.2.1.2.2.1")
-    kul = password_to_key(b"testpass1", _EMU_ENGINE_ID, "MD5")
-    wrong_kul = password_to_key(b"wrongpass!", _EMU_ENGINE_ID, "MD5")
+    kul = password_to_key(b"testpass1", EMU_ENGINE_ID, "MD5")
+    wrong_kul = password_to_key(b"wrongpass!", EMU_ENGINE_ID, "MD5")
 
     async with emulator_factory(
         EmuDevice.simple(n_oids=10, auth_users={b"authuser": ("MD5", kul)})

@@ -16,7 +16,7 @@ from oidtrace.auth import password_to_key
 from oidtrace.cli import main
 from oidtrace.tracefile import read_trace
 from tests.support.emulator import (
-    _EMU_ENGINE_ID,
+    EMU_ENGINE_ID,
     EmuDevice,
     EmuProtocol,
     Quirks,
@@ -38,7 +38,7 @@ def _run_emulator_on_thread(
     port_holder: list[int],
     state: dict[str, object],
     state_ready: threading.Event,
-    quirks: object = None,
+    device: EmuDevice,
 ) -> None:
     """Start an asyncio loop on a daemon thread, bind the emulator, set port_ready."""
     loop = asyncio.new_event_loop()
@@ -49,7 +49,6 @@ def _run_emulator_on_thread(
         state["stop"] = stop
         state_ready.set()
 
-        device = EmuDevice.simple(n_oids=20, quirks=quirks if isinstance(quirks, Quirks) else None)
         transport, _ = await loop.create_datagram_endpoint(
             lambda: EmuProtocol(device),
             local_addr=("127.0.0.1", 0),
@@ -67,13 +66,17 @@ def _run_emulator_on_thread(
 class EmulatorThread:
     """Context manager that starts an emulator on a daemon thread and tears it down."""
 
-    def __init__(self, quirks: object = None) -> None:
+    def __init__(self, quirks: object = None, auth_users: object = None) -> None:
         self._port_ready: threading.Event = threading.Event()
         self._port_holder: list[int] = []
         self._state: dict[str, object] = {}
         self._state_ready: threading.Event = threading.Event()
         self._thread: threading.Thread | None = None
-        self._quirks = quirks
+        self._device = EmuDevice.simple(
+            n_oids=20,
+            quirks=quirks if isinstance(quirks, Quirks) else None,
+            auth_users=auth_users if isinstance(auth_users, dict) else None,
+        )
 
     def __enter__(self) -> tuple[str, int]:
         self._thread = threading.Thread(
@@ -83,7 +86,7 @@ class EmulatorThread:
                 self._port_holder,
                 self._state,
                 self._state_ready,
-                self._quirks,
+                self._device,
             ),
             daemon=True,
         )
@@ -559,51 +562,15 @@ def test_v3_walk_exit_0_and_trace_file(tmp_path: Path) -> None:
 
 def test_v3_walk_with_auth_proto_and_pass_against_auth_emulator(tmp_path: Path) -> None:
     """v3 walk with --auth-proto MD5 --auth-pass against auth emulator: exit 0, trace written."""
-    # Create an emulator with an authenticated user
     auth_pass = "testpass1"
-    auth_user = b"authuser"
-    kul = password_to_key(auth_pass.encode(), _EMU_ENGINE_ID, "MD5")
+    kul = password_to_key(auth_pass.encode(), EMU_ENGINE_ID, "MD5")
 
-    port_ready: threading.Event = threading.Event()
-    port_holder: list[int] = []
-    state: dict[str, object] = {}
-    state_ready: threading.Event = threading.Event()
-
-    def _serve_with_auth() -> None:
-        loop = asyncio.new_event_loop()
-
-        async def _run() -> None:
-            stop = asyncio.Event()
-            state["loop"] = loop
-            state["stop"] = stop
-            state_ready.set()
-
-            device = EmuDevice.simple(n_oids=20, auth_users={auth_user: ("MD5", kul)})
-            transport, _ = await loop.create_datagram_endpoint(
-                lambda: EmuProtocol(device),
-                local_addr=("127.0.0.1", 0),
-            )
-            sock = transport.get_extra_info("sockname")
-            port_holder.append(sock[1])
-            port_ready.set()
-            await stop.wait()
-            transport.close()
-
-        loop.run_until_complete(_run())
-        loop.close()
-
-    thread = threading.Thread(target=_serve_with_auth, daemon=True)
-    thread.start()
-    port_ready.wait(timeout=5.0)
-    assert port_holder, "Emulator did not bind a port in time"
-    port = port_holder[0]
-
-    try:
+    with EmulatorThread(auth_users={b"authuser": ("MD5", kul)}) as (host, port):
         ret = main(
             [
                 "walk",
                 "v3",
-                "127.0.0.1",
+                host,
                 "--port",
                 str(port),
                 "--out",
@@ -621,15 +588,9 @@ def test_v3_walk_with_auth_proto_and_pass_against_auth_emulator(tmp_path: Path) 
             ]
         )
 
-        assert ret == 0, f"Expected exit 0, got {ret}"
-        trace_files = list(tmp_path.glob("*.oidtrace.jsonl.gz"))
-        assert len(trace_files) == 1, f"Expected 1 trace file, found {trace_files}"
-    finally:
-        loop = state.get("loop")
-        stop_event = state.get("stop")
-        if isinstance(loop, asyncio.AbstractEventLoop) and isinstance(stop_event, asyncio.Event):
-            loop.call_soon_threadsafe(stop_event.set)
-        thread.join(timeout=2.0)
+    assert ret == 0, f"Expected exit 0, got {ret}"
+    trace_files = list(tmp_path.glob("*.oidtrace.jsonl.gz"))
+    assert len(trace_files) == 1, f"Expected 1 trace file, found {trace_files}"
 
 
 def test_v3_walk_no_auth_flags_unchanged(tmp_path: Path) -> None:

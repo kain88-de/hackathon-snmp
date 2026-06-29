@@ -23,7 +23,7 @@ import pytest
 from oidtrace.auth import password_to_key
 from oidtrace.tracefile import read_trace
 from oidtrace.walker import WalkSettings, run_walk
-from tests.support.emulator import _EMU_ENGINE_ID, EmuDevice
+from tests.support.emulator import EMU_ENGINE_ID, EmuDevice
 
 if TYPE_CHECKING:
     from pathlib import Path
@@ -385,7 +385,7 @@ async def test_snmpwalk_v3_authnopriv(
     snmpwalk = _require_tool("snmpwalk")
 
     device_size = 20
-    kul = password_to_key(b"testpass1", _EMU_ENGINE_ID, "MD5")
+    kul = password_to_key(b"testpass1", EMU_ENGINE_ID, "MD5")
 
     async with emulator_factory(
         EmuDevice.simple(n_oids=device_size, auth_users={b"authuser": ("MD5", kul)})
