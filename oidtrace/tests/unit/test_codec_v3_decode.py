@@ -12,6 +12,7 @@ from __future__ import annotations
 
 import pytest
 
+from oidtrace.auth import password_to_key
 from oidtrace.ber import read_tlv
 from oidtrace.codec import (
     PDU_GET,
@@ -20,6 +21,7 @@ from oidtrace.codec import (
     PDU_RESPONSE,
     Malformed,
     Message,
+    authenticate_msg,
     decode_message,
     decode_v3_message,
     encode_getbulk,
@@ -28,6 +30,9 @@ from oidtrace.codec import (
     encode_v3_response,
 )
 from oidtrace.oid import Oid
+
+_ENGINE_ID = b"\x80\x00\x1f\x88\x04\x01\x02\x03\x04\x05\x06\x07"
+_KUL = password_to_key(b"authpass", _ENGINE_ID, "MD5")
 
 _OID = Oid.from_str("1.3.6.1.2.1.1.1.0")
 _ENG_ID = b"\x80\x00\x1f\x88\x04"
@@ -257,3 +262,28 @@ def test_regression_decode_message_getbulk() -> None:
     assert isinstance(result, Message)
     assert result.pdu_tag == PDU_GETBULK
     assert result.request_id == 42
+
+
+# ---------------------------------------------------------------------------
+# auth_params field in V3Params
+# ---------------------------------------------------------------------------
+
+
+def test_decode_v3_authenticated_message_has_nonzero_auth_params() -> None:
+    """decode_v3_message of a signed message returns 12 non-zero auth_params bytes."""
+    raw = encode_v3_getbulk(1, 42, _OID, 7, _ENGINE_ID, 1, 0, b"user", auth=True)
+    signed = authenticate_msg(raw, _KUL, "MD5")
+    result = decode_v3_message(signed)
+    assert isinstance(result, tuple)
+    _msg, params = result
+    assert len(params.auth_params) == 12
+    assert params.auth_params != b"\x00" * 12
+
+
+def test_decode_v3_discovery_auth_params_empty() -> None:
+    """decode_v3_message of a discovery probe returns empty auth_params."""
+    raw = encode_v3_discovery(1, 42)
+    result = decode_v3_message(raw)
+    assert isinstance(result, tuple)
+    _msg, params = result
+    assert params.auth_params == b""

@@ -9,16 +9,24 @@ from __future__ import annotations
 
 import pytest
 
+from oidtrace.auth import password_to_key
 from oidtrace.ber import encode_oid
 from oidtrace.codec import (
+    _AUTH_PARAMS_PLACEHOLDER,
     PDU_GET,
     PDU_REPORT,
     V3Params,
+    authenticate_msg,
+    decode_v3_message,
     encode_v3_discovery,
     encode_v3_getbulk,
     encode_v3_response,
+    verify_auth,
 )
 from oidtrace.oid import Oid
+
+_ENGINE_ID = b"\x80\x00\x1f\x88\x04\x01\x02\x03\x04\x05\x06\x07"
+_KUL = password_to_key(b"authpass", _ENGINE_ID, "MD5")
 
 # ---------------------------------------------------------------------------
 # Test fixtures
@@ -169,3 +177,97 @@ def test_encode_v3_response_pdu_tag_report() -> None:
     """encode_v3_response(pdu_tag=PDU_REPORT) uses tag 0xA8."""
     raw = encode_v3_response(1, 42, [], b"engine", pdu_tag=PDU_REPORT)
     assert 0xA8 in raw
+
+
+# ---------------------------------------------------------------------------
+# auth=True: msgFlags byte 0x05
+# ---------------------------------------------------------------------------
+
+
+def test_encode_v3_getbulk_auth_true_msgflags_0x05() -> None:
+    """encode_v3_getbulk(..., auth=True) sets msgFlags to 0x05 (reportable+auth)."""
+    raw = encode_v3_getbulk(1, 42, _OID_1_3_6_1, 7, _ENGINE_ID, 1, 0, b"user", auth=True)
+    assert b"\x04\x01\x05" in raw
+
+
+def test_encode_v3_getbulk_auth_false_msgflags_0x04() -> None:
+    """encode_v3_getbulk(..., auth=False) keeps msgFlags 0x04 (regression)."""
+    raw = encode_v3_getbulk(1, 42, _OID_1_3_6_1, 7, _ENGINE_ID, 1, 0, b"user", auth=False)
+    assert b"\x04\x01\x04" in raw
+
+
+# ---------------------------------------------------------------------------
+# auth=True: 12-zero placeholder present in USM params
+# ---------------------------------------------------------------------------
+
+
+def test_encode_v3_getbulk_auth_true_has_placeholder() -> None:
+    """encode_v3_getbulk(..., auth=True) embeds 12-zero auth placeholder."""
+    raw = encode_v3_getbulk(1, 42, _OID_1_3_6_1, 7, _ENGINE_ID, 1, 0, b"user", auth=True)
+    assert _AUTH_PARAMS_PLACEHOLDER in raw
+
+
+def test_encode_v3_response_auth_true_has_placeholder() -> None:
+    """encode_v3_response(..., auth=True) embeds 12-zero auth placeholder."""
+    raw = encode_v3_response(1, 42, [], _ENGINE_ID, auth=True)
+    assert _AUTH_PARAMS_PLACEHOLDER in raw
+
+
+# ---------------------------------------------------------------------------
+# authenticate_msg: same length, placeholder replaced, MAC non-zero
+# ---------------------------------------------------------------------------
+
+
+def test_authenticate_msg_same_length() -> None:
+    """authenticate_msg returns bytes of same length as input."""
+    raw = encode_v3_getbulk(1, 42, _OID_1_3_6_1, 7, _ENGINE_ID, 1, 0, b"user", auth=True)
+    result = authenticate_msg(raw, _KUL, "MD5")
+    assert len(result) == len(raw)
+
+
+def test_authenticate_msg_mac_slot_nonzero() -> None:
+    """authenticate_msg replaces the placeholder with a non-zero MAC."""
+    raw = encode_v3_getbulk(1, 42, _OID_1_3_6_1, 7, _ENGINE_ID, 1, 0, b"user", auth=True)
+    result = authenticate_msg(raw, _KUL, "MD5")
+    # placeholder should be gone
+    assert _AUTH_PARAMS_PLACEHOLDER not in result
+
+
+# ---------------------------------------------------------------------------
+# verify_auth
+# ---------------------------------------------------------------------------
+
+
+def test_verify_auth_correct_kul_returns_true() -> None:
+    """verify_auth returns True for a correctly signed message."""
+    raw = encode_v3_getbulk(1, 42, _OID_1_3_6_1, 7, _ENGINE_ID, 1, 0, b"user", auth=True)
+    signed = authenticate_msg(raw, _KUL, "MD5")
+    result = decode_v3_message(signed)
+    assert isinstance(result, tuple)
+    _msg, params = result
+    assert verify_auth(signed, params.auth_params, _KUL, "MD5") is True
+
+
+def test_verify_auth_wrong_kul_returns_false() -> None:
+    """verify_auth returns False when the key is wrong."""
+    raw = encode_v3_getbulk(1, 42, _OID_1_3_6_1, 7, _ENGINE_ID, 1, 0, b"user", auth=True)
+    signed = authenticate_msg(raw, _KUL, "MD5")
+    wrong_kul = password_to_key(b"wrongpass", _ENGINE_ID, "MD5")
+    result = decode_v3_message(signed)
+    assert isinstance(result, tuple)
+    _msg, params = result
+    assert verify_auth(signed, params.auth_params, wrong_kul, "MD5") is False
+
+
+def test_verify_auth_tampered_returns_false() -> None:
+    """verify_auth returns False when the message is tampered after signing."""
+    raw = encode_v3_getbulk(1, 42, _OID_1_3_6_1, 7, _ENGINE_ID, 1, 0, b"user", auth=True)
+    signed = bytearray(authenticate_msg(raw, _KUL, "MD5"))
+    # Flip the last byte of the engine_id in the message (safe: changes content, not structure)
+    # Find the engine_id bytes and flip one byte inside the engine_id value
+    engine_id_pos = bytes(signed).index(_ENGINE_ID)
+    signed[engine_id_pos] ^= 0x01
+    result = decode_v3_message(bytes(signed))
+    assert isinstance(result, tuple)
+    _msg, params = result
+    assert verify_auth(bytes(signed), params.auth_params, _KUL, "MD5") is False

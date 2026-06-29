@@ -31,9 +31,11 @@ Response PDU (tag 0xA2):
 
 from __future__ import annotations
 
+import hmac
 from dataclasses import dataclass
-from typing import TYPE_CHECKING
+from typing import TYPE_CHECKING, Literal
 
+from oidtrace.auth import compute_mac
 from oidtrace.ber import decode_int, decode_oid, encode_int, encode_oid, read_tlv, tlv
 
 if TYPE_CHECKING:
@@ -75,6 +77,9 @@ _TAG_NAMES: dict[int, str] = {
 }
 
 
+_AUTH_PARAMS_PLACEHOLDER: bytes = b"\x04\x0c" + b"\x00" * 12
+
+
 @dataclass(frozen=True, slots=True)
 class V3Params:
     """Extracted USM parameters from a decoded SNMPv3 message.
@@ -85,6 +90,7 @@ class V3Params:
         engine_time: The authoritativeEngineTime value.
         msg_id: The msgID from msgGlobalData (needed to echo in response PDUs).
         username: The msgSecurityParameters username (needed to echo in responses).
+        auth_params: The msgAuthenticationParameters (12 bytes if auth, empty otherwise).
     """
 
     engine_id: bytes
@@ -92,6 +98,7 @@ class V3Params:
     engine_time: int
     msg_id: int
     username: bytes = b""
+    auth_params: bytes = b""
 
 
 @dataclass(frozen=True, slots=True)
@@ -249,23 +256,21 @@ def encode_response(  # noqa: PLR0913
     )
 
 
-def _encode_msg_global_data(msg_id: int) -> bytes:
+def _encode_msg_global_data(msg_id: int, auth: bool = False) -> bytes:
     """Encode SNMPv3 msgGlobalData SEQUENCE.
 
     Structure (RFC 3412):
         SEQUENCE {
             INTEGER msgID
             INTEGER msgMaxSize (fixed 65507)
-            OCTET STRING msgFlags (0x04 = reportable, noAuth, noPriv)
+            OCTET STRING msgFlags (0x05 if auth, else 0x04 = reportable, noAuth, noPriv)
             INTEGER msgSecurityModel (3 = USM)
         }
     """
+    msg_flags = bytes([0x05]) if auth else bytes([0x04])
     return tlv(
         _TAG_SEQUENCE,
-        encode_int(msg_id)
-        + encode_int(65507)
-        + tlv(_TAG_OCTET_STRING, bytes([0x04]))
-        + encode_int(3),
+        encode_int(msg_id) + encode_int(65507) + tlv(_TAG_OCTET_STRING, msg_flags) + encode_int(3),
     )
 
 
@@ -274,6 +279,7 @@ def _encode_usm_params(
     engine_boots: int,
     engine_time: int,
     username: bytes,
+    auth_params: bytes = b"",
 ) -> bytes:
     """Encode SNMPv3 USM security parameters (RFC 3414).
 
@@ -285,7 +291,7 @@ def _encode_usm_params(
             INTEGER msgAuthoritativeEngineBoots
             INTEGER msgAuthoritativeEngineTime
             OCTET STRING msgUserName
-            OCTET STRING msgAuthenticationParameters (empty = noAuth)
+            OCTET STRING msgAuthenticationParameters (empty = noAuth, 12 zeros = placeholder)
             OCTET STRING msgPrivacyParameters (empty = noPriv)
         }
     """
@@ -295,7 +301,7 @@ def _encode_usm_params(
         + encode_int(engine_boots)
         + encode_int(engine_time)
         + tlv(_TAG_OCTET_STRING, username)
-        + tlv(_TAG_OCTET_STRING, b"")
+        + tlv(_TAG_OCTET_STRING, auth_params)
         + tlv(_TAG_OCTET_STRING, b""),
     )
     return tlv(_TAG_OCTET_STRING, usm_sequence)
@@ -315,6 +321,112 @@ def _encode_scoped_pdu(context_engine_id: bytes, pdu: bytes) -> bytes:
         _TAG_SEQUENCE,
         tlv(_TAG_OCTET_STRING, context_engine_id) + tlv(_TAG_OCTET_STRING, b"") + pdu,
     )
+
+
+def _tlv_header_len(buf: bytes, offset: int) -> int:
+    """Return the number of bytes in the TLV header (tag + length) at buf[offset]."""
+    len_byte = buf[offset + 1]
+    if len_byte & 0x80:
+        return 2 + (len_byte & 0x7F)
+    return 2
+
+
+def _auth_params_value_offset(raw: bytes) -> int:
+    """BER-walk raw to find the byte offset of the auth_params VALUE (past tag+length).
+
+    Walks structurally:
+        outer SEQUENCE → skip INTEGER(3) → skip msgGlobalData SEQUENCE
+        → enter USM OCTET STRING → enter inner USM SEQUENCE
+        → skip engineID / boots / time / username
+        → return byte offset of the auth_params VALUE (past its tag+length).
+
+    Raises ValueError if the structure is not as expected.
+    """
+    # Determine outer SEQUENCE header size
+    outer_tag, outer_body, _ = read_tlv(raw, 0)
+    if outer_tag != _TAG_SEQUENCE:
+        raise ValueError(f"Expected outer SEQUENCE 0x30, got 0x{outer_tag:02x}")
+    outer_body_start = _tlv_header_len(raw, 0)  # abs offset where outer_body starts
+
+    i = 0  # position within outer_body
+
+    # skip version INTEGER
+    _, _, i = read_tlv(outer_body, i)
+
+    # skip msgGlobalData SEQUENCE
+    _, _, i = read_tlv(outer_body, i)
+
+    # USM OCTET STRING: record its abs position in raw before consuming it
+    usm_os_abs_start = outer_body_start + i
+    usm_os_tag, usm_os_body, _ = read_tlv(outer_body, i)
+    if usm_os_tag != _TAG_OCTET_STRING:
+        raise ValueError(f"Expected USM OCTET STRING 0x04, got 0x{usm_os_tag:02x}")
+    usm_os_body_abs_start = usm_os_abs_start + _tlv_header_len(raw, usm_os_abs_start)
+
+    # inner USM SEQUENCE inside the OCTET STRING body
+    inner_seq_tag, inner_seq_body, _ = read_tlv(usm_os_body, 0)
+    if inner_seq_tag != _TAG_SEQUENCE:
+        raise ValueError(f"Expected inner USM SEQUENCE 0x30, got 0x{inner_seq_tag:02x}")
+    inner_seq_body_abs_start = usm_os_body_abs_start + _tlv_header_len(usm_os_body, 0)
+
+    # Walk USM fields within inner_seq_body: engineID, boots, time, username
+    u = 0
+    _, _, u = read_tlv(inner_seq_body, u)  # engineID
+    _, _, u = read_tlv(inner_seq_body, u)  # boots
+    _, _, u = read_tlv(inner_seq_body, u)  # time
+    _, _, u = read_tlv(inner_seq_body, u)  # username
+
+    # auth_params TLV starts at abs offset: inner_seq_body_abs_start + u
+    ap_abs_start = inner_seq_body_abs_start + u
+    ap_tag = raw[ap_abs_start]
+    if ap_tag != _TAG_OCTET_STRING:
+        raise ValueError(f"Expected auth_params OCTET STRING 0x04, got 0x{ap_tag:02x}")
+
+    return ap_abs_start + _tlv_header_len(raw, ap_abs_start)
+
+
+def authenticate_msg(raw: bytes, kul: bytes, proto: Literal["MD5", "SHA"]) -> bytes:
+    """Sign a v3 message that contains a 12-zero auth_params placeholder.
+
+    Uses _auth_params_value_offset to locate the placeholder structurally
+    (avoids false matches when engineID happens to contain 12 zero bytes).
+
+    Args:
+        raw: Message bytes with 12-zero auth_params placeholder.
+        kul: Localized key from password_to_key.
+        proto: Hash algorithm ("MD5" or "SHA").
+
+    Returns:
+        Message bytes with the placeholder replaced by the computed MAC.
+    """
+    offset = _auth_params_value_offset(raw)
+    # Zero the auth params slot (it should already be zero, but be explicit)
+    zeroed = raw[:offset] + b"\x00" * 12 + raw[offset + 12 :]
+    mac = compute_mac(kul, zeroed, proto)
+    return raw[:offset] + mac + raw[offset + 12 :]
+
+
+def verify_auth(raw: bytes, auth_params: bytes, kul: bytes, proto: Literal["MD5", "SHA"]) -> bool:
+    """Verify the authentication MAC of a signed v3 message.
+
+    Args:
+        raw: The signed message bytes.
+        auth_params: The MAC extracted from the message (from V3Params.auth_params).
+        kul: Localized key from password_to_key.
+        proto: Hash algorithm ("MD5" or "SHA").
+
+    Returns:
+        True if the MAC is valid, False otherwise (wrong key, tampered, malformed).
+    """
+    if len(auth_params) != 12:  # noqa: PLR2004
+        return False
+    try:
+        offset = _auth_params_value_offset(raw)
+    except ValueError:
+        return False
+    zeroed = raw[:offset] + b"\x00" * 12 + raw[offset + 12 :]
+    expected_mac = compute_mac(kul, zeroed, proto)
+    return hmac.compare_digest(expected_mac, auth_params)
 
 
 def encode_v3_discovery(msg_id: int, request_id: int) -> bytes:
@@ -365,6 +477,7 @@ def encode_v3_getbulk(  # noqa: PLR0913
     engine_boots: int,
     engine_time: int,
     username: bytes,
+    auth: bool = False,
 ) -> bytes:
     """Encode an SNMPv3 GetBulk request.
 
@@ -377,6 +490,7 @@ def encode_v3_getbulk(  # noqa: PLR0913
         engine_boots: AuthoritativeEngineBoots (from discovery).
         engine_time: AuthoritativeEngineTime (from discovery).
         username: Username for this request.
+        auth: If True, set msgFlags auth bit and embed 12-zero auth placeholder.
 
     Returns:
         Complete SNMPv3 message bytes.
@@ -394,11 +508,14 @@ def encode_v3_getbulk(  # noqa: PLR0913
     # ScopedPDU with contextEngineID from discovery
     scoped_pdu = _encode_scoped_pdu(engine_id, pdu)
 
-    # USM params with discovery values
-    usm_params = _encode_usm_params(engine_id, engine_boots, engine_time, username)
+    # USM params with discovery values; 12-zero placeholder when auth=True
+    auth_params_bytes = b"\x00" * 12 if auth else b""
+    usm_params = _encode_usm_params(
+        engine_id, engine_boots, engine_time, username, auth_params_bytes
+    )
 
     # msgGlobalData
-    msg_global = _encode_msg_global_data(msg_id)
+    msg_global = _encode_msg_global_data(msg_id, auth=auth)
 
     # Outer SEQUENCE: version 3, msgGlobalData, USM params, ScopedPDU
     return tlv(
@@ -416,6 +533,7 @@ def encode_v3_response(  # noqa: PLR0913
     error_status: int = 0,
     error_index: int = 0,
     pdu_tag: int = PDU_RESPONSE,
+    auth: bool = False,
 ) -> bytes:
     """Encode an SNMPv3 Response or Report PDU (used by the emulator).
 
@@ -428,6 +546,7 @@ def encode_v3_response(  # noqa: PLR0913
         error_status: Error status (default 0 = noError).
         error_index: Error index (default 0).
         pdu_tag: PDU tag (default PDU_RESPONSE=0xA2; use PDU_REPORT=0xA8 for discovery response).
+        auth: If True, set msgFlags auth bit and embed 12-zero auth placeholder.
 
     Returns:
         Complete SNMPv3 message bytes.
@@ -450,11 +569,12 @@ def encode_v3_response(  # noqa: PLR0913
     # ScopedPDU with contextEngineID from discovery
     scoped_pdu = _encode_scoped_pdu(engine_id, pdu)
 
-    # USM params with discovery values
-    usm_params = _encode_usm_params(engine_id, 0, 0, username)
+    # USM params; 12-zero placeholder when auth=True
+    auth_params_bytes = b"\x00" * 12 if auth else b""
+    usm_params = _encode_usm_params(engine_id, 0, 0, username, auth_params_bytes)
 
     # msgGlobalData
-    msg_global = _encode_msg_global_data(msg_id)
+    msg_global = _encode_msg_global_data(msg_id, auth=auth)
 
     # Outer SEQUENCE: version 3, msgGlobalData, USM params, ScopedPDU
     return tlv(
@@ -596,7 +716,7 @@ def decode_v3_message(raw: bytes) -> tuple[Message, V3Params] | Malformed:
                     INTEGER (engineBoots)
                     INTEGER (engineTime)
                     OCTET STRING (username — ignored)
-                    OCTET STRING (authParams — ignored)
+                    OCTET STRING (authParams — returned in V3Params.auth_params)
                     OCTET STRING (privParams — ignored)
                 }
             }
@@ -633,7 +753,8 @@ def decode_v3_message(raw: bytes) -> tuple[Message, V3Params] | Malformed:
         engine_boots = decode_int(boots_body)
         time_body, u = _expect_tlv(usm_body, u, _TAG_INTEGER, "engineTime INTEGER")
         engine_time = decode_int(time_body)
-        username, _u = _expect_tlv(usm_body, u, _TAG_OCTET_STRING, "username OCTET STRING")
+        username, u = _expect_tlv(usm_body, u, _TAG_OCTET_STRING, "username OCTET STRING")
+        auth_params, _u = _expect_tlv(usm_body, u, _TAG_OCTET_STRING, "authParams OCTET STRING")
 
         # ScopedPDU — must be plain SEQUENCE (0x30); 0x04 = encrypted (Priv)
         scoped_tag, scoped_body, _i = read_tlv(outer_body, i)
@@ -660,6 +781,7 @@ def decode_v3_message(raw: bytes) -> tuple[Message, V3Params] | Malformed:
             engine_time=engine_time,
             msg_id=msg_id,
             username=username,
+            auth_params=auth_params,
         )
         msg = Message(
             pdu_tag=pdu_tag,
