@@ -9,7 +9,7 @@ import asyncio
 from collections.abc import Callable
 from contextlib import AbstractAsyncContextManager
 from dataclasses import dataclass
-from typing import override
+from typing import Literal, override
 
 import pytest
 
@@ -269,13 +269,16 @@ async def test_v3_getbulk_after_discovery(emulator_factory: _EmuFactory) -> None
     assert len(msg.varbinds) == 5
 
 
-async def test_v3_authnopriv_getbulk_correct_key(emulator_factory: _EmuFactory) -> None:
-    """Auth GetBulk with correct MAC returns a signed response."""
+@pytest.mark.parametrize("proto", ["MD5", "SHA"])
+async def test_v3_authnopriv_getbulk_correct_key(
+    emulator_factory: _EmuFactory, proto: Literal["MD5", "SHA"]
+) -> None:
+    """Auth GetBulk with correct MAC returns a signed response (MD5 and SHA)."""
     start = Oid.from_str("1.3.6.1.2.1.2.2.1")
-    kul = password_to_key(b"testpass1", EMU_ENGINE_ID, "MD5")
+    kul = password_to_key(b"testpass1", EMU_ENGINE_ID, proto)
 
     async with emulator_factory(
-        EmuDevice.simple(n_oids=10, auth_users={b"authuser": ("MD5", kul)})
+        EmuDevice.simple(n_oids=10, auth_users={b"authuser": (proto, kul)})
     ) as (host, port):
         # Step 1: discovery
         raw_disc = await _send_raw(host, port, encode_v3_discovery(1, 42))
@@ -295,7 +298,7 @@ async def test_v3_authnopriv_getbulk_correct_key(emulator_factory: _EmuFactory) 
             username=b"authuser",
             auth=True,
         )
-        raw_signed = authenticate_msg(raw_bulk, kul, "MD5")
+        raw_signed = authenticate_msg(raw_bulk, kul, proto)
         raw_resp = await _send_raw(host, port, raw_signed)
 
     result = decode_v3_message(raw_resp)
@@ -308,21 +311,23 @@ async def test_v3_authnopriv_getbulk_correct_key(emulator_factory: _EmuFactory) 
         f"Expected 12-byte auth_params, got {len(resp_params.auth_params)}"
     )
     assert resp_params.auth_params != b"\x00" * 12, "auth_params must not be all zeros"
-    assert verify_auth(raw_resp, resp_params.auth_params, kul, "MD5"), (
+    assert verify_auth(raw_resp, resp_params.auth_params, kul, proto), (
         "Response MAC verification failed"
     )
 
 
+@pytest.mark.parametrize("proto", ["MD5", "SHA"])
 async def test_v3_authnopriv_getbulk_wrong_key_silently_dropped(
     emulator_factory: _EmuFactory,
+    proto: Literal["MD5", "SHA"],
 ) -> None:
-    """Auth GetBulk signed with wrong key is silently dropped (no response)."""
+    """Auth GetBulk signed with wrong key is silently dropped — no response (MD5 and SHA)."""
     start = Oid.from_str("1.3.6.1.2.1.2.2.1")
-    kul = password_to_key(b"testpass1", EMU_ENGINE_ID, "MD5")
-    wrong_kul = password_to_key(b"wrongpass!", EMU_ENGINE_ID, "MD5")
+    kul = password_to_key(b"testpass1", EMU_ENGINE_ID, proto)
+    wrong_kul = password_to_key(b"wrongpass!", EMU_ENGINE_ID, proto)
 
     async with emulator_factory(
-        EmuDevice.simple(n_oids=10, auth_users={b"authuser": ("MD5", kul)})
+        EmuDevice.simple(n_oids=10, auth_users={b"authuser": (proto, kul)})
     ) as (host, port):
         # Discovery first to get engine_id
         raw_disc = await _send_raw(host, port, encode_v3_discovery(1, 42))
@@ -342,7 +347,7 @@ async def test_v3_authnopriv_getbulk_wrong_key_silently_dropped(
             username=b"authuser",
             auth=True,
         )
-        raw_signed_wrong = authenticate_msg(raw_bulk, wrong_kul, "MD5")
+        raw_signed_wrong = authenticate_msg(raw_bulk, wrong_kul, proto)
 
         with pytest.raises(asyncio.TimeoutError):
             await _send_raw(host, port, raw_signed_wrong, timeout_s=0.3)

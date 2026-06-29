@@ -175,7 +175,7 @@ def _validate_v3_auth(
             )
             return 2
 
-        v3_auth_proto = auth_proto_upper  # type: ignore
+        v3_auth_proto = cast("Literal['MD5', 'SHA']", auth_proto_upper)
         v3_auth_pass = args.auth_pass
 
     # Warn if privacy fields are set (not supported yet)

@@ -524,13 +524,13 @@ async def test_snmpwalk_v3_authnopriv_crosswalk(
                     if vb.vtype != "EndOfMibView":
                         our_oids.append(vb.oid.root)
 
-    # Verify authenticated exchange: if auth_params were wrong the emulator would
-    # silently drop our requests. All GetBulk exchanges must have received a response.
+    # All sent GetBulks received responses (emulator connectivity check —
+    # authentication is proven by the OID crosswalk: both tools independently
+    # used auth credentials and got matching results).
     assert getbulk_exchanges_total > 0, "No GetBulk exchanges in trace — walk did not start"
     assert getbulk_exchanges_with_response == getbulk_exchanges_total, (
         f"Only {getbulk_exchanges_with_response}/{getbulk_exchanges_total} GetBulk exchanges "
-        f"got responses — authenticated exchange not verified "
-        f"(emulator drops unauthenticated requests)"
+        f"got responses (emulator connectivity check)"
     )
 
     # Trap #13: our sequence is a prefix of snmpwalk's
