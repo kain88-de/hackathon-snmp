@@ -1,13 +1,7 @@
-"""Integration tests for cli.py — sync tests that drive main() directly.
-
-The emulator runs on a daemon thread with its own event loop, bound to a
-free port exposed via threading.Event.
-"""
+"""Integration tests for cli.py — sync tests that drive main() directly."""
 
 from __future__ import annotations
 
-import asyncio
-import threading
 from typing import TYPE_CHECKING
 
 from traceformat.models import Header
@@ -17,8 +11,7 @@ from oidtrace.cli import main
 from oidtrace.tracefile import read_trace
 from tests.support.emulator import (
     EMU_ENGINE_ID,
-    EmuDevice,
-    EmuProtocol,
+    EmulatorThread,
     Quirks,
 )
 
@@ -26,83 +19,6 @@ if TYPE_CHECKING:
     from pathlib import Path
 
     import pytest
-
-
-# ---------------------------------------------------------------------------
-# Helpers: emulator on a background thread
-# ---------------------------------------------------------------------------
-
-
-def _run_emulator_on_thread(
-    port_ready: threading.Event,
-    port_holder: list[int],
-    state: dict[str, object],
-    state_ready: threading.Event,
-    device: EmuDevice,
-) -> None:
-    """Start an asyncio loop on a daemon thread, bind the emulator, set port_ready."""
-    loop = asyncio.new_event_loop()
-
-    async def _serve() -> None:
-        stop = asyncio.Event()
-        state["loop"] = loop
-        state["stop"] = stop
-        state_ready.set()
-
-        transport, _ = await loop.create_datagram_endpoint(
-            lambda: EmuProtocol(device),
-            local_addr=("127.0.0.1", 0),
-        )
-        sock = transport.get_extra_info("sockname")
-        port_holder.append(sock[1])
-        port_ready.set()
-        await stop.wait()
-        transport.close()
-
-    loop.run_until_complete(_serve())
-    loop.close()
-
-
-class EmulatorThread:
-    """Context manager that starts an emulator on a daemon thread and tears it down."""
-
-    def __init__(self, quirks: object = None, auth_users: object = None) -> None:
-        self._port_ready: threading.Event = threading.Event()
-        self._port_holder: list[int] = []
-        self._state: dict[str, object] = {}
-        self._state_ready: threading.Event = threading.Event()
-        self._thread: threading.Thread | None = None
-        self._device = EmuDevice.simple(
-            n_oids=20,
-            quirks=quirks if isinstance(quirks, Quirks) else None,
-            auth_users=auth_users if isinstance(auth_users, dict) else None,
-        )
-
-    def __enter__(self) -> tuple[str, int]:
-        self._thread = threading.Thread(
-            target=_run_emulator_on_thread,
-            args=(
-                self._port_ready,
-                self._port_holder,
-                self._state,
-                self._state_ready,
-                self._device,
-            ),
-            daemon=True,
-        )
-        self._thread.start()
-        self._port_ready.wait(timeout=5.0)
-        assert self._port_holder, "Emulator did not bind a port in time"
-        return "127.0.0.1", self._port_holder[0]
-
-    def __exit__(self, *_: object) -> None:
-        # Signal the asyncio stop event on its own loop
-        loop = self._state.get("loop")
-        stop_event = self._state.get("stop")
-        if isinstance(loop, asyncio.AbstractEventLoop) and isinstance(stop_event, asyncio.Event):
-            loop.call_soon_threadsafe(stop_event.set)
-        if self._thread is not None:
-            self._thread.join(timeout=2.0)
 
 
 # ---------------------------------------------------------------------------

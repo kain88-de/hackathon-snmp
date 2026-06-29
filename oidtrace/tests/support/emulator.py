@@ -3,6 +3,9 @@
 A loopback UDP DatagramProtocol that decodes incoming SNMP GetBulk requests
 using the codec and responds according to a configured EmuDevice + Quirks.
 Intended for use via the emulator_factory fixture in tests/integration/conftest.py.
+
+EmulatorThread is a reusable context manager that starts an emulator on a daemon
+thread and tears it down cleanly — importable by any test or library.
 """
 
 from __future__ import annotations
@@ -322,3 +325,80 @@ class EmuProtocol(asyncio.DatagramProtocol):
                 response = authenticate_msg(response, auth_kul, auth_proto)
             assert self._transport is not None
             self._transport.sendto(response, addr)
+
+
+# ---------------------------------------------------------------------------
+# EmulatorThread — reusable context manager for test/library use
+# ---------------------------------------------------------------------------
+
+
+import threading  # noqa: E402
+
+
+def _run_emulator_on_thread(
+    port_ready: threading.Event,
+    port_holder: list[int],
+    state: dict[str, object],
+    state_ready: threading.Event,
+    device: EmuDevice,
+) -> None:
+    loop = asyncio.new_event_loop()
+
+    async def _serve() -> None:
+        stop = asyncio.Event()
+        state["loop"] = loop
+        state["stop"] = stop
+        state_ready.set()
+        transport, _ = await loop.create_datagram_endpoint(
+            lambda: EmuProtocol(device),
+            local_addr=("127.0.0.1", 0),
+        )
+        sock = transport.get_extra_info("sockname")
+        port_holder.append(sock[1])
+        port_ready.set()
+        await stop.wait()
+        transport.close()
+
+    loop.run_until_complete(_serve())
+    loop.close()
+
+
+class EmulatorThread:
+    """Context manager: starts an emulator on a daemon thread, tears it down on exit."""
+
+    def __init__(self, quirks: object = None, auth_users: object = None) -> None:
+        self._port_ready: threading.Event = threading.Event()
+        self._port_holder: list[int] = []
+        self._state: dict[str, object] = {}
+        self._state_ready: threading.Event = threading.Event()
+        self._thread: threading.Thread | None = None
+        self._device = EmuDevice.simple(
+            n_oids=20,
+            quirks=quirks if isinstance(quirks, Quirks) else None,
+            auth_users=auth_users if isinstance(auth_users, dict) else None,
+        )
+
+    def __enter__(self) -> tuple[str, int]:
+        self._thread = threading.Thread(
+            target=_run_emulator_on_thread,
+            args=(
+                self._port_ready,
+                self._port_holder,
+                self._state,
+                self._state_ready,
+                self._device,
+            ),
+            daemon=True,
+        )
+        self._thread.start()
+        self._port_ready.wait(timeout=5.0)
+        assert self._port_holder, "Emulator did not bind a port in time"
+        return "127.0.0.1", self._port_holder[0]
+
+    def __exit__(self, *_: object) -> None:
+        loop = self._state.get("loop")
+        stop_event = self._state.get("stop")
+        if isinstance(loop, asyncio.AbstractEventLoop) and isinstance(stop_event, asyncio.Event):
+            loop.call_soon_threadsafe(stop_event.set)
+        if self._thread is not None:
+            self._thread.join(timeout=2.0)

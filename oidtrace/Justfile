@@ -27,4 +27,7 @@ test-all:
 cov:
     uv run pytest -m "not reference_tools" --cov=oidtrace --cov=traceformat --cov-branch --cov-report=term-missing
 
+robot:
+    uv run robot --pythonpath src --pythonpath . --pythonpath tests/robot tests/robot/
+
 ci: lint types deadcode test
