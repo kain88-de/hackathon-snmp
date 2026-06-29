@@ -25,7 +25,7 @@ import socket
 import sys
 from datetime import UTC, datetime
 from pathlib import Path
-from typing import cast
+from typing import Literal, cast
 
 from traceformat import Summary, TraceRecord
 
@@ -142,6 +142,53 @@ def _build_parser() -> argparse.ArgumentParser:
 
 
 # ---------------------------------------------------------------------------
+# v3 auth validation
+# ---------------------------------------------------------------------------
+
+
+def _validate_v3_auth(
+    args: argparse.Namespace,
+) -> tuple[Literal["MD5", "SHA"] | None, str | None] | int:
+    """Validate SNMPv3 auth arguments.
+
+    Returns:
+        (v3_auth_proto, v3_auth_pass) on success, or an exit code (2) on error.
+    """
+    v3_auth_proto: Literal["MD5", "SHA"] | None = None
+    v3_auth_pass: str | None = None
+
+    if args.auth_proto is not None:
+        # Validate auth_proto
+        auth_proto_upper = args.auth_proto.upper()
+        if auth_proto_upper not in ("MD5", "SHA"):
+            print(
+                f"error: --auth-proto must be 'MD5' or 'SHA', got {args.auth_proto!r}",
+                file=sys.stderr,
+            )
+            return 2
+
+        # Require auth_pass when auth_proto is set
+        if args.auth_pass is None:
+            print(
+                "error: --auth-pass is required when --auth-proto is set",
+                file=sys.stderr,
+            )
+            return 2
+
+        v3_auth_proto = auth_proto_upper  # type: ignore
+        v3_auth_pass = args.auth_pass
+
+    # Warn if privacy fields are set (not supported yet)
+    if args.priv_proto is not None or args.priv_pass is not None:
+        print(
+            "warning: privacy (--priv-proto, --priv-pass) is not yet supported and will be ignored",
+            file=sys.stderr,
+        )
+
+    return (v3_auth_proto, v3_auth_pass)
+
+
+# ---------------------------------------------------------------------------
 # main
 # ---------------------------------------------------------------------------
 
@@ -211,11 +258,11 @@ def main(argv: list[str] | None = None) -> int:
             snmp_version="1",
         )
     elif args.version == "v3":
-        if any((args.auth_proto, args.auth_pass, args.priv_proto, args.priv_pass)):
-            print(
-                "warning: auth/priv arguments are ignored; running as noAuthNoPriv",
-                file=sys.stderr,
-            )
+        auth_result = _validate_v3_auth(args)
+        if isinstance(auth_result, int):
+            return auth_result
+        v3_auth_proto, v3_auth_pass = auth_result
+
         settings = WalkSettings(
             bulk_size=10,
             timeout_s=args.timeout,
@@ -225,6 +272,8 @@ def main(argv: list[str] | None = None) -> int:
             give_up_after=args.give_up_after,
             snmp_version="3",
             v3_user=args.user,
+            v3_auth_proto=v3_auth_proto,
+            v3_auth_pass=v3_auth_pass,
         )
     else:  # v2c
         settings = WalkSettings(
