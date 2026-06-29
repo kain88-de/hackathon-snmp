@@ -21,6 +21,8 @@ The 24-byte auth_params length is the critical wire-format difference. It is cur
 ---
 
 ## Phase 0 — Type design (before any TDD step)
+**Recommended model: Opus** — architectural decision with downstream consequences; needs to reason about enum property design, `StrEnum` vs `Literal` trade-offs, and what the type checker will and won't enforce before a line of implementation is written.
+
 
 The current codebase has `Literal["MD5", "SHA"]` scattered across `auth.py`, `codec.py`, `emulator.py`, `walker.py`, and `cli.py`. This is primitive obsession: a closed vocabulary at a boundary should be a `StrEnum`, not a repeated string literal. Adding SHA-256 as a bare string would make it six files.
 
@@ -43,6 +45,8 @@ With this enum, adding SHA-384 or SHA-512 in the future is one new member with t
 ---
 
 ## Phase 1 — Emulator (TDD start)
+**Recommended model: Sonnet** — follows the established emulator pattern closely; the type checker guides the mechanical substitutions and the parametrize extension is straightforward once the enum exists.
+
 
 **Why start here:** the emulator has the richest existing test coverage for auth (`test_emulator_smoke.py` already parametrizes MD5 and SHA). Adding `AuthProto.SHA256` to those parametrize lists gives concrete RED tests immediately, without touching the walker or CLI. The emulator is also the fixture that all robot spec scenarios depend on — if the emulator is correct, the spec scenarios have a trustworthy oracle to run against.
 
@@ -63,6 +67,8 @@ With this enum, adding SHA-384 or SHA-512 in the future is one new member with t
 ---
 
 ## Phase 2 — `auth.py`: replace if/elif with enum properties
+**Recommended model: Sonnet** — the algorithm (RFC 3414 A.2) is fully specified; the work is substituting `proto.hash_algo` and `proto.mac_length` for the existing branches and deriving the KAT vector from a reference implementation to pin.
+
 
 With `AuthProto` already defined in `auth.py`:
 
@@ -83,6 +89,8 @@ Replace the MD5/SHA if/elif with `proto.hash_algo`. Truncate the HMAC to `proto.
 ---
 
 ## Phase 3 — `codec.py`: proto-aware encode and verify
+**Recommended model: Opus** — the most structurally complex change: threading `proto` through multiple function signatures, variable-length placeholder scanning, and the breaking `verify_auth` signature change where a partial commit leaves callers broken. Needs to reason about all call sites before touching any of them.
+
 
 The 12-byte constant appears in at least four places. All become `proto.mac_length`.
 
@@ -106,6 +114,8 @@ Searches for and overwrites the placeholder. Verify whether the current implemen
 ---
 
 ## Phase 4 — `cli.py`: parse to `AuthProto`
+**Recommended model: Sonnet** — a contained substitution: replace the allowlist check with the enum constructor, update the error message, remove the cast. The spec scenarios provide immediate verification.
+
 
 **`_parse_v3_auth` validation block**
 Replace the explicit allowlist check with a try/except around the `AuthProto` constructor. The enum is the allowlist. The error message should enumerate valid values from the enum members rather than a hard-coded string. The existing `cast(...)` call becomes unnecessary — the constructor already returns the correctly typed value.
@@ -125,6 +135,8 @@ All 5 emulator-tier scenarios green; all 15 pre-existing scenarios still green.
 ---
 
 ## Phase 5 — `walker.py`: type annotation update
+**Recommended model: Haiku** — purely mechanical: one field type changes from `Literal` to `AuthProto`. The type checker confirms correctness; no logic to reason about.
+
 
 **`WalkSettings.v3_auth_proto`**
 Change from `Literal["MD5", "SHA"] | None` to `AuthProto | None`.
@@ -137,6 +149,8 @@ Change from `Literal["MD5", "SHA"] | None` to `AuthProto | None`.
 ---
 
 ## Phase 6 — Reference tier (net-snmp required)
+**Recommended model: Sonnet** — the snmpwalk flag-aliasing fix is a small defensive change to the keyword; the main work is running the scenarios and diagnosing failures if net-snmp version differs.
+
 
 With net-snmp ≥ 5.8 installed:
 
@@ -160,3 +174,45 @@ Before asserting no output, try `-a SHA-256`; if snmpwalk exits with "invalid au
 **`authenticate_msg` placeholder scan** — verify whether the current implementation locates the placeholder by scanning for `b"\x00" * 12` or by a fixed byte offset before assuming Phase 3 generalises for free.
 
 **`encode_v3_getbulk` proto threading** — currently takes `auth: bool`. Promoting to `proto: AuthProto | None` changes the call signature everywhere `encode_v3_getbulk` is called. Check all call sites (walker + emulator + tests) before committing.
+
+
+
+#### Test review
+**Recommended model: Opus** — code quality review requires judgment calls about test design and failure quality; Opus gives the most reliable verdict on subtle anti-patterns.
+
+Spawn a review agent against the v1-related tests with this prompt:
+
+---
+
+Apply the following checklist. For each item, cite the specific test(s) affected and
+explain concretely why it is or is not a problem. Do not flag issues already guarded by
+the type checker or linter.
+
+**Anti-patterns to check:**
+- **Brittle mocking** — any mocks verifying call sequences rather than outcomes?
+  The emulator-thread pattern is intentional; flag only unexpected `unittest.mock` usage.
+- **Always-passing tests** — do assertions have a realistic chance of failing? Check
+  that string-presence assertions (e.g. `"v1" in stderr`) would fail if the stub
+  printed the wrong message or nothing at all.
+- **Vague failure messages** — if a test fails, does pytest output tell you what went
+  wrong without reading the source?
+- **Fixture soup** — is `EmulatorThread` used only where a live network exchange is
+  genuinely required? Flag any v1/v3 stub test that starts an emulator unnecessarily.
+- **Test doing multiple things** — can each test be named in one sentence describing
+  one behaviour?
+- **Wrong level** — do any v1/v3 stub tests reach into argparse internals or patch
+  private functions? Correct level: call `main([...])`, observe outputs.
+- **Redundant assertions** — do any tests re-check what `just ci` already guarantees?
+
+**Red flags to answer explicitly:**
+1. Does every test fail for a reason someone can act on?
+2. Is anything being patched that we own (beyond the emulator thread pattern)?
+3. Do test names describe behaviour or mechanism?
+4. Are the v1/v3 stub tests at the right level, or do they over-specify internals?
+
+Conclude with: a short list of issues to fix (severity: must-fix / nice-to-have), and a
+one-line verdict on whether the test suite earns its place.
+
+---
+
+Only proceed to merge once `just ci` is clean, all three manual checks pass, and the test review raises no must-fix issues.
