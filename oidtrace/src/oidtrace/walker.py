@@ -470,6 +470,8 @@ async def walk_records(  # noqa: PLR0912, PLR0913, PLR0915
         if exchange_io.response is not None:
             _received_at, raw_response = exchange_io.response
             if settings.snmp_version == "3":
+                # Response MAC verification intentionally skipped: this is a
+                # diagnostic tracer, not a security client.
                 decoded = decode_v3_message(raw_response)
                 msg = decoded if isinstance(decoded, Malformed) else decoded[0]
             else:

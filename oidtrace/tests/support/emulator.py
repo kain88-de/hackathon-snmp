@@ -254,6 +254,7 @@ class EmuProtocol(asyncio.DatagramProtocol):
 
         # Discovery: GetRequest with empty varbinds → Report PDU (always noAuthNoPriv)
         if msg.pdu_tag == PDU_GET and not msg.varbinds:
+            # simplified: real agents echo actual boots/time; our walker ignores these fields
             response = encode_v3_response(
                 msg_id=params.msg_id,
                 request_id=msg.request_id,
@@ -279,6 +280,7 @@ class EmuProtocol(asyncio.DatagramProtocol):
             else:
                 varbinds = [(request_oid, _TAG_NULL, b"")]
 
+            # simplified: real agents echo actual boots/time; our walker ignores these fields
             response = encode_v3_response(
                 msg_id=params.msg_id,
                 request_id=msg.request_id,
@@ -306,6 +308,7 @@ class EmuProtocol(asyncio.DatagramProtocol):
             varbinds = await self._getbulk_varbinds(request_oid, chunk, self._device.quirks, tree)
             if varbinds is None:
                 return
+            # simplified: real agents echo actual boots/time; our walker ignores these fields
             response = encode_v3_response(
                 msg_id=params.msg_id,
                 request_id=msg.request_id,

@@ -32,11 +32,6 @@ _EmuFactory = Callable[..., AbstractAsyncContextManager[tuple[str, int]]]
 
 pytestmark = pytest.mark.reference_tools
 
-# Real AP credentials for smoke test
-_AP_HOST = "192.168.1.143"
-_AP_USER = "checkmk"
-_AP_PASS = "synology"
-
 # Pre-compute kul for crosswalk test (authcross user, MD5, crosspass1)
 _CROSSWALK_KUL = password_to_key(b"crosspass1", EMU_ENGINE_ID, "MD5")
 
@@ -544,56 +539,3 @@ async def test_snmpwalk_v3_authnopriv_crosswalk(
     assert len(set(our_oids)) == device_size, (
         f"Expected {device_size} distinct OIDs, got {len(set(our_oids))}"
     )
-
-
-@pytest.mark.asyncio
-async def test_oidtrace_v3_authnopriv_real_ap(tmp_path: Path) -> None:
-    """Smoke test: oidtrace walk v3 against real AP with authNoPriv returns completed trace."""
-    _require_tool("snmpwalk")
-    # Check that the AP is reachable before attempting the walk
-    loop = asyncio.get_running_loop()
-    try:
-        ping_result = await loop.run_in_executor(
-            None,
-            lambda: subprocess.run(
-                ["ping", "-c", "1", "-W", "1", _AP_HOST],
-                capture_output=True,
-                timeout=5,
-                check=False,
-            ),
-        )
-    except (OSError, subprocess.TimeoutExpired):
-        pytest.skip(f"Real AP {_AP_HOST} not reachable")
-    if ping_result.returncode != 0:
-        pytest.skip(f"AP {_AP_HOST} unreachable")
-
-    # Set up trace file path
-    trace_path = tmp_path / "real_ap.oidtrace.jsonl.gz"
-
-    # Run the walk directly
-    await run_walk(
-        _AP_HOST,
-        161,
-        settings=WalkSettings(
-            snmp_version="3",
-            v3_user=_AP_USER,
-            v3_auth_proto="MD5",
-            v3_auth_pass=_AP_PASS,
-            bulk_size=10,
-            timeout_s=2.0,
-        ),
-        path=trace_path,
-    )
-
-    # Read trace and verify summary
-    summary = None
-    for record in read_trace(trace_path):
-        if record.type == "summary":
-            summary = record
-            break
-
-    assert summary is not None, "No summary record in trace"
-    assert summary.end_reason == "completed", (
-        f"Expected end_reason='completed', got {summary.end_reason!r}"
-    )
-    assert summary.oids_seen > 0, f"Expected oids_seen > 0, got {summary.oids_seen}"
