@@ -2,6 +2,7 @@
 
 from __future__ import annotations
 
+import functools
 import hashlib
 import hmac
 from typing import Literal
@@ -10,6 +11,7 @@ from typing import Literal
 _KU_BUFFER_SIZE = 1_048_576
 
 
+@functools.cache
 def password_to_key(
     password: bytes,
     engine_id: bytes,
