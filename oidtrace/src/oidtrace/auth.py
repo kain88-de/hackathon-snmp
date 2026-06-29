@@ -27,6 +27,9 @@ def password_to_key(
     Returns:
         Localized key: 16 bytes for MD5, 20 bytes for SHA-1
     """
+    if not password:
+        raise ValueError("password must not be empty")
+
     if proto == "MD5":
         hash_algo = hashlib.md5
     elif proto == "SHA":

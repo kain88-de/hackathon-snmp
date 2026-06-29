@@ -14,6 +14,8 @@ Contract coverage:
 
 from __future__ import annotations
 
+import pytest
+
 from oidtrace.auth import compute_mac, password_to_key
 
 # ---------------------------------------------------------------------------
@@ -73,6 +75,17 @@ def test_password_to_key_different_engineids() -> None:
     key2 = password_to_key(password, engine_id_2, "MD5")
 
     assert key1 != key2
+
+
+# ---------------------------------------------------------------------------
+# password_to_key: validation
+# ---------------------------------------------------------------------------
+
+
+def test_password_to_key_rejects_empty_password() -> None:
+    """Empty password raises ValueError."""
+    with pytest.raises(ValueError):
+        password_to_key(b"", b"\x00" * 12, "MD5")
 
 
 # ---------------------------------------------------------------------------
