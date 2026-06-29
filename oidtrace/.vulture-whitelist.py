@@ -53,6 +53,15 @@ from oidtrace.cli import main
 
 _ = main
 
+# auth/codec SNMPv3 symbols — used by emulator (authNoPriv), walker, and CLI;
+# vulture only scans src/ so test/support usages are invisible to it.
+from oidtrace.auth import password_to_key
+from oidtrace.codec import authenticate_msg, verify_auth
+
+_ = password_to_key
+_ = authenticate_msg
+_ = verify_auth
+
 # _SnmpProtocol asyncio callback methods — called by asyncio internals
 # (event loop), not by Python source directly.  These are the standard
 # DatagramProtocol interface mandated by asyncio.

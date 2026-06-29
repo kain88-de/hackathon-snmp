@@ -40,11 +40,8 @@ def password_to_key(
         raise ValueError(f"Unsupported protocol: {proto}")
 
     # Step 1: Repeat password to fill buffer, then hash to get Ku
-    ku_input = b""
-    while len(ku_input) < _KU_BUFFER_SIZE:
-        ku_input += password
-
-    ku_input = ku_input[:_KU_BUFFER_SIZE]  # Trim to exactly _KU_BUFFER_SIZE bytes
+    reps = -(-_KU_BUFFER_SIZE // len(password))  # ceiling division
+    ku_input = (password * reps)[:_KU_BUFFER_SIZE]
 
     ku = hash_algo(ku_input).digest()
 
