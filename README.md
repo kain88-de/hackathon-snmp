@@ -28,6 +28,51 @@ handle is reproducible over loopback UDP. An **adaptive settings finder** (surve
 pinpoint slow OIDs → derive settings) is the doctor's planned successor; its design
 sketches live in git history.
 
+## Quick start
+
+Requires Python 3.13+ and [uv](https://docs.astral.sh/uv/).
+
+**One-off — no install:**
+```sh
+uvx --from "git+https://github.com/kain88-de/hackathon-snmp#subdirectory=oidtrace" \
+    oidtrace walk v2c 192.168.1.1 --community public
+```
+
+**Persistent install:**
+```sh
+uv tool install "git+https://github.com/kain88-de/hackathon-snmp#subdirectory=oidtrace"
+oidtrace walk v2c 192.168.1.1 --community public
+```
+
+**Common options:**
+```sh
+oidtrace walk v2c 192.168.1.1 \
+    --community public \
+    --bulk-size 5 \
+    --timeout 5 \
+    --time-budget 120 \
+    --out ./traces \
+    --label my-device
+```
+
+**v3 (authNoPriv):**
+```sh
+oidtrace walk v3 192.168.1.1 \
+    --user myuser --auth-proto SHA --auth-pass secret
+```
+
+Traces are written as gzipped JSONL (`.oidtrace.jsonl.gz`) and are readable with `zcat`.
+
+## OIDViz
+
+Live at **[kain88-de.github.io/hackathon-snmp](https://kain88-de.github.io/hackathon-snmp/)** — deployed automatically from `main` via GitHub Actions whenever `oidviz/` changes.
+
+To run locally or self-host:
+```sh
+cd oidviz && bun install && bun run build   # outputs to oidviz/dist/
+```
+Then serve `dist/` with any static file server or open `dist/index.html` directly.
+
 ## Where things stand
 
 **Status**: the capture layer was implemented end-to-end (validated against a real
