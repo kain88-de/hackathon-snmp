@@ -49,12 +49,14 @@ import traceformat.models as tf
 from traceformat import TraceRecord
 from traceformat.vocab import EndReason, EventKind, Violation
 
+from oidtrace.auth import password_to_key
 from oidtrace.codec import (
     EXCEPTION_TAGS,
     Malformed,
     Message,
     V3Params,
     Varbind,
+    authenticate_msg,
     decode_message,
     decode_v3_message,
     encode_getbulk,
@@ -117,12 +119,16 @@ class WalkSettings:
     community: bytes = b"public"
     snmp_version: Literal["1", "2c", "3"] = "2c"
     v3_user: str | None = None
+    v3_auth_proto: Literal["MD5", "SHA"] | None = None
+    v3_auth_pass: str | None = None
 
     def __post_init__(self) -> None:
         if self.snmp_version in ("2c", "3") and self.bulk_size < 1:
             raise ValueError(f"bulk_size must be >= 1, got {self.bulk_size}")
         if self.snmp_version == "3" and self.v3_user is None:
             raise ValueError("v3_user is required when snmp_version == '3'")
+        if self.v3_auth_proto is not None and self.v3_auth_pass is None:
+            raise ValueError("v3_auth_pass required when v3_auth_proto is set")
 
 
 # ---------------------------------------------------------------------------
@@ -300,6 +306,7 @@ async def walk_records(  # noqa: PLR0912, PLR0913, PLR0915
     oids_seen_set: set[Oid] = set()  # distinct in-subtree OIDs
     end_reason: EndReason | None = None
     v3_params: V3Params | None = None
+    v3_kul: bytes | None = None
 
     # --- SNMPv3 discovery (recorded as seq=1; the GetBulk loop starts at seq=2) ---
     if settings.snmp_version == "3":
@@ -363,6 +370,11 @@ async def walk_records(  # noqa: PLR0912, PLR0913, PLR0915
         if v3_params is None:
             log.info("walk unresponsive: v3 discovery failed (no engine params)")
             end_reason = EndReason.UNRESPONSIVE
+        elif settings.v3_auth_proto is not None:
+            assert settings.v3_auth_pass is not None  # enforced by WalkSettings.__post_init__
+            v3_kul = password_to_key(
+                settings.v3_auth_pass.encode(), v3_params.engine_id, settings.v3_auth_proto
+            )
 
     while end_reason is None:
         # --- Time budget check (at loop top — zero-exchange trace intentional) ---
@@ -409,7 +421,11 @@ async def walk_records(  # noqa: PLR0912, PLR0913, PLR0915
                     engine_boots=v3_params.engine_boots,
                     engine_time=v3_params.engine_time,
                     username=settings.v3_user.encode(),
+                    auth=v3_kul is not None,
                 )
+                if v3_kul is not None:
+                    assert settings.v3_auth_proto is not None
+                    raw_request = authenticate_msg(raw_request, v3_kul, settings.v3_auth_proto)
             else:
                 raw_request = encode_getbulk(
                     request_id,

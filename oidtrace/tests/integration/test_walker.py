@@ -13,10 +13,11 @@ from traceformat import dump_record
 from traceformat.models import Exchange, Header, Summary
 from traceformat.vocab import EndReason, EventKind, Violation
 
+from oidtrace.auth import password_to_key
 from oidtrace.oid import Oid
 from oidtrace.tracefile import read_trace
 from oidtrace.walker import WalkSettings, run_walk
-from tests.support.emulator import EmuDevice, EndOfMib, Quirks
+from tests.support.emulator import _EMU_ENGINE_ID, EmuDevice, EndOfMib, Quirks
 
 if TYPE_CHECKING:
     from pathlib import Path
@@ -383,5 +384,41 @@ async def test_shared_timeline_sent_at_and_summary(
     assert summary_at > first_attempt_sent_at, (
         f"summary.at={summary_at} must be > first attempt sent_at={first_attempt_sent_at}"
     )
+
+    _validate_all(records, record_validator)
+
+
+@pytest.mark.asyncio
+async def test_v3_authnopriv_20_oid_walk(
+    emulator_factory: _EmuFactory,
+    record_validator: Draft202012Validator,
+    tmp_path: Path,
+) -> None:
+    """SNMPv3 authNoPriv walk over a 20-OID auth emulator → COMPLETED, oids_seen==20."""
+    kul = password_to_key(b"testpass1", _EMU_ENGINE_ID, "MD5")
+    device = EmuDevice.simple(n_oids=20, auth_users={b"authuser": ("MD5", kul)})
+    trace_path = tmp_path / "trace.oidtrace.jsonl.gz"
+
+    async with emulator_factory(device) as (host, port):
+        end_reason = await run_walk(
+            host,
+            port,
+            settings=WalkSettings(
+                snmp_version="3",
+                v3_user="authuser",
+                v3_auth_proto="MD5",
+                v3_auth_pass="testpass1",
+                bulk_size=10,
+            ),
+            path=trace_path,
+        )
+
+    assert end_reason == EndReason.COMPLETED
+
+    records = list(read_trace(trace_path))
+    assert isinstance(records[-1], Summary)
+    summary = records[-1]
+    assert summary.oids_seen == 20
+    assert summary.end_reason == str(EndReason.COMPLETED)
 
     _validate_all(records, record_validator)

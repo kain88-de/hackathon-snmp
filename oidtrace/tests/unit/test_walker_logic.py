@@ -32,9 +32,11 @@ from traceformat.models import Attempt as TfAttempt
 from traceformat.models import Exchange, Pdu, Reltime, Request, Summary
 from traceformat.vocab import AttemptError, EndReason, EventKind, Violation
 
+from oidtrace.auth import password_to_key
 from oidtrace.codec import (
     PDU_REPORT,
     Malformed,
+    authenticate_msg,
     decode_message,
     decode_v3_message,
     encode_response,
@@ -1141,4 +1143,145 @@ async def test_logging_debug_exchange(
     debug_msgs = [r.getMessage() for r in caplog.records if r.levelno == logging.DEBUG]
     exchange_logs = [m for m in debug_msgs if m.startswith("exchange seq=")]
     assert len(exchange_logs) == 2, f"Expected 2 per-exchange DEBUG logs, got: {debug_msgs}"
+    _validate_all(records, record_validator)
+
+
+# ---------------------------------------------------------------------------
+# SNMPv3 authNoPriv unit tests
+# ---------------------------------------------------------------------------
+
+_V3_AUTH_ENGINE_ID = b"\x80\x00\x00\x00\x01testemu\x00"
+
+
+def test_walk_settings_v3_auth_proto_without_pass_raises() -> None:
+    """v3_auth_proto set without v3_auth_pass raises ValueError mentioning v3_auth_pass."""
+    with pytest.raises(ValueError, match="v3_auth_pass"):
+        WalkSettings(snmp_version="3", v3_user="u", v3_auth_proto="MD5")
+
+
+def test_walk_settings_v3_auth_md5_with_pass_valid() -> None:
+    """v3_auth_proto='MD5' with v3_auth_pass is accepted without error."""
+    settings = WalkSettings(snmp_version="3", v3_user="u", v3_auth_proto="MD5", v3_auth_pass="x")
+    assert settings.v3_auth_proto == "MD5"
+    assert settings.v3_auth_pass == "x"
+
+
+def test_walk_settings_v3_auth_sha_with_pass_valid() -> None:
+    """v3_auth_proto='SHA' with v3_auth_pass is accepted without error."""
+    settings = WalkSettings(snmp_version="3", v3_user="u", v3_auth_proto="SHA", v3_auth_pass="x")
+    assert settings.v3_auth_proto == "SHA"
+    assert settings.v3_auth_pass == "x"
+
+
+def _v3_auth_discovery_exchange(engine_id: bytes) -> Callable[[bytes], ExchangeIO]:
+    """Return a dynamic factory for a discovery Report response with given engine_id."""
+
+    def factory(raw: bytes) -> ExchangeIO:
+        decoded = decode_v3_message(raw)
+        request_id = 42 if isinstance(decoded, Malformed) else decoded[0].request_id
+        response_raw = encode_v3_response(
+            msg_id=1,
+            request_id=request_id,
+            varbinds=[(_USM_STATS_OID, 0x41, b"\x00\x00\x00\x00")],
+            engine_id=engine_id,
+            pdu_tag=PDU_REPORT,
+        )
+        return ExchangeIO(
+            attempts=(Attempt(sent_at=0.001, received_at=0.002),),
+            response=(0.002, response_raw),
+            strays=(),
+        )
+
+    return factory
+
+
+def _v3_auth_response_exchange(
+    oids: list[Oid], engine_id: bytes, kul: bytes
+) -> Callable[[bytes], ExchangeIO]:
+    """Return a dynamic factory for an authenticated v3 GetBulk response.
+
+    Verifies the incoming request carries a non-zero auth_params (real MAC),
+    then returns a signed response.
+    """
+
+    def factory(raw: bytes) -> ExchangeIO:
+        decoded = decode_v3_message(raw)
+        assert not isinstance(decoded, Malformed), "Expected valid v3 message"
+        msg, params = decoded
+        # Verify the outgoing request was authenticated (auth_params non-zero)
+        assert len(params.auth_params) == 12, "Expected 12-byte auth_params in request"
+        assert params.auth_params != b"\x00" * 12, "auth_params must not be all zeros"
+        request_id = msg.request_id
+        varbinds = [(oid, _INTEGER_TAG, b"\x00\x00\x00\x01") for oid in oids]
+        response_raw = encode_v3_response(
+            msg_id=1,
+            request_id=request_id,
+            varbinds=varbinds,
+            engine_id=engine_id,
+            auth=True,
+        )
+        response_raw = authenticate_msg(response_raw, kul, "MD5")
+        return ExchangeIO(
+            attempts=(Attempt(sent_at=0.001, received_at=0.002),),
+            response=(0.002, response_raw),
+            strays=(),
+        )
+
+    return factory
+
+
+def _v3_auth_eom_exchange(
+    after_oid: Oid, engine_id: bytes, kul: bytes
+) -> Callable[[bytes], ExchangeIO]:
+    """Return a dynamic factory for an authenticated EndOfMibView response."""
+
+    def factory(raw: bytes) -> ExchangeIO:
+        decoded = decode_v3_message(raw)
+        assert not isinstance(decoded, Malformed), "Expected valid v3 message"
+        msg, params = decoded
+        assert len(params.auth_params) == 12, "Expected 12-byte auth_params in request"
+        assert params.auth_params != b"\x00" * 12, "auth_params must not be all zeros"
+        request_id = msg.request_id
+        response_raw = encode_v3_response(
+            msg_id=1,
+            request_id=request_id,
+            varbinds=[(after_oid, 0x82, b"")],
+            engine_id=engine_id,
+            auth=True,
+        )
+        response_raw = authenticate_msg(response_raw, kul, "MD5")
+        return ExchangeIO(
+            attempts=(Attempt(sent_at=0.001, received_at=0.002),),
+            response=(0.002, response_raw),
+            strays=(),
+        )
+
+    return factory
+
+
+@pytest.mark.asyncio
+async def test_v3_authnopriv_walk_sends_authenticated_getbulks(
+    record_validator: Draft202012Validator,
+) -> None:
+    """v3 authNoPriv walk: walker sends authenticated GetBulks, terminates completed."""
+    kul = password_to_key(b"testpass1", _V3_AUTH_ENGINE_ID, "MD5")
+
+    transport = FakeTransport(
+        responses=[
+            _v3_auth_discovery_exchange(_V3_AUTH_ENGINE_ID),
+            _v3_auth_response_exchange([_OID_A, _OID_B], _V3_AUTH_ENGINE_ID, kul),
+            _v3_auth_eom_exchange(_OID_B, _V3_AUTH_ENGINE_ID, kul),
+        ]
+    )
+    settings = WalkSettings(
+        snmp_version="3",
+        v3_user="authuser",
+        v3_auth_proto="MD5",
+        v3_auth_pass="testpass1",
+    )
+    records = await _collect(transport, settings=settings)
+
+    assert isinstance(records[-1], Summary)
+    summary = records[-1]
+    assert summary.end_reason == str(EndReason.COMPLETED)
     _validate_all(records, record_validator)
