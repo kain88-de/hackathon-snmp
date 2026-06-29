@@ -20,9 +20,10 @@ from typing import TYPE_CHECKING
 
 import pytest
 
+from oidtrace.auth import password_to_key
 from oidtrace.tracefile import read_trace
 from oidtrace.walker import WalkSettings, run_walk
-from tests.support.emulator import EmuDevice
+from tests.support.emulator import _EMU_ENGINE_ID, EmuDevice
 
 if TYPE_CHECKING:
     from pathlib import Path
@@ -373,4 +374,58 @@ async def test_v3_oidtrace_vs_snmpwalk_crosswalk(
     # And we saw exactly device_size distinct OIDs
     assert len(set(our_oids)) == device_size, (
         f"Expected {device_size} distinct OIDs, got {len(set(our_oids))}"
+    )
+
+
+@pytest.mark.asyncio
+async def test_snmpwalk_v3_authnopriv(
+    emulator_factory: _EmuFactory,
+) -> None:
+    """snmpwalk -v3 authNoPriv MD5 against emulator returns all 20 OIDs with exit code 0."""
+    snmpwalk = _require_tool("snmpwalk")
+
+    device_size = 20
+    kul = password_to_key(b"testpass1", _EMU_ENGINE_ID, "MD5")
+
+    async with emulator_factory(
+        EmuDevice.simple(n_oids=device_size, auth_users={b"authuser": ("MD5", kul)})
+    ) as (host, port):
+        loop = asyncio.get_event_loop()
+        proc_result = await loop.run_in_executor(
+            None,
+            lambda: subprocess.run(
+                [
+                    snmpwalk,
+                    "-v3",
+                    "-u",
+                    "authuser",
+                    "-l",
+                    "authNoPriv",
+                    "-a",
+                    "MD5",
+                    "-A",
+                    "testpass1",
+                    "-On",
+                    "-t",
+                    "2",
+                    "-r",
+                    "0",
+                    f"{host}:{port}",
+                    "1.3.6.1",
+                ],
+                capture_output=True,
+                text=True,
+                timeout=30,
+                check=False,
+            ),
+        )
+
+    assert proc_result.returncode == 0, (
+        f"snmpwalk exited {proc_result.returncode}. stderr: {proc_result.stderr!r}"
+    )
+
+    oid_lines = [line for line in proc_result.stdout.splitlines() if line.startswith(".")]
+    assert len(oid_lines) == device_size, (
+        f"Expected {device_size} OID lines, got {len(oid_lines)}.\n"
+        f"stdout: {proc_result.stdout[:500]!r}"
     )

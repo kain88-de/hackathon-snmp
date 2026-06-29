@@ -11,7 +11,7 @@ import asyncio
 import bisect
 from dataclasses import dataclass, field
 from enum import StrEnum
-from typing import override
+from typing import Literal, override
 
 from oidtrace.codec import (
     PDU_GET,
@@ -21,10 +21,12 @@ from oidtrace.codec import (
     Malformed,
     Message,
     V3Params,
+    authenticate_msg,
     decode_message,
     decode_v3_message,
     encode_response,
     encode_v3_response,
+    verify_auth,
 )
 from oidtrace.oid import Oid
 
@@ -69,13 +71,20 @@ class EmuDevice:
     Attributes:
         tree: Sorted tuple of (oid, tag, value_length) entries.
         quirks: Behavioral modifiers.
+        auth_users: Maps username (bytes) to (proto, kul) for authenticated v3.
     """
 
     tree: tuple[_TreeEntry, ...]
     quirks: Quirks = field(default_factory=Quirks)
+    auth_users: dict[bytes, tuple[Literal["MD5", "SHA"], bytes]] = field(default_factory=dict)
 
     @classmethod
-    def simple(cls, n_oids: int = 100, quirks: Quirks | None = None) -> EmuDevice:
+    def simple(
+        cls,
+        n_oids: int = 100,
+        quirks: Quirks | None = None,
+        auth_users: dict[bytes, tuple[Literal["MD5", "SHA"], bytes]] | None = None,
+    ) -> EmuDevice:
         """Build a sorted ifTable-like tree with n_oids entries.
 
         Creates 10 columns under 1.3.6.1.2.1.2.2.1.<col>, with
@@ -89,7 +98,11 @@ class EmuDevice:
                 oid = Oid(arcs=(*_IF_TABLE.arcs, col, inst))
                 entries.append((oid, _INTEGER_TAG, 4))
         entries.sort(key=lambda e: e[0])
-        return cls(tree=tuple(entries), quirks=quirks or Quirks())
+        return cls(
+            tree=tuple(entries),
+            quirks=quirks or Quirks(),
+            auth_users=auth_users or {},
+        )
 
 
 class EmuProtocol(asyncio.DatagramProtocol):
@@ -181,7 +194,7 @@ class EmuProtocol(asyncio.DatagramProtocol):
         v3_result = decode_v3_message(data)
         if not isinstance(v3_result, Malformed):
             msg, params = v3_result
-            await self._handle_v3(msg, params, addr)
+            await self._handle_v3(msg, params, addr, raw_data=data)
             return
 
         msg = decode_message(data)
@@ -223,8 +236,23 @@ class EmuProtocol(asyncio.DatagramProtocol):
         msg: Message,
         params: V3Params,
         addr: tuple[str | bytes | bytearray, int],
+        raw_data: bytes,
     ) -> None:
-        # Discovery: GetRequest with empty varbinds → Report PDU
+        # Auth check: if request carries a 12-byte auth_params, verify the MAC.
+        # Drop silently on failure (unknown user or bad MAC).
+        needs_auth = False
+        auth_kul: bytes | None = None
+        auth_proto: Literal["MD5", "SHA"] | None = None
+        if len(params.auth_params) == 12:
+            entry = self._device.auth_users.get(params.username)
+            if entry is None:
+                return
+            auth_proto, auth_kul = entry
+            if not verify_auth(raw_data, params.auth_params, auth_kul, auth_proto):
+                return
+            needs_auth = True
+
+        # Discovery: GetRequest with empty varbinds → Report PDU (always noAuthNoPriv)
         if msg.pdu_tag == PDU_GET and not msg.varbinds:
             response = encode_v3_response(
                 msg_id=params.msg_id,
@@ -258,7 +286,11 @@ class EmuProtocol(asyncio.DatagramProtocol):
                 engine_id=_EMU_ENGINE_ID,
                 username=params.username,
                 error_status=0 if idx < len(tree) else 2,
+                auth=needs_auth,
             )
+            if needs_auth:
+                assert auth_kul is not None and auth_proto is not None
+                response = authenticate_msg(response, auth_kul, auth_proto)
             assert self._transport is not None
             self._transport.sendto(response, addr)
             return
@@ -280,6 +312,10 @@ class EmuProtocol(asyncio.DatagramProtocol):
                 varbinds=varbinds,
                 engine_id=_EMU_ENGINE_ID,
                 username=params.username,
+                auth=needs_auth,
             )
+            if needs_auth:
+                assert auth_kul is not None and auth_proto is not None
+                response = authenticate_msg(response, auth_kul, auth_proto)
             assert self._transport is not None
             self._transport.sendto(response, addr)

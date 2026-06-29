@@ -11,19 +11,24 @@ from contextlib import AbstractAsyncContextManager
 from dataclasses import dataclass
 from typing import override
 
+import pytest
+
+from oidtrace.auth import password_to_key
 from oidtrace.codec import (
     PDU_REPORT,
     PDU_RESPONSE,
     Malformed,
+    authenticate_msg,
     decode_message,
     decode_v3_message,
     encode_getbulk,
     encode_getnext,
     encode_v3_discovery,
     encode_v3_getbulk,
+    verify_auth,
 )
 from oidtrace.oid import Oid
-from tests.support.emulator import EmuDevice, Quirks
+from tests.support.emulator import _EMU_ENGINE_ID, EmuDevice, Quirks
 
 _EmuFactory = Callable[..., AbstractAsyncContextManager[tuple[str, int]]]
 
@@ -262,3 +267,82 @@ async def test_v3_getbulk_after_discovery(emulator_factory: _EmuFactory) -> None
     assert msg.pdu_tag == PDU_RESPONSE, f"Expected PDU_RESPONSE, got 0x{msg.pdu_tag:02x}"
     assert msg.request_id == 99
     assert len(msg.varbinds) == 5
+
+
+async def test_v3_authnopriv_getbulk_correct_key(emulator_factory: _EmuFactory) -> None:
+    """Auth GetBulk with correct MAC returns a signed response."""
+    start = Oid.from_str("1.3.6.1.2.1.2.2.1")
+    kul = password_to_key(b"testpass1", _EMU_ENGINE_ID, "MD5")
+
+    async with emulator_factory(
+        EmuDevice.simple(n_oids=10, auth_users={b"authuser": ("MD5", kul)})
+    ) as (host, port):
+        # Step 1: discovery
+        raw_disc = await _send_raw(host, port, encode_v3_discovery(1, 42))
+        disc_result = decode_v3_message(raw_disc)
+        assert not isinstance(disc_result, Malformed), f"Discovery decode failed: {disc_result}"
+        _disc_msg, disc_params = disc_result
+
+        # Step 2: authenticated GetBulk
+        raw_bulk = encode_v3_getbulk(
+            msg_id=2,
+            request_id=100,
+            oid=start,
+            max_repetitions=5,
+            engine_id=disc_params.engine_id,
+            engine_boots=disc_params.engine_boots,
+            engine_time=disc_params.engine_time,
+            username=b"authuser",
+            auth=True,
+        )
+        raw_signed = authenticate_msg(raw_bulk, kul, "MD5")
+        raw_resp = await _send_raw(host, port, raw_signed)
+
+    result = decode_v3_message(raw_resp)
+    assert not isinstance(result, Malformed), f"Decode failed: {result}"
+    msg, resp_params = result
+    assert msg.pdu_tag == PDU_RESPONSE, f"Expected PDU_RESPONSE, got 0x{msg.pdu_tag:02x}"
+    assert msg.request_id == 100
+    # Response must carry a 12-byte auth_params
+    assert len(resp_params.auth_params) == 12, (
+        f"Expected 12-byte auth_params, got {len(resp_params.auth_params)}"
+    )
+    assert resp_params.auth_params != b"\x00" * 12, "auth_params must not be all zeros"
+    assert verify_auth(raw_resp, resp_params.auth_params, kul, "MD5"), (
+        "Response MAC verification failed"
+    )
+
+
+async def test_v3_authnopriv_getbulk_wrong_key_silently_dropped(
+    emulator_factory: _EmuFactory,
+) -> None:
+    """Auth GetBulk signed with wrong key is silently dropped (no response)."""
+    start = Oid.from_str("1.3.6.1.2.1.2.2.1")
+    kul = password_to_key(b"testpass1", _EMU_ENGINE_ID, "MD5")
+    wrong_kul = password_to_key(b"wrongpass!", _EMU_ENGINE_ID, "MD5")
+
+    async with emulator_factory(
+        EmuDevice.simple(n_oids=10, auth_users={b"authuser": ("MD5", kul)})
+    ) as (host, port):
+        # Discovery first to get engine_id
+        raw_disc = await _send_raw(host, port, encode_v3_discovery(1, 42))
+        disc_result = decode_v3_message(raw_disc)
+        assert not isinstance(disc_result, Malformed), f"Discovery decode failed: {disc_result}"
+        _disc_msg, disc_params = disc_result
+
+        # Authenticated GetBulk signed with wrong key — expect no response
+        raw_bulk = encode_v3_getbulk(
+            msg_id=3,
+            request_id=101,
+            oid=start,
+            max_repetitions=5,
+            engine_id=disc_params.engine_id,
+            engine_boots=disc_params.engine_boots,
+            engine_time=disc_params.engine_time,
+            username=b"authuser",
+            auth=True,
+        )
+        raw_signed_wrong = authenticate_msg(raw_bulk, wrong_kul, "MD5")
+
+        with pytest.raises(asyncio.TimeoutError):
+            await _send_raw(host, port, raw_signed_wrong, timeout_s=0.3)
