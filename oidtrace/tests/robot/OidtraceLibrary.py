@@ -1,21 +1,23 @@
 """Robot Framework keyword library for oidtrace spec testing.
 
-Wraps the in-process emulator and CLI so .robot files contain only behavior,
-not infrastructure. All emulator threading, temp-dir management, and
-stdout/stderr capture live here.
+Drives the oidtrace binary via subprocess so the spec is language-agnostic:
+any conforming reimplementation passes as long as it ships an `oidtrace`
+binary with the same CLI contract and trace format.
+
+The emulator stays Python — it is a test fixture, not the thing being specced.
+Trace assertions use the traceformat reader for convenience; raw JSON would
+work equally well.
 """
 
 from __future__ import annotations
 
-import io
-import sys
+import subprocess
 import tempfile
 from pathlib import Path
 
 from robot.api.deco import keyword
 from traceformat.models import Exchange, Header, Summary
 
-from oidtrace.cli import main
 from oidtrace.tracefile import read_trace
 from tests.support.emulator import EmulatorThread, EndOfMib, Quirks
 
@@ -77,10 +79,10 @@ class OidtraceLibrary:
     ) -> int:
         self._out_dir = Path(tempfile.mkdtemp())
         h = host or self._host or "127.0.0.1"
-        args = ["walk", *version_args, h]
+        cmd = ["oidtrace", "walk", *version_args, h]
         if self._port is not None:
-            args += ["--port", str(self._port)]
-        args += [
+            cmd += ["--port", str(self._port)]
+        cmd += [
             "--out",
             str(self._out_dir),
             "--timeout",
@@ -91,19 +93,14 @@ class OidtraceLibrary:
             str(give_up_after),
         ]
         if label:
-            args += ["--label", label]
+            cmd += ["--label", label]
         if start_oid:
-            args += ["--start-oid", start_oid]
+            cmd += ["--start-oid", start_oid]
 
-        stdout_buf, stderr_buf = io.StringIO(), io.StringIO()
-        old_out, old_err = sys.stdout, sys.stderr
-        sys.stdout, sys.stderr = stdout_buf, stderr_buf
-        try:
-            self._rc = main(args)
-        finally:
-            sys.stdout, sys.stderr = old_out, old_err
-        self._stdout = stdout_buf.getvalue()
-        self._stderr = stderr_buf.getvalue()
+        result = subprocess.run(cmd, capture_output=True, text=True, check=False)
+        self._rc = result.returncode
+        self._stdout = result.stdout
+        self._stderr = result.stderr
 
         traces = list(self._out_dir.glob("*.oidtrace.jsonl.gz"))
         self._trace_path = traces[0] if traces else None
