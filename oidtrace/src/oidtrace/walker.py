@@ -81,6 +81,9 @@ if TYPE_CHECKING:
 
 log = logging.getLogger(__name__)
 
+_TAG_END_OF_MIB_VIEW: int = 0x82
+_SNMP_V1_NO_SUCH_NAME: int = 2
+
 # ---------------------------------------------------------------------------
 # Public type alias
 # ---------------------------------------------------------------------------
@@ -534,7 +537,11 @@ async def walk_records(  # noqa: PLR0912, PLR0913, PLR0915
         # SNMP v1 end-of-MIB: noSuchName (error_status=2). This must be checked
         # BEFORE any varbind processing — v1 responses do not use EndOfMibView
         # tags, they signal end-of-MIB via error_status=2 with a Null varbind.
-        if settings.snmp_version == "1" and decoded_msg is not None and decoded_msg.f1 == 2:  # noqa: PLR2004
+        if (
+            settings.snmp_version == "1"
+            and decoded_msg is not None
+            and decoded_msg.f1 == _SNMP_V1_NO_SUCH_NAME
+        ):
             log.info("walk completed: noSuchName (v1 end-of-MIB)")
             end_reason = EndReason.COMPLETED
             break
@@ -544,7 +551,7 @@ async def walk_records(  # noqa: PLR0912, PLR0913, PLR0915
             end_reason = EndReason.COMPLETED
             break
 
-        if any(vb.tag == 0x82 for vb in varbinds_from_response):  # noqa: PLR2004
+        if any(vb.tag == _TAG_END_OF_MIB_VIEW for vb in varbinds_from_response):
             log.info("walk completed: EndOfMibView")
             end_reason = EndReason.COMPLETED
             break

@@ -58,6 +58,9 @@ _TAG_OCTET_STRING: int = 0x04
 _TAG_OID: int = 0x06
 _TAG_NULL: int = 0x05
 _TAG_END_OF_MIB_VIEW: int = 0x82
+_PDU_CLASS_MASK: int = 0xE0
+_PDU_CLASS_CONTEXT_CONSTRUCTED: int = 0xA0
+_SNMP_VERSION_3: int = 3
 
 # BER tag → vtype name per format spec § 5
 _TAG_NAMES: dict[int, str] = {
@@ -676,7 +679,7 @@ def decode_message(raw: bytes) -> Message | Malformed:
         _comm_body, i = _expect_tlv(outer_body, i, _TAG_OCTET_STRING, "community OCTET STRING")
 
         pdu_tag, pdu_body, _i = read_tlv(outer_body, i)
-        if (pdu_tag & 0xE0) != 0xA0:  # noqa: PLR2004
+        if (pdu_tag & _PDU_CLASS_MASK) != _PDU_CLASS_CONTEXT_CONSTRUCTED:
             raise ValueError(
                 f"Expected context-constructed PDU tag (0xA0-0xBF), got 0x{pdu_tag:02x}"
             )
@@ -737,7 +740,7 @@ def decode_v3_message(raw: bytes) -> tuple[Message, V3Params] | Malformed:
         # version must be 3
         ver_body, i = _expect_tlv(outer_body, i, _TAG_INTEGER, "version INTEGER")
         version = decode_int(ver_body)
-        if version != 3:  # noqa: PLR2004
+        if version != _SNMP_VERSION_3:
             raise ValueError(f"Expected SNMPv3 version 3, got {version}")
 
         # msgGlobalData SEQUENCE
@@ -770,7 +773,7 @@ def decode_v3_message(raw: bytes) -> tuple[Message, V3Params] | Malformed:
         _, _, s = read_tlv(scoped_body, s)  # contextEngineID
         _, _, s = read_tlv(scoped_body, s)  # contextName
         pdu_tag, pdu_body, _s = read_tlv(scoped_body, s)
-        if (pdu_tag & 0xE0) != 0xA0:  # noqa: PLR2004
+        if (pdu_tag & _PDU_CLASS_MASK) != _PDU_CLASS_CONTEXT_CONSTRUCTED:
             raise ValueError(
                 f"Expected context-constructed PDU tag (0xA0-0xBF), got 0x{pdu_tag:02x}"
             )

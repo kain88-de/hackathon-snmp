@@ -31,7 +31,7 @@ class OidtraceLibrary:
 
     def __init__(self) -> None:
         self._emulator: EmulatorThread | None = None
-        self._snmpd_proc: subprocess.Popen | None = None  # type: ignore[type-arg]
+        self._snmpd_proc: subprocess.Popen[bytes] | None = None
         self._snmpd_conf_dir: Path | None = None
         self._host: str | None = None
         self._port: int | None = None

@@ -210,10 +210,11 @@ def main(argv: list[str] | None = None) -> int:
         return 2
 
     verbosity: int = args.verbose
-    level = logging.WARNING
-    if verbosity == 1:
+    if verbosity == 0:
+        level = logging.WARNING
+    elif verbosity == 1:
         level = logging.INFO
-    elif verbosity >= 2:  # noqa: PLR2004
+    else:
         level = logging.DEBUG
 
     logging.basicConfig(
