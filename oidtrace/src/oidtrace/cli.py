@@ -25,10 +25,11 @@ import socket
 import sys
 from datetime import UTC, datetime
 from pathlib import Path
-from typing import Literal, cast
+from typing import cast
 
 from traceformat import Summary, TraceRecord
 
+from oidtrace.auth import AuthProto
 from oidtrace.oid import Oid
 from oidtrace.tracefile import read_trace
 from oidtrace.walker import RecordSink, WalkSettings, run_walk
@@ -133,7 +134,7 @@ def _build_parser() -> argparse.ArgumentParser:
     v3 = ver.add_parser("v3", help="SNMP v3 walk.")
     _add_shared_args(v3)
     v3.add_argument("--user", required=True, help="SNMPv3 username.")
-    v3.add_argument("--auth-proto", default=None, help="Auth protocol (e.g. SHA).")
+    v3.add_argument("--auth-proto", default=None, help="Auth protocol (MD5, SHA, or SHA-256).")
     v3.add_argument("--auth-pass", default=None, help="Auth passphrase.")
     v3.add_argument("--priv-proto", default=None, help="Privacy protocol (e.g. AES).")
     v3.add_argument("--priv-pass", default=None, help="Privacy passphrase.")
@@ -148,21 +149,23 @@ def _build_parser() -> argparse.ArgumentParser:
 
 def _validate_v3_auth(
     args: argparse.Namespace,
-) -> tuple[Literal["MD5", "SHA"] | None, str | None] | int:
+) -> tuple[AuthProto | None, str | None] | int:
     """Validate SNMPv3 auth arguments.
 
     Returns:
         (v3_auth_proto, v3_auth_pass) on success, or an exit code (2) on error.
     """
-    v3_auth_proto: Literal["MD5", "SHA"] | None = None
+    v3_auth_proto: AuthProto | None = None
     v3_auth_pass: str | None = None
 
     if args.auth_proto is not None:
         # Validate auth_proto
-        auth_proto_upper = args.auth_proto.upper()
-        if auth_proto_upper not in ("MD5", "SHA"):
+        try:
+            v3_auth_proto = AuthProto(args.auth_proto.upper())
+        except ValueError:
             print(
-                f"error: --auth-proto must be 'MD5' or 'SHA', got {args.auth_proto!r}",
+                f"error: --auth-proto must be one of {[p.value for p in AuthProto]}, "
+                f"got {args.auth_proto!r}",
                 file=sys.stderr,
             )
             return 2
@@ -175,7 +178,6 @@ def _validate_v3_auth(
             )
             return 2
 
-        v3_auth_proto = cast("Literal['MD5', 'SHA']", auth_proto_upper)
         v3_auth_pass = args.auth_pass
 
     # Warn if privacy fields are set (not supported yet)

@@ -33,9 +33,9 @@ from __future__ import annotations
 
 import hmac
 from dataclasses import dataclass
-from typing import TYPE_CHECKING, Literal
+from typing import TYPE_CHECKING
 
-from oidtrace.auth import compute_mac
+from oidtrace.auth import AuthProto, compute_mac
 from oidtrace.ber import decode_int, decode_oid, encode_int, encode_oid, read_tlv, tlv
 
 if TYPE_CHECKING:
@@ -385,28 +385,28 @@ def _auth_params_value_offset(raw: bytes) -> int:
     return ap_abs_start + _tlv_header_len(raw, ap_abs_start)
 
 
-def authenticate_msg(raw: bytes, kul: bytes, proto: Literal["MD5", "SHA"]) -> bytes:
-    """Sign a v3 message that contains a 12-zero auth_params placeholder.
+def authenticate_msg(raw: bytes, kul: bytes, proto: AuthProto) -> bytes:
+    """Sign a v3 message that contains a zero-filled auth_params placeholder.
 
     Uses _auth_params_value_offset to locate the placeholder structurally
-    (avoids false matches when engineID happens to contain 12 zero bytes).
+    (avoids false matches when engineID happens to contain zero bytes).
 
     Args:
-        raw: Message bytes with 12-zero auth_params placeholder.
+        raw: Message bytes with zero-filled auth_params placeholder.
         kul: Localized key from password_to_key.
-        proto: Hash algorithm ("MD5" or "SHA").
+        proto: Hash algorithm to use for the MAC.
 
     Returns:
         Message bytes with the placeholder replaced by the computed MAC.
     """
     offset = _auth_params_value_offset(raw)
     # Zero the auth params slot (it should already be zero, but be explicit)
-    zeroed = raw[:offset] + b"\x00" * 12 + raw[offset + 12 :]
+    zeroed = raw[:offset] + bytes(proto.mac_length) + raw[offset + proto.mac_length :]
     mac = compute_mac(kul, zeroed, proto)
-    return raw[:offset] + mac + raw[offset + 12 :]
+    return raw[:offset] + mac + raw[offset + proto.mac_length :]
 
 
-def verify_auth(raw: bytes, auth_params: bytes, kul: bytes, proto: Literal["MD5", "SHA"]) -> bool:
+def verify_auth(raw: bytes, auth_params: bytes, kul: bytes, proto: AuthProto) -> bool:
     """Verify the authentication MAC of a signed v3 message.
 
     Args:
@@ -418,13 +418,13 @@ def verify_auth(raw: bytes, auth_params: bytes, kul: bytes, proto: Literal["MD5"
     Returns:
         True if the MAC is valid, False otherwise (wrong key, tampered, malformed).
     """
-    if len(auth_params) != 12:  # noqa: PLR2004
+    if len(auth_params) != proto.mac_length:
         return False
     try:
         offset = _auth_params_value_offset(raw)
     except ValueError:
         return False
-    zeroed = raw[:offset] + b"\x00" * 12 + raw[offset + 12 :]
+    zeroed = raw[:offset] + bytes(proto.mac_length) + raw[offset + proto.mac_length :]
     expected_mac = compute_mac(kul, zeroed, proto)
     return hmac.compare_digest(expected_mac, auth_params)
 
@@ -477,7 +477,7 @@ def encode_v3_getbulk(  # noqa: PLR0913
     engine_boots: int,
     engine_time: int,
     username: bytes,
-    auth: bool = False,
+    proto: AuthProto | None = None,
 ) -> bytes:
     """Encode an SNMPv3 GetBulk request.
 
@@ -490,7 +490,8 @@ def encode_v3_getbulk(  # noqa: PLR0913
         engine_boots: AuthoritativeEngineBoots (from discovery).
         engine_time: AuthoritativeEngineTime (from discovery).
         username: Username for this request.
-        auth: If True, set msgFlags auth bit and embed 12-zero auth placeholder.
+        proto: AuthProto | None — if not None, set msgFlags auth bit and embed
+            zero-filled auth placeholder of the correct length.
 
     Returns:
         Complete SNMPv3 message bytes.
@@ -508,14 +509,14 @@ def encode_v3_getbulk(  # noqa: PLR0913
     # ScopedPDU with contextEngineID from discovery
     scoped_pdu = _encode_scoped_pdu(engine_id, pdu)
 
-    # USM params with discovery values; 12-zero placeholder when auth=True
-    auth_params_bytes = b"\x00" * 12 if auth else b""
+    # USM params with discovery values; zero-filled placeholder when proto is not None
+    auth_params_bytes = bytes(proto.mac_length) if proto is not None else b""
     usm_params = _encode_usm_params(
         engine_id, engine_boots, engine_time, username, auth_params_bytes
     )
 
     # msgGlobalData
-    msg_global = _encode_msg_global_data(msg_id, auth=auth)
+    msg_global = _encode_msg_global_data(msg_id, auth=proto is not None)
 
     # Outer SEQUENCE: version 3, msgGlobalData, USM params, ScopedPDU
     return tlv(
@@ -533,7 +534,7 @@ def encode_v3_response(  # noqa: PLR0913
     error_status: int = 0,
     error_index: int = 0,
     pdu_tag: int = PDU_RESPONSE,
-    auth: bool = False,
+    proto: AuthProto | None = None,
 ) -> bytes:
     """Encode an SNMPv3 Response or Report PDU (used by the emulator).
 
@@ -546,7 +547,8 @@ def encode_v3_response(  # noqa: PLR0913
         error_status: Error status (default 0 = noError).
         error_index: Error index (default 0).
         pdu_tag: PDU tag (default PDU_RESPONSE=0xA2; use PDU_REPORT=0xA8 for discovery response).
-        auth: If True, set msgFlags auth bit and embed 12-zero auth placeholder.
+        proto: AuthProto | None — if not None, set msgFlags auth bit and embed
+            zero-filled auth placeholder of the correct length.
 
     Returns:
         Complete SNMPv3 message bytes.
@@ -569,12 +571,12 @@ def encode_v3_response(  # noqa: PLR0913
     # ScopedPDU with contextEngineID from discovery
     scoped_pdu = _encode_scoped_pdu(engine_id, pdu)
 
-    # USM params; 12-zero placeholder when auth=True
-    auth_params_bytes = b"\x00" * 12 if auth else b""
+    # USM params; zero-filled placeholder when proto is not None
+    auth_params_bytes = bytes(proto.mac_length) if proto is not None else b""
     usm_params = _encode_usm_params(engine_id, 0, 0, username, auth_params_bytes)
 
     # msgGlobalData
-    msg_global = _encode_msg_global_data(msg_id, auth=auth)
+    msg_global = _encode_msg_global_data(msg_id, auth=proto is not None)
 
     # Outer SEQUENCE: version 3, msgGlobalData, USM params, ScopedPDU
     return tlv(

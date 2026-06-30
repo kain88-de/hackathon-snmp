@@ -7,16 +7,15 @@ Wire format constraints:
 
 from __future__ import annotations
 
-from typing import Literal
-
 import pytest
 
-from oidtrace.auth import password_to_key
+from oidtrace.auth import AuthProto, password_to_key
 from oidtrace.ber import encode_oid
 from oidtrace.codec import (
     _AUTH_PARAMS_PLACEHOLDER,
     PDU_GET,
     PDU_REPORT,
+    Malformed,
     V3Params,
     authenticate_msg,
     decode_v3_message,
@@ -28,13 +27,13 @@ from oidtrace.codec import (
 from oidtrace.oid import Oid
 
 _ENGINE_ID = b"\x80\x00\x1f\x88\x04\x01\x02\x03\x04\x05\x06\x07"
-_KUL_MD5 = password_to_key(b"authpass", _ENGINE_ID, "MD5")
-_KUL_SHA = password_to_key(b"authpass", _ENGINE_ID, "SHA")
+_KUL_MD5 = password_to_key(b"authpass", _ENGINE_ID, AuthProto.MD5)
+_KUL_SHA = password_to_key(b"authpass", _ENGINE_ID, AuthProto.SHA)
 _KUL = _KUL_MD5  # kept for existing single-proto tests
 
 
-def _kul_for(proto: Literal["MD5", "SHA"]) -> bytes:
-    return _KUL_SHA if proto == "SHA" else _KUL_MD5
+def _kul_for(proto: AuthProto) -> bytes:
+    return _KUL_SHA if proto == AuthProto.SHA else _KUL_MD5
 
 
 # ---------------------------------------------------------------------------
@@ -194,14 +193,14 @@ def test_encode_v3_response_pdu_tag_report() -> None:
 
 
 def test_encode_v3_getbulk_auth_true_msgflags_0x05() -> None:
-    """encode_v3_getbulk(..., auth=True) sets msgFlags to 0x05 (reportable+auth)."""
-    raw = encode_v3_getbulk(1, 42, _OID_1_3_6_1, 7, _ENGINE_ID, 1, 0, b"user", auth=True)
+    """encode_v3_getbulk(..., proto=AuthProto.MD5) sets msgFlags to 0x05 (reportable+auth)."""
+    raw = encode_v3_getbulk(1, 42, _OID_1_3_6_1, 7, _ENGINE_ID, 1, 0, b"user", proto=AuthProto.MD5)
     assert b"\x04\x01\x05" in raw
 
 
 def test_encode_v3_getbulk_auth_false_msgflags_0x04() -> None:
-    """encode_v3_getbulk(..., auth=False) keeps msgFlags 0x04 (regression)."""
-    raw = encode_v3_getbulk(1, 42, _OID_1_3_6_1, 7, _ENGINE_ID, 1, 0, b"user", auth=False)
+    """encode_v3_getbulk(..., proto=None) keeps msgFlags 0x04 (regression)."""
+    raw = encode_v3_getbulk(1, 42, _OID_1_3_6_1, 7, _ENGINE_ID, 1, 0, b"user", proto=None)
     assert b"\x04\x01\x04" in raw
 
 
@@ -211,14 +210,14 @@ def test_encode_v3_getbulk_auth_false_msgflags_0x04() -> None:
 
 
 def test_encode_v3_getbulk_auth_true_has_placeholder() -> None:
-    """encode_v3_getbulk(..., auth=True) embeds 12-zero auth placeholder."""
-    raw = encode_v3_getbulk(1, 42, _OID_1_3_6_1, 7, _ENGINE_ID, 1, 0, b"user", auth=True)
+    """encode_v3_getbulk(..., proto=AuthProto.MD5) embeds 12-zero auth placeholder."""
+    raw = encode_v3_getbulk(1, 42, _OID_1_3_6_1, 7, _ENGINE_ID, 1, 0, b"user", proto=AuthProto.MD5)
     assert _AUTH_PARAMS_PLACEHOLDER in raw
 
 
 def test_encode_v3_response_auth_true_has_placeholder() -> None:
-    """encode_v3_response(..., auth=True) embeds 12-zero auth placeholder."""
-    raw = encode_v3_response(1, 42, [], _ENGINE_ID, auth=True)
+    """encode_v3_response(..., proto=AuthProto.MD5) embeds 12-zero auth placeholder."""
+    raw = encode_v3_response(1, 42, [], _ENGINE_ID, proto=AuthProto.MD5)
     assert _AUTH_PARAMS_PLACEHOLDER in raw
 
 
@@ -227,18 +226,18 @@ def test_encode_v3_response_auth_true_has_placeholder() -> None:
 # ---------------------------------------------------------------------------
 
 
-@pytest.mark.parametrize("proto", ["MD5", "SHA"])
-def test_authenticate_msg_same_length(proto: Literal["MD5", "SHA"]) -> None:
+@pytest.mark.parametrize("proto", [AuthProto.MD5, AuthProto.SHA])
+def test_authenticate_msg_same_length(proto: AuthProto) -> None:
     """authenticate_msg returns bytes of same length as input."""
-    raw = encode_v3_getbulk(1, 42, _OID_1_3_6_1, 7, _ENGINE_ID, 1, 0, b"user", auth=True)
+    raw = encode_v3_getbulk(1, 42, _OID_1_3_6_1, 7, _ENGINE_ID, 1, 0, b"user", proto=proto)
     result = authenticate_msg(raw, _kul_for(proto), proto)
     assert len(result) == len(raw)
 
 
-@pytest.mark.parametrize("proto", ["MD5", "SHA"])
-def test_authenticate_msg_mac_slot_nonzero(proto: Literal["MD5", "SHA"]) -> None:
+@pytest.mark.parametrize("proto", [AuthProto.MD5, AuthProto.SHA])
+def test_authenticate_msg_mac_slot_nonzero(proto: AuthProto) -> None:
     """authenticate_msg replaces the placeholder with a non-zero MAC."""
-    raw = encode_v3_getbulk(1, 42, _OID_1_3_6_1, 7, _ENGINE_ID, 1, 0, b"user", auth=True)
+    raw = encode_v3_getbulk(1, 42, _OID_1_3_6_1, 7, _ENGINE_ID, 1, 0, b"user", proto=proto)
     result = authenticate_msg(raw, _kul_for(proto), proto)
     # placeholder should be gone
     assert _AUTH_PARAMS_PLACEHOLDER not in result
@@ -249,11 +248,11 @@ def test_authenticate_msg_mac_slot_nonzero(proto: Literal["MD5", "SHA"]) -> None
 # ---------------------------------------------------------------------------
 
 
-@pytest.mark.parametrize("proto", ["MD5", "SHA"])
-def test_verify_auth_correct_kul_returns_true(proto: Literal["MD5", "SHA"]) -> None:
+@pytest.mark.parametrize("proto", [AuthProto.MD5, AuthProto.SHA])
+def test_verify_auth_correct_kul_returns_true(proto: AuthProto) -> None:
     """verify_auth returns True for a correctly signed message."""
     kul = _kul_for(proto)
-    raw = encode_v3_getbulk(1, 42, _OID_1_3_6_1, 7, _ENGINE_ID, 1, 0, b"user", auth=True)
+    raw = encode_v3_getbulk(1, 42, _OID_1_3_6_1, 7, _ENGINE_ID, 1, 0, b"user", proto=proto)
     signed = authenticate_msg(raw, kul, proto)
     result = decode_v3_message(signed)
     assert isinstance(result, tuple)
@@ -261,11 +260,11 @@ def test_verify_auth_correct_kul_returns_true(proto: Literal["MD5", "SHA"]) -> N
     assert verify_auth(signed, params.auth_params, kul, proto) is True
 
 
-@pytest.mark.parametrize("proto", ["MD5", "SHA"])
-def test_verify_auth_wrong_kul_returns_false(proto: Literal["MD5", "SHA"]) -> None:
+@pytest.mark.parametrize("proto", [AuthProto.MD5, AuthProto.SHA])
+def test_verify_auth_wrong_kul_returns_false(proto: AuthProto) -> None:
     """verify_auth returns False when the key is wrong."""
     kul = _kul_for(proto)
-    raw = encode_v3_getbulk(1, 42, _OID_1_3_6_1, 7, _ENGINE_ID, 1, 0, b"user", auth=True)
+    raw = encode_v3_getbulk(1, 42, _OID_1_3_6_1, 7, _ENGINE_ID, 1, 0, b"user", proto=proto)
     signed = authenticate_msg(raw, kul, proto)
     wrong_kul = password_to_key(b"wrongpass", _ENGINE_ID, proto)
     result = decode_v3_message(signed)
@@ -274,11 +273,11 @@ def test_verify_auth_wrong_kul_returns_false(proto: Literal["MD5", "SHA"]) -> No
     assert verify_auth(signed, params.auth_params, wrong_kul, proto) is False
 
 
-@pytest.mark.parametrize("proto", ["MD5", "SHA"])
-def test_verify_auth_tampered_returns_false(proto: Literal["MD5", "SHA"]) -> None:
+@pytest.mark.parametrize("proto", [AuthProto.MD5, AuthProto.SHA])
+def test_verify_auth_tampered_returns_false(proto: AuthProto) -> None:
     """verify_auth returns False when the message is tampered after signing."""
     kul = _kul_for(proto)
-    raw = encode_v3_getbulk(1, 42, _OID_1_3_6_1, 7, _ENGINE_ID, 1, 0, b"user", auth=True)
+    raw = encode_v3_getbulk(1, 42, _OID_1_3_6_1, 7, _ENGINE_ID, 1, 0, b"user", proto=proto)
     signed = bytearray(authenticate_msg(raw, kul, proto))
     # Flip the last byte of the engine_id in the message (safe: changes content, not structure)
     # Find the engine_id bytes and flip one byte inside the engine_id value
@@ -288,3 +287,58 @@ def test_verify_auth_tampered_returns_false(proto: Literal["MD5", "SHA"]) -> Non
     assert isinstance(result, tuple)
     _msg, params = result
     assert verify_auth(bytes(signed), params.auth_params, kul, proto) is False
+
+
+# ---------------------------------------------------------------------------
+# SHA-256 specific tests
+# ---------------------------------------------------------------------------
+
+
+def test_encode_v3_getbulk_sha256_auth_params_length() -> None:
+    """encode_v3_getbulk(proto=AuthProto.SHA256) embeds a 24-byte zero auth placeholder."""
+    raw = encode_v3_getbulk(
+        1, 42, _OID_1_3_6_1, 7, _ENGINE_ID, 1, 0, b"user", proto=AuthProto.SHA256
+    )
+    result = decode_v3_message(raw)
+    assert not isinstance(result, Malformed)
+    _msg, params = result
+    assert len(params.auth_params) == 24, (
+        f"Expected 24-byte auth_params, got {len(params.auth_params)}"
+    )
+    assert params.auth_params == bytes(24)
+
+
+def test_authenticate_verify_sha256_roundtrip() -> None:
+    """authenticate_msg + verify_auth round-trip for SHA-256: sign then verify passes."""
+    kul = password_to_key(b"testpass256", _ENGINE_ID, AuthProto.SHA256)
+    raw = encode_v3_getbulk(
+        1, 42, _OID_1_3_6_1, 7, _ENGINE_ID, 1, 0, b"user", proto=AuthProto.SHA256
+    )
+    signed = authenticate_msg(raw, kul, AuthProto.SHA256)
+    result = decode_v3_message(signed)
+    assert not isinstance(result, Malformed)
+    _msg, params = result
+    assert len(params.auth_params) == 24
+    assert verify_auth(signed, params.auth_params, kul, AuthProto.SHA256), (
+        "Round-trip verify failed"
+    )
+    # Tamper test: flip one byte, verify must fail
+    tampered = signed[:20] + bytes([signed[20] ^ 0xFF]) + signed[21:]
+    assert not verify_auth(tampered, params.auth_params, kul, AuthProto.SHA256), (
+        "Tampered message must not verify"
+    )
+
+
+def test_verify_auth_sha256_rejects_12byte_params() -> None:
+    """verify_auth with SHA-256 proto rejects 12-byte auth_params."""
+    kul = password_to_key(b"testpass256", _ENGINE_ID, AuthProto.SHA256)
+    raw = encode_v3_getbulk(1, 42, _OID_1_3_6_1, 7, _ENGINE_ID, 1, 0, b"user", proto=AuthProto.MD5)
+    signed_md5 = authenticate_msg(raw, kul, AuthProto.MD5)
+    result = decode_v3_message(signed_md5)
+    assert not isinstance(result, Malformed)
+    _msg, params = result
+    assert len(params.auth_params) == 12
+    # SHA-256 verify must reject 12-byte params
+    assert not verify_auth(signed_md5, params.auth_params, kul, AuthProto.SHA256), (
+        "SHA-256 verify must reject 12-byte auth_params"
+    )

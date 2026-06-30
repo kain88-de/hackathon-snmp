@@ -55,12 +55,17 @@ _ = main
 
 # auth/codec SNMPv3 symbols — used by emulator (authNoPriv), walker, and CLI;
 # vulture only scans src/ so test/support usages are invisible to it.
-from oidtrace.auth import password_to_key
+from oidtrace.auth import AuthProto, password_to_key
 from oidtrace.codec import authenticate_msg, verify_auth
 
 _ = password_to_key
 _ = authenticate_msg
 _ = verify_auth
+
+# AuthProto.SHA256 — used in tests and robot library (outside src/).
+# AuthProto.key_length — used by emulator/walker/codec in future phases.
+_ = AuthProto.SHA256
+_ = AuthProto.key_length
 
 # _SnmpProtocol asyncio callback methods — called by asyncio internals
 # (event loop), not by Python source directly.  These are the standard

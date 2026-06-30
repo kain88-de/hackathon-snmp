@@ -13,7 +13,7 @@ from traceformat import dump_record
 from traceformat.models import Exchange, Header, Summary
 from traceformat.vocab import EndReason, EventKind, Violation
 
-from oidtrace.auth import password_to_key
+from oidtrace.auth import AuthProto, password_to_key
 from oidtrace.oid import Oid
 from oidtrace.tracefile import read_trace
 from oidtrace.walker import WalkSettings, run_walk
@@ -395,8 +395,8 @@ async def test_v3_authnopriv_20_oid_walk(
     tmp_path: Path,
 ) -> None:
     """SNMPv3 authNoPriv walk over a 20-OID auth emulator → COMPLETED, oids_seen==20."""
-    kul = password_to_key(b"testpass1", EMU_ENGINE_ID, "MD5")
-    device = EmuDevice.simple(n_oids=20, auth_users={b"authuser": ("MD5", kul)})
+    kul = password_to_key(b"testpass1", EMU_ENGINE_ID, AuthProto.MD5)
+    device = EmuDevice.simple(n_oids=20, auth_users={b"authuser": (AuthProto.MD5, kul)})
     trace_path = tmp_path / "trace.oidtrace.jsonl.gz"
 
     async with emulator_factory(device) as (host, port):
@@ -406,7 +406,7 @@ async def test_v3_authnopriv_20_oid_walk(
             settings=WalkSettings(
                 snmp_version="3",
                 v3_user="authuser",
-                v3_auth_proto="MD5",
+                v3_auth_proto=AuthProto.MD5,
                 v3_auth_pass="testpass1",
                 bulk_size=10,
             ),

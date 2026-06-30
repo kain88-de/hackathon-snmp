@@ -23,6 +23,7 @@ dev = [
     "pyrefly>=1.0",
     "pyright>=1.1",
     "vulture>=2",
+    "robotframework>=7",
 ]
 
 [tool.uv.sources]
