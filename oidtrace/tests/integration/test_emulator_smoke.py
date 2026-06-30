@@ -277,7 +277,7 @@ async def test_v3_getbulk_after_discovery(emulator_factory: _EmuFactory) -> None
         pytest.param(
             AuthProto.SHA256,
             marks=pytest.mark.xfail(
-                reason="password_to_key does not support SHA-256 yet (Phase 2)", strict=True
+                reason="SHA-256 codec not yet implemented (Phase 3)", strict=True
             ),
         ),
     ],
@@ -336,7 +336,8 @@ async def test_v3_authnopriv_getbulk_correct_key(
         pytest.param(
             AuthProto.SHA256,
             marks=pytest.mark.xfail(
-                reason="password_to_key does not support SHA-256 yet (Phase 2)", strict=True
+                reason="SHA-256 codec not yet implemented (Phase 3), wrong key still dropped",
+                strict=False,
             ),
         ),
     ],

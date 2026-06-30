@@ -136,3 +136,43 @@ def test_compute_mac_different_keys() -> None:
     mac2 = compute_mac(kul2, msg, AuthProto.MD5)
 
     assert mac1 != mac2
+
+
+# ---------------------------------------------------------------------------
+# SHA-256 tests
+# ---------------------------------------------------------------------------
+
+
+def test_password_to_key_sha256_length() -> None:
+    """SHA-256 localized key is 32 bytes."""
+    key = password_to_key(b"test", bytes.fromhex("000000000000000000000001"), AuthProto.SHA256)
+    assert len(key) == 32
+
+
+def test_password_to_key_sha256_kat() -> None:
+    """SHA-256 key derivation: known-answer test (RFC 3414 A.2 algorithm with SHA-256)."""
+    key = password_to_key(
+        b"maplesyrup",
+        bytes.fromhex("000000000000000000000002"),
+        AuthProto.SHA256,
+    )
+    assert key == bytes.fromhex("8982e0e549e866db361a6b625d84cccc11162d453ee8ce3a6445c2d6776f0f8b")
+
+
+def test_compute_mac_sha256_length() -> None:
+    """HMAC-SHA-256 MAC is truncated to 24 bytes."""
+    kul = password_to_key(b"test", bytes.fromhex("000000000000000000000001"), AuthProto.SHA256)
+    mac = compute_mac(kul, b"test message", AuthProto.SHA256)
+    assert len(mac) == 24
+
+
+def test_compute_mac_md5_still_12_bytes() -> None:
+    """MD5 MAC still 12 bytes after SHA-256 support added."""
+    kul = bytes.fromhex("526f5eed9fcce26f8964c2930787d82b")
+    assert len(compute_mac(kul, b"test", AuthProto.MD5)) == 12
+
+
+def test_compute_mac_sha_still_12_bytes() -> None:
+    """SHA-1 MAC still 12 bytes after SHA-256 support added."""
+    kul = bytes.fromhex("6695febc9288e36282235fc7151f128497b38f3f")
+    assert len(compute_mac(kul, b"test", AuthProto.SHA)) == 12
