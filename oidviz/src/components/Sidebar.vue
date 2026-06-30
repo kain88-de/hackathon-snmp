@@ -67,6 +67,103 @@ function onSlowThresholdChange(event: Event): void {
 		emit("facet-change", { slowMs: seconds * MS_PER_SECOND });
 	}
 }
+
+const SYSDESCR_OID = "1.3.6.1.2.1.1.1.0";
+const SYSOID_OID = "1.3.6.1.2.1.1.2.0";
+const SYSUPTIME_OID = "1.3.6.1.2.1.1.3.0";
+const SECONDS_PER_MINUTE = 60;
+
+interface DeviceInfo {
+	sysDescr: string;
+	sysObjectId: string;
+	sysUpTime: string;
+}
+
+interface WalkInfo {
+	duration: string;
+	endReason: string;
+	exchangeCount: number;
+	label: string;
+	oidsSeen: number | string;
+	parseMs: number;
+	snmpVersion: string;
+	startOid: string;
+	violations: number;
+}
+
+interface WalkConfig {
+	bulkSize: number;
+	resumeFrom: string | null;
+	retries: number;
+	timeBudgetS: number | null;
+	timeoutS: number;
+}
+
+const deviceInfo = computed((): DeviceInfo | null => {
+	const si = props.result?.systemInfo;
+	if (!si || si.point !== "start") {
+		return null;
+	}
+	const get = (oid: string): string => {
+		const val = si.values[oid];
+		if (val === undefined || val === null) {
+			return "—";
+		}
+		return String(val).split("\n")[0] || "—";
+	};
+	return {
+		sysDescr: get(SYSDESCR_OID),
+		sysObjectId: get(SYSOID_OID),
+		sysUpTime: get(SYSUPTIME_OID),
+	};
+});
+
+const walkInfo = computed((): WalkInfo | null => {
+	const r = props.result;
+	if (!r) {
+		return null;
+	}
+	const violations = r.summary
+		? Object.values(r.summary.violation_counts).reduce(
+				(a: number, b: number): number => a + b,
+				0,
+			)
+		: 0;
+	const durationSec = r.summary?.at ?? null;
+	let duration = "—";
+	if (durationSec !== null) {
+		duration =
+			durationSec < SECONDS_PER_MINUTE
+				? `${durationSec.toFixed(1)}s`
+				: `${Math.floor(durationSec / SECONDS_PER_MINUTE)}m ${(durationSec % SECONDS_PER_MINUTE).toFixed(0)}s`;
+	}
+	return {
+		duration,
+		endReason: r.summary?.end_reason ?? "—",
+		exchangeCount: r.exchanges.length,
+		label: r.header.label ?? "—",
+		oidsSeen: r.summary?.oids_seen ?? "—",
+		parseMs: r.parseMs,
+		snmpVersion: r.header.snmp.version,
+		startOid: r.header.settings.start_oid,
+		violations,
+	};
+});
+
+const walkConfig = computed((): WalkConfig | null => {
+	const r = props.result;
+	if (!r) {
+		return null;
+	}
+	const s = r.header.settings;
+	return {
+		bulkSize: s.bulk_size,
+		resumeFrom: (s.resume_from as string | undefined) ?? null,
+		retries: s.retries,
+		timeBudgetS: s.time_budget_s ?? null,
+		timeoutS: s.timeout_s,
+	};
+});
 </script>
 
 <template>
@@ -91,6 +188,89 @@ function onSlowThresholdChange(event: Event): void {
 				tabindex="-1"
 				@change="onFileChange"
 			/>
+		</section>
+
+		<!-- Device section -->
+		<section v-if="deviceInfo" class="sidebar-section">
+			<div class="sidebar-section-title">Device</div>
+			<div class="info-row">
+				<span class="info-key">sysDescr</span>
+				<span class="info-val" :title="deviceInfo.sysDescr">{{ deviceInfo.sysDescr }}</span>
+			</div>
+			<div class="info-row">
+				<span class="info-key">sysObjectID</span>
+				<span class="info-val" :title="deviceInfo.sysObjectId">{{ deviceInfo.sysObjectId }}</span>
+			</div>
+			<div class="info-row">
+				<span class="info-key">sysUpTime</span>
+				<span class="info-val">{{ deviceInfo.sysUpTime }}</span>
+			</div>
+		</section>
+
+		<!-- Walk info section -->
+		<section v-if="walkInfo" class="sidebar-section">
+			<div class="sidebar-section-title">Walk info</div>
+			<div class="info-row">
+				<span class="info-key">Label</span>
+				<span class="info-val" :title="walkInfo.label">{{ walkInfo.label }}</span>
+			</div>
+			<div class="info-row">
+				<span class="info-key">SNMP</span>
+				<span class="info-val">v{{ walkInfo.snmpVersion }}</span>
+			</div>
+			<div class="info-row">
+				<span class="info-key">Start OID</span>
+				<span class="info-val" :title="walkInfo.startOid">{{ walkInfo.startOid }}</span>
+			</div>
+			<div class="info-row">
+				<span class="info-key">Exchanges</span>
+				<span class="info-val">{{ walkInfo.exchangeCount }}</span>
+			</div>
+			<div class="info-row">
+				<span class="info-key">OIDs seen</span>
+				<span class="info-val">{{ walkInfo.oidsSeen }}</span>
+			</div>
+			<div class="info-row">
+				<span class="info-key">Duration</span>
+				<span class="info-val">{{ walkInfo.duration }}</span>
+			</div>
+			<div class="info-row">
+				<span class="info-key">Violations</span>
+				<span class="info-val" :class="walkInfo.violations > 0 ? 'info-val--err' : 'info-val--ok'">{{ walkInfo.violations }}</span>
+			</div>
+			<div class="info-row">
+				<span class="info-key">End reason</span>
+				<span class="info-val" :title="walkInfo.endReason">{{ walkInfo.endReason }}</span>
+			</div>
+			<div class="info-row">
+				<span class="info-key">Parse time</span>
+				<span class="info-val">{{ walkInfo.parseMs }}ms</span>
+			</div>
+		</section>
+
+		<!-- Walk config section -->
+		<section v-if="walkConfig" class="sidebar-section">
+			<div class="sidebar-section-title">Walk config</div>
+			<div class="info-row">
+				<span class="info-key">Bulk size</span>
+				<span class="info-val">{{ walkConfig.bulkSize }}</span>
+			</div>
+			<div class="info-row">
+				<span class="info-key">Timeout</span>
+				<span class="info-val">{{ walkConfig.timeoutS }}s</span>
+			</div>
+			<div class="info-row">
+				<span class="info-key">Retries</span>
+				<span class="info-val">{{ walkConfig.retries }}</span>
+			</div>
+			<div v-if="walkConfig.timeBudgetS !== null" class="info-row">
+				<span class="info-key">Budget</span>
+				<span class="info-val">{{ walkConfig.timeBudgetS }}s</span>
+			</div>
+			<div v-if="walkConfig.resumeFrom !== null" class="info-row">
+				<span class="info-key">Resume</span>
+				<span class="info-val" :title="walkConfig.resumeFrom">{{ walkConfig.resumeFrom }}</span>
+			</div>
 		</section>
 
 		<!-- View navigation -->
@@ -345,5 +525,48 @@ function onSlowThresholdChange(event: Event): void {
 
 .sidebar-truncation--visible {
 	display: block;
+}
+
+.sidebar-section-title {
+	font-size: 10px;
+	font-weight: 700;
+	text-transform: uppercase;
+	letter-spacing: 0.06em;
+	color: var(--sidebar-muted);
+	margin-bottom: 6px;
+}
+
+.info-row {
+	display: flex;
+	justify-content: space-between;
+	align-items: baseline;
+	gap: 8px;
+	padding: 2px 0;
+}
+
+.info-key {
+	color: var(--sidebar-muted);
+	font-size: 11px;
+	flex-shrink: 0;
+}
+
+.info-val {
+	font-family: var(--font-mono);
+	font-size: 11px;
+	font-weight: 600;
+	text-align: right;
+	overflow: hidden;
+	text-overflow: ellipsis;
+	white-space: nowrap;
+	max-width: 130px;
+	color: var(--sidebar-text);
+}
+
+.info-val--ok {
+	color: #4ade80;
+}
+
+.info-val--err {
+	color: #f87171;
 }
 </style>
