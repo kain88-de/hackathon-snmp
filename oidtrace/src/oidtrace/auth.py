@@ -4,7 +4,44 @@ from __future__ import annotations
 
 import hashlib
 import hmac
-from typing import Literal
+from enum import StrEnum
+from typing import TYPE_CHECKING, Any, Literal
+
+if TYPE_CHECKING:
+    from collections.abc import Callable
+
+
+class AuthProto(StrEnum):
+    """Authentication protocol for SNMP v3 (RFC 3414 / RFC 7860)."""
+
+    MD5 = "MD5"
+    SHA = "SHA"
+    SHA256 = "SHA-256"
+
+    @property
+    def hash_algo(self) -> Callable[..., Any]:
+        if self is AuthProto.MD5:
+            return hashlib.md5
+        if self is AuthProto.SHA:
+            return hashlib.sha1
+        return hashlib.sha256
+
+    @property
+    def key_length(self) -> int:
+        if self is AuthProto.MD5:
+            return 16
+        if self is AuthProto.SHA:
+            return 20
+        return 32
+
+    @property
+    def mac_length(self) -> int:
+        if self is AuthProto.MD5:
+            return 12
+        if self is AuthProto.SHA:
+            return 12
+        return 24
+
 
 # RFC 3414 A.2: key derivation buffer size (2^20 bytes)
 _KU_BUFFER_SIZE = 1_048_576
