@@ -13,8 +13,8 @@ field-swaps that the pysnmp decode alone would miss.
 from __future__ import annotations
 
 import pytest
-from pyasn1.codec.ber import decoder  # type: ignore[import-untyped]
-from pysnmp.proto.api import v2c  # type: ignore[import-untyped]
+from pyasn1.codec.ber import decoder
+from pysnmp.proto.api import v2c
 
 from oidtrace.codec import (
     PDU_GETBULK,
@@ -39,17 +39,17 @@ _OID_1_3_6_1_2_1_1_3_0 = Oid.from_str("1.3.6.1.2.1.1.3.0")
 
 def _decode_msg(raw: bytes) -> object:
     """Decode raw bytes via pysnmp's v2c Message spec; assert empty remainder."""
-    msg, remainder = decoder.decode(raw, asn1Spec=v2c.Message())  # type: ignore[no-untyped-call]
+    msg, remainder = decoder.decode(raw, asn1Spec=v2c.Message())
     assert remainder == b"", f"Non-empty remainder after decode: {remainder!r}"
     return msg
 
 
 def _get_bulk_pdu(msg: object) -> object:
-    return v2c.apiMessage.get_pdu(msg)  # type: ignore[attr-defined]
+    return v2c.apiMessage.get_pdu(msg)
 
 
 def _get_response_pdu(msg: object) -> object:
-    return v2c.apiMessage.get_pdu(msg)  # type: ignore[attr-defined]
+    return v2c.apiMessage.get_pdu(msg)
 
 
 # ---------------------------------------------------------------------------
@@ -78,21 +78,21 @@ def test_encode_getbulk_request_id_bulk10() -> None:
     raw = encode_getbulk(42, _OID_1_3_6_1, non_repeaters=0, max_repetitions=10)
     msg = _decode_msg(raw)
     pdu = _get_bulk_pdu(msg)
-    assert int(v2c.apiBulkPDU.get_request_id(pdu)) == 42  # type: ignore[attr-defined]
+    assert int(v2c.apiBulkPDU.get_request_id(pdu)) == 42
 
 
 def test_encode_getbulk_non_repeaters_bulk10() -> None:
     raw = encode_getbulk(42, _OID_1_3_6_1, non_repeaters=0, max_repetitions=10)
     msg = _decode_msg(raw)
     pdu = _get_bulk_pdu(msg)
-    assert int(v2c.apiBulkPDU.get_non_repeaters(pdu)) == 0  # type: ignore[attr-defined]
+    assert int(v2c.apiBulkPDU.get_non_repeaters(pdu)) == 0
 
 
 def test_encode_getbulk_max_repetitions_bulk10() -> None:
     raw = encode_getbulk(42, _OID_1_3_6_1, non_repeaters=0, max_repetitions=10)
     msg = _decode_msg(raw)
     pdu = _get_bulk_pdu(msg)
-    assert int(v2c.apiBulkPDU.get_max_repetitions(pdu)) == 10  # type: ignore[attr-defined]
+    assert int(v2c.apiBulkPDU.get_max_repetitions(pdu)) == 10
 
 
 def test_encode_getbulk_varbind_count_bulk10() -> None:
@@ -100,7 +100,7 @@ def test_encode_getbulk_varbind_count_bulk10() -> None:
     raw = encode_getbulk(42, _OID_1_3_6_1, non_repeaters=0, max_repetitions=10)
     msg = _decode_msg(raw)
     pdu = _get_bulk_pdu(msg)
-    vbs = v2c.apiBulkPDU.get_varbinds(pdu)  # type: ignore[attr-defined]
+    vbs = v2c.apiBulkPDU.get_varbinds(pdu)
     assert len(vbs) == 1
 
 
@@ -109,7 +109,7 @@ def test_encode_getbulk_first_oid_bulk10() -> None:
     raw = encode_getbulk(42, _OID_1_3_6_1, non_repeaters=0, max_repetitions=10)
     msg = _decode_msg(raw)
     pdu = _get_bulk_pdu(msg)
-    vbs = v2c.apiBulkPDU.get_varbinds(pdu)  # type: ignore[attr-defined]
+    vbs = v2c.apiBulkPDU.get_varbinds(pdu)
     assert vbs[0][0].prettyPrint() == str(_OID_1_3_6_1)
 
 
@@ -127,21 +127,21 @@ def test_encode_getbulk_max_repetitions_bulk1() -> None:
     raw = encode_getbulk(7, _OID_1_3_6_1, non_repeaters=0, max_repetitions=1)
     msg = _decode_msg(raw)
     pdu = _get_bulk_pdu(msg)
-    assert int(v2c.apiBulkPDU.get_max_repetitions(pdu)) == 1  # type: ignore[attr-defined]
+    assert int(v2c.apiBulkPDU.get_max_repetitions(pdu)) == 1
 
 
 def test_encode_getbulk_request_id_bulk1() -> None:
     raw = encode_getbulk(7, _OID_1_3_6_1, non_repeaters=0, max_repetitions=1)
     msg = _decode_msg(raw)
     pdu = _get_bulk_pdu(msg)
-    assert int(v2c.apiBulkPDU.get_request_id(pdu)) == 7  # type: ignore[attr-defined]
+    assert int(v2c.apiBulkPDU.get_request_id(pdu)) == 7
 
 
 def test_encode_getbulk_first_oid_bulk1() -> None:
     raw = encode_getbulk(7, _OID_1_3_6_1, non_repeaters=0, max_repetitions=1)
     msg = _decode_msg(raw)
     pdu = _get_bulk_pdu(msg)
-    vbs = v2c.apiBulkPDU.get_varbinds(pdu)  # type: ignore[attr-defined]
+    vbs = v2c.apiBulkPDU.get_varbinds(pdu)
     assert vbs[0][0].prettyPrint() == str(_OID_1_3_6_1)
 
 
@@ -281,21 +281,21 @@ def test_encode_response_request_id() -> None:
     )
     msg = _decode_msg(raw)
     pdu = _get_response_pdu(msg)
-    assert int(v2c.apiPDU.get_request_id(pdu)) == 99  # type: ignore[attr-defined]
+    assert int(v2c.apiPDU.get_request_id(pdu)) == 99
 
 
 def test_encode_response_error_status_default_zero() -> None:
     raw = encode_response(99, [(_OID_1_3_6_1_2_1_1_1_0, 0x04, b"")])
     msg = _decode_msg(raw)
     pdu = _get_response_pdu(msg)
-    assert int(v2c.apiPDU.get_error_status(pdu)) == 0  # type: ignore[attr-defined]
+    assert int(v2c.apiPDU.get_error_status(pdu)) == 0
 
 
 def test_encode_response_error_index_default_zero() -> None:
     raw = encode_response(99, [(_OID_1_3_6_1_2_1_1_1_0, 0x04, b"")])
     msg = _decode_msg(raw)
     pdu = _get_response_pdu(msg)
-    assert int(v2c.apiPDU.get_error_index(pdu, muteErrors=True)) == 0  # type: ignore[attr-defined]
+    assert int(v2c.apiPDU.get_error_index(pdu, muteErrors=True)) == 0
 
 
 def test_encode_response_varbind_count() -> None:
@@ -308,7 +308,7 @@ def test_encode_response_varbind_count() -> None:
     )
     msg = _decode_msg(raw)
     pdu = _get_response_pdu(msg)
-    vbs = v2c.apiPDU.get_varbinds(pdu)  # type: ignore[attr-defined]
+    vbs = v2c.apiPDU.get_varbinds(pdu)
     assert len(vbs) == 2
 
 
@@ -323,7 +323,7 @@ def test_encode_response_varbind_oids() -> None:
     )
     msg = _decode_msg(raw)
     pdu = _get_response_pdu(msg)
-    vbs = v2c.apiPDU.get_varbinds(pdu)  # type: ignore[attr-defined]
+    vbs = v2c.apiPDU.get_varbinds(pdu)
     assert vbs[0][0].prettyPrint() == str(_OID_1_3_6_1_2_1_1_1_0)
     assert vbs[1][0].prettyPrint() == str(_OID_1_3_6_1_2_1_1_3_0)
 
@@ -355,8 +355,8 @@ def test_encode_response_custom_error_status() -> None:
     raw = encode_response(1, [(_OID_1_3_6_1, 0x05, b"")], error_status=2, error_index=1)
     msg = _decode_msg(raw)
     pdu = _get_response_pdu(msg)
-    assert int(v2c.apiPDU.get_error_status(pdu)) == 2  # type: ignore[attr-defined]
-    assert int(v2c.apiPDU.get_error_index(pdu, muteErrors=True)) == 1  # type: ignore[attr-defined]
+    assert int(v2c.apiPDU.get_error_status(pdu)) == 2
+    assert int(v2c.apiPDU.get_error_index(pdu, muteErrors=True)) == 1
 
 
 @pytest.mark.parametrize("tag", [0x04, 0x41])
