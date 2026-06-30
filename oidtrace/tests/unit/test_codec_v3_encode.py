@@ -188,7 +188,7 @@ def test_encode_v3_response_pdu_tag_report() -> None:
 
 
 # ---------------------------------------------------------------------------
-# auth=True: msgFlags byte 0x05
+# proto set: msgFlags byte 0x05
 # ---------------------------------------------------------------------------
 
 
@@ -205,7 +205,7 @@ def test_encode_v3_getbulk_auth_false_msgflags_0x04() -> None:
 
 
 # ---------------------------------------------------------------------------
-# auth=True: 12-zero placeholder present in USM params
+# proto set: zero-filled placeholder present in USM params
 # ---------------------------------------------------------------------------
 
 

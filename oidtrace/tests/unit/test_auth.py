@@ -6,8 +6,8 @@ Contract coverage:
     - SHA vector (RFC 3414 A.3.2)
     - Output length: MD5=16, SHA=20
     - Different engineIDs produce different keys from same password
-  - compute_mac: HMAC truncation to 12 bytes
-    - Output length always 12 bytes
+  - compute_mac: HMAC truncation (12 bytes for MD5/SHA, 24 bytes for SHA-256)
+    - Output length matches proto.mac_length
     - Different messages produce different MACs
     - Different keys produce different MACs
 """

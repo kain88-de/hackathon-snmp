@@ -12,6 +12,7 @@ from __future__ import annotations
 
 import asyncio
 import bisect
+import threading
 from dataclasses import dataclass, field
 from enum import StrEnum
 from typing import TYPE_CHECKING, override
@@ -335,9 +336,6 @@ class EmuProtocol(asyncio.DatagramProtocol):
 # ---------------------------------------------------------------------------
 # EmulatorThread — reusable context manager for test/library use
 # ---------------------------------------------------------------------------
-
-
-import threading  # noqa: E402
 
 
 def _run_emulator_on_thread(
