@@ -271,7 +271,7 @@ def test_regression_decode_message_getbulk() -> None:
 
 def test_decode_v3_authenticated_message_has_nonzero_auth_params() -> None:
     """decode_v3_message of a signed message returns 12 non-zero auth_params bytes."""
-    raw = encode_v3_getbulk(1, 42, _OID, 7, _ENGINE_ID, 1, 0, b"user", auth=True)
+    raw = encode_v3_getbulk(1, 42, _OID, 7, _ENGINE_ID, 1, 0, b"user", proto=AuthProto.MD5)
     signed = authenticate_msg(raw, _KUL, AuthProto.MD5)
     result = decode_v3_message(signed)
     assert isinstance(result, tuple)

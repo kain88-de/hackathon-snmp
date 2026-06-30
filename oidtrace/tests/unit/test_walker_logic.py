@@ -1222,7 +1222,7 @@ def _v3_auth_response_exchange(
             request_id=request_id,
             varbinds=varbinds,
             engine_id=engine_id,
-            auth=True,
+            proto=AuthProto.MD5,
         )
         response_raw = authenticate_msg(response_raw, kul, AuthProto.MD5)
         return ExchangeIO(
@@ -1251,7 +1251,7 @@ def _v3_auth_eom_exchange(
             request_id=request_id,
             varbinds=[(after_oid, 0x82, b"")],
             engine_id=engine_id,
-            auth=True,
+            proto=AuthProto.MD5,
         )
         response_raw = authenticate_msg(response_raw, kul, AuthProto.MD5)
         return ExchangeIO(

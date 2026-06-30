@@ -21,7 +21,7 @@ from pathlib import Path
 from robot.api.deco import keyword
 from traceformat.models import Exchange, Header, Summary
 
-from oidtrace.auth import password_to_key
+from oidtrace.auth import AuthProto, password_to_key
 from oidtrace.tracefile import read_trace
 from tests.support.emulator import EMU_ENGINE_ID, EmulatorThread, EndOfMib, Quirks
 
@@ -67,8 +67,10 @@ class OidtraceLibrary:
 
     @keyword("Start Emulator With Auth User")
     def start_emulator_with_auth_user(self, username: str, proto: str, password: str) -> None:
-        kul = password_to_key(password.encode(), EMU_ENGINE_ID, proto)  # type: ignore[arg-type]
-        auth_users = {username.encode(): (proto, kul)}
+        # Normalize case: "sha-256" -> "SHA-256", "md5" -> "MD5", etc.
+        auth_proto = AuthProto(proto.upper())
+        kul = password_to_key(password.encode(), EMU_ENGINE_ID, auth_proto)
+        auth_users = {username.encode(): (auth_proto, kul)}
         self._emulator = EmulatorThread(auth_users=auth_users)
         self._host, self._port = self._emulator.__enter__()
 

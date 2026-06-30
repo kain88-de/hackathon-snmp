@@ -296,7 +296,7 @@ class EmuProtocol(asyncio.DatagramProtocol):
                 engine_id=EMU_ENGINE_ID,
                 username=params.username,
                 error_status=0 if idx < len(tree) else 2,
-                auth=needs_auth,
+                proto=auth_proto,
             )
             if needs_auth:
                 assert auth_kul is not None and auth_proto is not None
@@ -323,7 +323,7 @@ class EmuProtocol(asyncio.DatagramProtocol):
                 varbinds=varbinds,
                 engine_id=EMU_ENGINE_ID,
                 username=params.username,
-                auth=needs_auth,
+                proto=auth_proto,
             )
             if needs_auth:
                 assert auth_kul is not None and auth_proto is not None

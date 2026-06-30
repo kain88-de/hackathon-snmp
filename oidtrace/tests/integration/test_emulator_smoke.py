@@ -274,12 +274,7 @@ async def test_v3_getbulk_after_discovery(emulator_factory: _EmuFactory) -> None
     [
         AuthProto.MD5,
         AuthProto.SHA,
-        pytest.param(
-            AuthProto.SHA256,
-            marks=pytest.mark.xfail(
-                reason="SHA-256 codec not yet implemented (Phase 3)", strict=True
-            ),
-        ),
+        AuthProto.SHA256,
     ],
 )
 async def test_v3_authnopriv_getbulk_correct_key(
@@ -308,7 +303,7 @@ async def test_v3_authnopriv_getbulk_correct_key(
             engine_boots=disc_params.engine_boots,
             engine_time=disc_params.engine_time,
             username=b"authuser",
-            auth=True,
+            proto=proto,
         )
         raw_signed = authenticate_msg(raw_bulk, kul, proto)
         raw_resp = await _send_raw(host, port, raw_signed)
@@ -333,13 +328,7 @@ async def test_v3_authnopriv_getbulk_correct_key(
     [
         AuthProto.MD5,
         AuthProto.SHA,
-        pytest.param(
-            AuthProto.SHA256,
-            marks=pytest.mark.xfail(
-                reason="SHA-256 codec not yet implemented (Phase 3), wrong key still dropped",
-                strict=False,
-            ),
-        ),
+        AuthProto.SHA256,
     ],
 )
 async def test_v3_authnopriv_getbulk_wrong_key_silently_dropped(
@@ -370,7 +359,7 @@ async def test_v3_authnopriv_getbulk_wrong_key_silently_dropped(
             engine_boots=disc_params.engine_boots,
             engine_time=disc_params.engine_time,
             username=b"authuser",
-            auth=True,
+            proto=proto,
         )
         raw_signed_wrong = authenticate_msg(raw_bulk, wrong_kul, proto)
 

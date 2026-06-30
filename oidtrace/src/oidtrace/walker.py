@@ -421,7 +421,7 @@ async def walk_records(  # noqa: PLR0912, PLR0913, PLR0915
                     engine_boots=v3_params.engine_boots,
                     engine_time=v3_params.engine_time,
                     username=settings.v3_user.encode(),
-                    auth=v3_kul is not None,
+                    proto=settings.v3_auth_proto,
                 )
                 if v3_kul is not None:
                     assert settings.v3_auth_proto is not None
