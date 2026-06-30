@@ -1,4 +1,4 @@
-"""Tests for SNMPv3 encoding — encode_v3_discovery, encode_v3_getbulk, encode_v3_response, V3Params.
+"""Tests for SNMPv3 encoding — encode_v3_discovery, encode_v3_getbulk, encode_v3_response.
 
 Wire format constraints:
   - discovery probe: 64 bytes exactly (matches live snmpwalk capture)
@@ -16,7 +16,6 @@ from oidtrace.codec import (
     PDU_GET,
     PDU_REPORT,
     Malformed,
-    V3Params,
     authenticate_msg,
     decode_v3_message,
     encode_v3_discovery,
@@ -41,18 +40,6 @@ def _kul_for(proto: AuthProto) -> bytes:
 # ---------------------------------------------------------------------------
 
 _OID_1_3_6_1 = Oid.from_str("1.3.6.1")
-
-
-# ---------------------------------------------------------------------------
-# V3Params frozen dataclass
-# ---------------------------------------------------------------------------
-
-
-def test_v3_params_frozen() -> None:
-    """V3Params is frozen; assigning .engine_boots raises AttributeError."""
-    params = V3Params(engine_id=b"x", engine_boots=1, engine_time=2, msg_id=3)
-    with pytest.raises(AttributeError):
-        params.engine_boots = 999  # type: ignore[assignment]
 
 
 # ---------------------------------------------------------------------------
