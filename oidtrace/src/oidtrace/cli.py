@@ -134,7 +134,7 @@ def _build_parser() -> argparse.ArgumentParser:
     v3 = ver.add_parser("v3", help="SNMP v3 walk.")
     _add_shared_args(v3)
     v3.add_argument("--user", required=True, help="SNMPv3 username.")
-    v3.add_argument("--auth-proto", default=None, help="Auth protocol (e.g. SHA).")
+    v3.add_argument("--auth-proto", default=None, help="Auth protocol (MD5, SHA, or SHA-256).")
     v3.add_argument("--auth-pass", default=None, help="Auth passphrase.")
     v3.add_argument("--priv-proto", default=None, help="Privacy protocol (e.g. AES).")
     v3.add_argument("--priv-pass", default=None, help="Privacy passphrase.")
@@ -164,7 +164,8 @@ def _validate_v3_auth(
             v3_auth_proto = AuthProto(args.auth_proto.upper())
         except ValueError:
             print(
-                f"error: --auth-proto must be 'MD5' or 'SHA', got {args.auth_proto!r}",
+                f"error: --auth-proto must be one of {[p.value for p in AuthProto]}, "
+                f"got {args.auth_proto!r}",
                 file=sys.stderr,
             )
             return 2
