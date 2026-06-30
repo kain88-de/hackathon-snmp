@@ -20,7 +20,7 @@ from typing import TYPE_CHECKING
 
 import pytest
 
-from oidtrace.auth import password_to_key
+from oidtrace.auth import AuthProto, password_to_key
 from oidtrace.tracefile import read_trace
 from oidtrace.walker import WalkSettings, run_walk
 from tests.support.emulator import EMU_ENGINE_ID, EmuDevice
@@ -33,7 +33,7 @@ _EmuFactory = Callable[..., AbstractAsyncContextManager[tuple[str, int]]]
 pytestmark = pytest.mark.reference_tools
 
 # Pre-compute kul for crosswalk test (authcross user, MD5, crosspass1)
-_CROSSWALK_KUL = password_to_key(b"crosspass1", EMU_ENGINE_ID, "MD5")
+_CROSSWALK_KUL = password_to_key(b"crosspass1", EMU_ENGINE_ID, AuthProto.MD5)
 
 
 # ---------------------------------------------------------------------------
@@ -388,10 +388,10 @@ async def test_snmpwalk_v3_authnopriv(
     snmpwalk = _require_tool("snmpwalk")
 
     device_size = 20
-    kul = password_to_key(b"testpass1", EMU_ENGINE_ID, "MD5")
+    kul = password_to_key(b"testpass1", EMU_ENGINE_ID, AuthProto.MD5)
 
     async with emulator_factory(
-        EmuDevice.simple(n_oids=device_size, auth_users={b"authuser": ("MD5", kul)})
+        EmuDevice.simple(n_oids=device_size, auth_users={b"authuser": (AuthProto.MD5, kul)})
     ) as (host, port):
         loop = asyncio.get_running_loop()
         proc_result = await loop.run_in_executor(
@@ -446,7 +446,9 @@ async def test_snmpwalk_v3_authnopriv_crosswalk(
     trace_path = tmp_path / "crosswalk_v3_authnopriv.oidtrace.jsonl.gz"
 
     async with emulator_factory(
-        EmuDevice.simple(n_oids=device_size, auth_users={b"authcross": ("MD5", _CROSSWALK_KUL)})
+        EmuDevice.simple(
+            n_oids=device_size, auth_users={b"authcross": (AuthProto.MD5, _CROSSWALK_KUL)}
+        )
     ) as (host, port):
         # Run our walker
         await run_walk(
@@ -455,7 +457,7 @@ async def test_snmpwalk_v3_authnopriv_crosswalk(
             settings=WalkSettings(
                 snmp_version="3",
                 v3_user="authcross",
-                v3_auth_proto="MD5",
+                v3_auth_proto=AuthProto.MD5,
                 v3_auth_pass="crosspass1",
                 bulk_size=10,
                 timeout_s=2.0,

@@ -7,11 +7,9 @@ Wire format constraints:
 
 from __future__ import annotations
 
-from typing import Literal
-
 import pytest
 
-from oidtrace.auth import password_to_key
+from oidtrace.auth import AuthProto, password_to_key
 from oidtrace.ber import encode_oid
 from oidtrace.codec import (
     _AUTH_PARAMS_PLACEHOLDER,
@@ -28,13 +26,13 @@ from oidtrace.codec import (
 from oidtrace.oid import Oid
 
 _ENGINE_ID = b"\x80\x00\x1f\x88\x04\x01\x02\x03\x04\x05\x06\x07"
-_KUL_MD5 = password_to_key(b"authpass", _ENGINE_ID, "MD5")
-_KUL_SHA = password_to_key(b"authpass", _ENGINE_ID, "SHA")
+_KUL_MD5 = password_to_key(b"authpass", _ENGINE_ID, AuthProto.MD5)
+_KUL_SHA = password_to_key(b"authpass", _ENGINE_ID, AuthProto.SHA)
 _KUL = _KUL_MD5  # kept for existing single-proto tests
 
 
-def _kul_for(proto: Literal["MD5", "SHA"]) -> bytes:
-    return _KUL_SHA if proto == "SHA" else _KUL_MD5
+def _kul_for(proto: AuthProto) -> bytes:
+    return _KUL_SHA if proto == AuthProto.SHA else _KUL_MD5
 
 
 # ---------------------------------------------------------------------------
@@ -227,16 +225,16 @@ def test_encode_v3_response_auth_true_has_placeholder() -> None:
 # ---------------------------------------------------------------------------
 
 
-@pytest.mark.parametrize("proto", ["MD5", "SHA"])
-def test_authenticate_msg_same_length(proto: Literal["MD5", "SHA"]) -> None:
+@pytest.mark.parametrize("proto", [AuthProto.MD5, AuthProto.SHA])
+def test_authenticate_msg_same_length(proto: AuthProto) -> None:
     """authenticate_msg returns bytes of same length as input."""
     raw = encode_v3_getbulk(1, 42, _OID_1_3_6_1, 7, _ENGINE_ID, 1, 0, b"user", auth=True)
     result = authenticate_msg(raw, _kul_for(proto), proto)
     assert len(result) == len(raw)
 
 
-@pytest.mark.parametrize("proto", ["MD5", "SHA"])
-def test_authenticate_msg_mac_slot_nonzero(proto: Literal["MD5", "SHA"]) -> None:
+@pytest.mark.parametrize("proto", [AuthProto.MD5, AuthProto.SHA])
+def test_authenticate_msg_mac_slot_nonzero(proto: AuthProto) -> None:
     """authenticate_msg replaces the placeholder with a non-zero MAC."""
     raw = encode_v3_getbulk(1, 42, _OID_1_3_6_1, 7, _ENGINE_ID, 1, 0, b"user", auth=True)
     result = authenticate_msg(raw, _kul_for(proto), proto)
@@ -249,8 +247,8 @@ def test_authenticate_msg_mac_slot_nonzero(proto: Literal["MD5", "SHA"]) -> None
 # ---------------------------------------------------------------------------
 
 
-@pytest.mark.parametrize("proto", ["MD5", "SHA"])
-def test_verify_auth_correct_kul_returns_true(proto: Literal["MD5", "SHA"]) -> None:
+@pytest.mark.parametrize("proto", [AuthProto.MD5, AuthProto.SHA])
+def test_verify_auth_correct_kul_returns_true(proto: AuthProto) -> None:
     """verify_auth returns True for a correctly signed message."""
     kul = _kul_for(proto)
     raw = encode_v3_getbulk(1, 42, _OID_1_3_6_1, 7, _ENGINE_ID, 1, 0, b"user", auth=True)
@@ -261,8 +259,8 @@ def test_verify_auth_correct_kul_returns_true(proto: Literal["MD5", "SHA"]) -> N
     assert verify_auth(signed, params.auth_params, kul, proto) is True
 
 
-@pytest.mark.parametrize("proto", ["MD5", "SHA"])
-def test_verify_auth_wrong_kul_returns_false(proto: Literal["MD5", "SHA"]) -> None:
+@pytest.mark.parametrize("proto", [AuthProto.MD5, AuthProto.SHA])
+def test_verify_auth_wrong_kul_returns_false(proto: AuthProto) -> None:
     """verify_auth returns False when the key is wrong."""
     kul = _kul_for(proto)
     raw = encode_v3_getbulk(1, 42, _OID_1_3_6_1, 7, _ENGINE_ID, 1, 0, b"user", auth=True)
@@ -274,8 +272,8 @@ def test_verify_auth_wrong_kul_returns_false(proto: Literal["MD5", "SHA"]) -> No
     assert verify_auth(signed, params.auth_params, wrong_kul, proto) is False
 
 
-@pytest.mark.parametrize("proto", ["MD5", "SHA"])
-def test_verify_auth_tampered_returns_false(proto: Literal["MD5", "SHA"]) -> None:
+@pytest.mark.parametrize("proto", [AuthProto.MD5, AuthProto.SHA])
+def test_verify_auth_tampered_returns_false(proto: AuthProto) -> None:
     """verify_auth returns False when the message is tampered after signing."""
     kul = _kul_for(proto)
     raw = encode_v3_getbulk(1, 42, _OID_1_3_6_1, 7, _ENGINE_ID, 1, 0, b"user", auth=True)

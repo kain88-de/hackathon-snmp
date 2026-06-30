@@ -6,7 +6,7 @@ from typing import TYPE_CHECKING
 
 from traceformat.models import Header
 
-from oidtrace.auth import password_to_key
+from oidtrace.auth import AuthProto, password_to_key
 from oidtrace.cli import main
 from oidtrace.tracefile import read_trace
 from tests.support.emulator import (
@@ -479,9 +479,9 @@ def test_v3_walk_exit_0_and_trace_file(tmp_path: Path) -> None:
 def test_v3_walk_with_auth_proto_and_pass_against_auth_emulator(tmp_path: Path) -> None:
     """v3 walk with --auth-proto MD5 --auth-pass against auth emulator: exit 0, trace written."""
     auth_pass = "testpass1"
-    kul = password_to_key(auth_pass.encode(), EMU_ENGINE_ID, "MD5")
+    kul = password_to_key(auth_pass.encode(), EMU_ENGINE_ID, AuthProto.MD5)
 
-    with EmulatorThread(auth_users={b"authuser": ("MD5", kul)}) as (host, port):
+    with EmulatorThread(auth_users={b"authuser": (AuthProto.MD5, kul)}) as (host, port):
         ret = main(
             [
                 "walk",

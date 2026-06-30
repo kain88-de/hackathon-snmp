@@ -14,7 +14,7 @@ import asyncio
 import bisect
 from dataclasses import dataclass, field
 from enum import StrEnum
-from typing import Literal, override
+from typing import TYPE_CHECKING, override
 
 from oidtrace.codec import (
     PDU_GET,
@@ -32,6 +32,9 @@ from oidtrace.codec import (
     verify_auth,
 )
 from oidtrace.oid import Oid
+
+if TYPE_CHECKING:
+    from oidtrace.auth import AuthProto
 
 EMU_ENGINE_ID: bytes = b"\x80\x00\x00\x00\x01testemu\x00"
 _USM_STATS_UNKNOWN_USER_NAMES = Oid.from_str("1.3.6.1.6.3.15.1.1.4.0")
@@ -79,14 +82,14 @@ class EmuDevice:
 
     tree: tuple[_TreeEntry, ...]
     quirks: Quirks = field(default_factory=Quirks)
-    auth_users: dict[bytes, tuple[Literal["MD5", "SHA"], bytes]] = field(default_factory=dict)
+    auth_users: dict[bytes, tuple[AuthProto, bytes]] = field(default_factory=dict)
 
     @classmethod
     def simple(
         cls,
         n_oids: int = 100,
         quirks: Quirks | None = None,
-        auth_users: dict[bytes, tuple[Literal["MD5", "SHA"], bytes]] | None = None,
+        auth_users: dict[bytes, tuple[AuthProto, bytes]] | None = None,
     ) -> EmuDevice:
         """Build a sorted ifTable-like tree with n_oids entries.
 
@@ -245,12 +248,14 @@ class EmuProtocol(asyncio.DatagramProtocol):
         # Drop silently on failure (unknown user or bad MAC).
         needs_auth = False
         auth_kul: bytes | None = None
-        auth_proto: Literal["MD5", "SHA"] | None = None
-        if len(params.auth_params) == 12:
+        auth_proto: AuthProto | None = None
+        if params.auth_params:  # non-empty auth_params means auth requested
             entry = self._device.auth_users.get(params.username)
             if entry is None:
                 return
             auth_proto, auth_kul = entry
+            if len(params.auth_params) != auth_proto.mac_length:
+                return  # wrong length for this protocol — drop silently
             if not verify_auth(raw_data, params.auth_params, auth_kul, auth_proto):
                 return
             needs_auth = True

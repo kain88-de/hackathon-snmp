@@ -32,7 +32,7 @@ from traceformat.models import Attempt as TfAttempt
 from traceformat.models import Exchange, Pdu, Reltime, Request, Summary
 from traceformat.vocab import AttemptError, EndReason, EventKind, Violation
 
-from oidtrace.auth import password_to_key
+from oidtrace.auth import AuthProto, password_to_key
 from oidtrace.codec import (
     PDU_REPORT,
     Malformed,
@@ -1156,20 +1156,24 @@ _V3_AUTH_ENGINE_ID = b"\x80\x00\x00\x00\x01testemu\x00"
 def test_walk_settings_v3_auth_proto_without_pass_raises() -> None:
     """v3_auth_proto set without v3_auth_pass raises ValueError mentioning v3_auth_pass."""
     with pytest.raises(ValueError, match="v3_auth_pass"):
-        WalkSettings(snmp_version="3", v3_user="u", v3_auth_proto="MD5")
+        WalkSettings(snmp_version="3", v3_user="u", v3_auth_proto=AuthProto.MD5)
 
 
 def test_walk_settings_v3_auth_md5_with_pass_valid() -> None:
     """v3_auth_proto='MD5' with v3_auth_pass is accepted without error."""
-    settings = WalkSettings(snmp_version="3", v3_user="u", v3_auth_proto="MD5", v3_auth_pass="x")
-    assert settings.v3_auth_proto == "MD5"
+    settings = WalkSettings(
+        snmp_version="3", v3_user="u", v3_auth_proto=AuthProto.MD5, v3_auth_pass="x"
+    )
+    assert settings.v3_auth_proto == AuthProto.MD5
     assert settings.v3_auth_pass == "x"
 
 
 def test_walk_settings_v3_auth_sha_with_pass_valid() -> None:
     """v3_auth_proto='SHA' with v3_auth_pass is accepted without error."""
-    settings = WalkSettings(snmp_version="3", v3_user="u", v3_auth_proto="SHA", v3_auth_pass="x")
-    assert settings.v3_auth_proto == "SHA"
+    settings = WalkSettings(
+        snmp_version="3", v3_user="u", v3_auth_proto=AuthProto.SHA, v3_auth_pass="x"
+    )
+    assert settings.v3_auth_proto == AuthProto.SHA
     assert settings.v3_auth_pass == "x"
 
 
@@ -1220,7 +1224,7 @@ def _v3_auth_response_exchange(
             engine_id=engine_id,
             auth=True,
         )
-        response_raw = authenticate_msg(response_raw, kul, "MD5")
+        response_raw = authenticate_msg(response_raw, kul, AuthProto.MD5)
         return ExchangeIO(
             attempts=(Attempt(sent_at=0.001, received_at=0.002),),
             response=(0.002, response_raw),
@@ -1249,7 +1253,7 @@ def _v3_auth_eom_exchange(
             engine_id=engine_id,
             auth=True,
         )
-        response_raw = authenticate_msg(response_raw, kul, "MD5")
+        response_raw = authenticate_msg(response_raw, kul, AuthProto.MD5)
         return ExchangeIO(
             attempts=(Attempt(sent_at=0.001, received_at=0.002),),
             response=(0.002, response_raw),
@@ -1264,7 +1268,7 @@ async def test_v3_authnopriv_walk_sends_authenticated_getbulks(
     record_validator: Draft202012Validator,
 ) -> None:
     """v3 authNoPriv walk: walker sends authenticated GetBulks, terminates completed."""
-    kul = password_to_key(b"testpass1", _V3_AUTH_ENGINE_ID, "MD5")
+    kul = password_to_key(b"testpass1", _V3_AUTH_ENGINE_ID, AuthProto.MD5)
 
     transport = FakeTransport(
         responses=[
@@ -1276,7 +1280,7 @@ async def test_v3_authnopriv_walk_sends_authenticated_getbulks(
     settings = WalkSettings(
         snmp_version="3",
         v3_user="authuser",
-        v3_auth_proto="MD5",
+        v3_auth_proto=AuthProto.MD5,
         v3_auth_pass="testpass1",
     )
     records = await _collect(transport, settings=settings)

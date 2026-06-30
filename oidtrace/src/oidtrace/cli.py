@@ -25,10 +25,11 @@ import socket
 import sys
 from datetime import UTC, datetime
 from pathlib import Path
-from typing import Literal, cast
+from typing import cast
 
 from traceformat import Summary, TraceRecord
 
+from oidtrace.auth import AuthProto
 from oidtrace.oid import Oid
 from oidtrace.tracefile import read_trace
 from oidtrace.walker import RecordSink, WalkSettings, run_walk
@@ -148,19 +149,20 @@ def _build_parser() -> argparse.ArgumentParser:
 
 def _validate_v3_auth(
     args: argparse.Namespace,
-) -> tuple[Literal["MD5", "SHA"] | None, str | None] | int:
+) -> tuple[AuthProto | None, str | None] | int:
     """Validate SNMPv3 auth arguments.
 
     Returns:
         (v3_auth_proto, v3_auth_pass) on success, or an exit code (2) on error.
     """
-    v3_auth_proto: Literal["MD5", "SHA"] | None = None
+    v3_auth_proto: AuthProto | None = None
     v3_auth_pass: str | None = None
 
     if args.auth_proto is not None:
         # Validate auth_proto
-        auth_proto_upper = args.auth_proto.upper()
-        if auth_proto_upper not in ("MD5", "SHA"):
+        try:
+            v3_auth_proto = AuthProto(args.auth_proto.upper())
+        except ValueError:
             print(
                 f"error: --auth-proto must be 'MD5' or 'SHA', got {args.auth_proto!r}",
                 file=sys.stderr,
@@ -175,7 +177,6 @@ def _validate_v3_auth(
             )
             return 2
 
-        v3_auth_proto = cast("Literal['MD5', 'SHA']", auth_proto_upper)
         v3_auth_pass = args.auth_pass
 
     # Warn if privacy fields are set (not supported yet)

@@ -9,11 +9,11 @@ import asyncio
 from collections.abc import Callable
 from contextlib import AbstractAsyncContextManager
 from dataclasses import dataclass
-from typing import Literal, override
+from typing import override
 
 import pytest
 
-from oidtrace.auth import password_to_key
+from oidtrace.auth import AuthProto, password_to_key
 from oidtrace.codec import (
     PDU_REPORT,
     PDU_RESPONSE,
@@ -269,9 +269,21 @@ async def test_v3_getbulk_after_discovery(emulator_factory: _EmuFactory) -> None
     assert len(msg.varbinds) == 5
 
 
-@pytest.mark.parametrize("proto", ["MD5", "SHA"])
+@pytest.mark.parametrize(
+    "proto",
+    [
+        AuthProto.MD5,
+        AuthProto.SHA,
+        pytest.param(
+            AuthProto.SHA256,
+            marks=pytest.mark.xfail(
+                reason="password_to_key does not support SHA-256 yet (Phase 2)", strict=True
+            ),
+        ),
+    ],
+)
 async def test_v3_authnopriv_getbulk_correct_key(
-    emulator_factory: _EmuFactory, proto: Literal["MD5", "SHA"]
+    emulator_factory: _EmuFactory, proto: AuthProto
 ) -> None:
     """Auth GetBulk with correct MAC returns a signed response (MD5 and SHA)."""
     start = Oid.from_str("1.3.6.1.2.1.2.2.1")
@@ -306,20 +318,32 @@ async def test_v3_authnopriv_getbulk_correct_key(
     msg, resp_params = result
     assert msg.pdu_tag == PDU_RESPONSE, f"Expected PDU_RESPONSE, got 0x{msg.pdu_tag:02x}"
     assert msg.request_id == 100
-    # Response must carry a 12-byte auth_params
-    assert len(resp_params.auth_params) == 12, (
-        f"Expected 12-byte auth_params, got {len(resp_params.auth_params)}"
+    # Response must carry a protocol-appropriate auth_params
+    assert len(resp_params.auth_params) == proto.mac_length, (
+        f"Expected {proto.mac_length}-byte auth_params, got {len(resp_params.auth_params)}"
     )
-    assert resp_params.auth_params != b"\x00" * 12, "auth_params must not be all zeros"
+    assert resp_params.auth_params != bytes(proto.mac_length), "auth_params must not be all zeros"
     assert verify_auth(raw_resp, resp_params.auth_params, kul, proto), (
         "Response MAC verification failed"
     )
 
 
-@pytest.mark.parametrize("proto", ["MD5", "SHA"])
+@pytest.mark.parametrize(
+    "proto",
+    [
+        AuthProto.MD5,
+        AuthProto.SHA,
+        pytest.param(
+            AuthProto.SHA256,
+            marks=pytest.mark.xfail(
+                reason="password_to_key does not support SHA-256 yet (Phase 2)", strict=True
+            ),
+        ),
+    ],
+)
 async def test_v3_authnopriv_getbulk_wrong_key_silently_dropped(
     emulator_factory: _EmuFactory,
-    proto: Literal["MD5", "SHA"],
+    proto: AuthProto,
 ) -> None:
     """Auth GetBulk signed with wrong key is silently dropped — no response (MD5 and SHA)."""
     start = Oid.from_str("1.3.6.1.2.1.2.2.1")

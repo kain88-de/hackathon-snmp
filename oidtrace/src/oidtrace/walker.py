@@ -49,7 +49,7 @@ import traceformat.models as tf
 from traceformat import TraceRecord
 from traceformat.vocab import EndReason, EventKind, Violation
 
-from oidtrace.auth import password_to_key
+from oidtrace.auth import AuthProto, password_to_key
 from oidtrace.codec import (
     EXCEPTION_TAGS,
     Malformed,
@@ -119,7 +119,7 @@ class WalkSettings:
     community: bytes = b"public"
     snmp_version: Literal["1", "2c", "3"] = "2c"
     v3_user: str | None = None
-    v3_auth_proto: Literal["MD5", "SHA"] | None = None
+    v3_auth_proto: AuthProto | None = None
     v3_auth_pass: str | None = None
 
     def __post_init__(self) -> None:

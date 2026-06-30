@@ -33,9 +33,9 @@ from __future__ import annotations
 
 import hmac
 from dataclasses import dataclass
-from typing import TYPE_CHECKING, Literal
+from typing import TYPE_CHECKING
 
-from oidtrace.auth import compute_mac
+from oidtrace.auth import AuthProto, compute_mac
 from oidtrace.ber import decode_int, decode_oid, encode_int, encode_oid, read_tlv, tlv
 
 if TYPE_CHECKING:
@@ -385,7 +385,7 @@ def _auth_params_value_offset(raw: bytes) -> int:
     return ap_abs_start + _tlv_header_len(raw, ap_abs_start)
 
 
-def authenticate_msg(raw: bytes, kul: bytes, proto: Literal["MD5", "SHA"]) -> bytes:
+def authenticate_msg(raw: bytes, kul: bytes, proto: AuthProto) -> bytes:
     """Sign a v3 message that contains a 12-zero auth_params placeholder.
 
     Uses _auth_params_value_offset to locate the placeholder structurally
@@ -406,7 +406,7 @@ def authenticate_msg(raw: bytes, kul: bytes, proto: Literal["MD5", "SHA"]) -> by
     return raw[:offset] + mac + raw[offset + 12 :]
 
 
-def verify_auth(raw: bytes, auth_params: bytes, kul: bytes, proto: Literal["MD5", "SHA"]) -> bool:
+def verify_auth(raw: bytes, auth_params: bytes, kul: bytes, proto: AuthProto) -> bool:
     """Verify the authentication MAC of a signed v3 message.
 
     Args:

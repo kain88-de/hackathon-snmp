@@ -5,7 +5,7 @@ from __future__ import annotations
 import hashlib
 import hmac
 from enum import StrEnum
-from typing import TYPE_CHECKING, Any, Literal
+from typing import TYPE_CHECKING, Any
 
 if TYPE_CHECKING:
     from collections.abc import Callable
@@ -50,7 +50,7 @@ _KU_BUFFER_SIZE = 1_048_576
 def password_to_key(
     password: bytes,
     engine_id: bytes,
-    proto: Literal["MD5", "SHA"],
+    proto: AuthProto,
 ) -> bytes:
     """Derive a localized authentication key from password.
 
@@ -89,7 +89,7 @@ def password_to_key(
 def compute_mac(
     kul: bytes,
     whole_msg: bytes,
-    proto: Literal["MD5", "SHA"],
+    proto: AuthProto,
 ) -> bytes:
     """Compute SNMP v3 authentication MAC (message integrity code).
 

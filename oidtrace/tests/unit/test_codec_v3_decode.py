@@ -12,7 +12,7 @@ from __future__ import annotations
 
 import pytest
 
-from oidtrace.auth import password_to_key
+from oidtrace.auth import AuthProto, password_to_key
 from oidtrace.ber import read_tlv
 from oidtrace.codec import (
     PDU_GET,
@@ -32,7 +32,7 @@ from oidtrace.codec import (
 from oidtrace.oid import Oid
 
 _ENGINE_ID = b"\x80\x00\x1f\x88\x04\x01\x02\x03\x04\x05\x06\x07"
-_KUL = password_to_key(b"authpass", _ENGINE_ID, "MD5")
+_KUL = password_to_key(b"authpass", _ENGINE_ID, AuthProto.MD5)
 
 _OID = Oid.from_str("1.3.6.1.2.1.1.1.0")
 _ENG_ID = b"\x80\x00\x1f\x88\x04"
@@ -272,7 +272,7 @@ def test_regression_decode_message_getbulk() -> None:
 def test_decode_v3_authenticated_message_has_nonzero_auth_params() -> None:
     """decode_v3_message of a signed message returns 12 non-zero auth_params bytes."""
     raw = encode_v3_getbulk(1, 42, _OID, 7, _ENGINE_ID, 1, 0, b"user", auth=True)
-    signed = authenticate_msg(raw, _KUL, "MD5")
+    signed = authenticate_msg(raw, _KUL, AuthProto.MD5)
     result = decode_v3_message(signed)
     assert isinstance(result, tuple)
     _msg, params = result
