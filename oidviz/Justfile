@@ -38,3 +38,6 @@ a11y:
 
 gen-types:
     bunx json-schema-to-typescript ../docs/trace-format.schema.json -o src/lib/types.gen.ts
+
+gen-test-data:
+    bun tests/e2e/test-data/generate.mjs

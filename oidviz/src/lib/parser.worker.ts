@@ -125,9 +125,16 @@ function parseTrace(buffer: ArrayBuffer): Promise<ParseResult> {
 		let summary: Summary | null = null;
 		let systemInfo: SystemInfo | null = null;
 		const exchanges: DomainExchange[] = [];
+		let truncated = false;
 
 		for (const line of lines) {
-			const record = JSON.parse(line) as { type: string; [k: string]: unknown };
+			let record: { type: string; [k: string]: unknown };
+			try {
+				record = JSON.parse(line) as { type: string; [k: string]: unknown };
+			} catch {
+				truncated = true;
+				break;
+			}
 			switch (record.type) {
 				case "header": {
 					header = record as unknown as Header;
@@ -161,7 +168,7 @@ function parseTrace(buffer: ArrayBuffer): Promise<ParseResult> {
 			parseMs,
 			summary,
 			systemInfo,
-			truncated: false,
+			truncated,
 		};
 	});
 }

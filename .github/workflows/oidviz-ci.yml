@@ -1,0 +1,22 @@
+name: OIDViz CI
+
+on:
+  pull_request:
+    paths: [oidviz/**]
+  push:
+    branches: [main]
+    paths: [oidviz/**]
+
+jobs:
+  ci:
+    runs-on: ubuntu-latest
+    defaults:
+      run:
+        working-directory: oidviz
+    steps:
+      - uses: actions/checkout@v4
+      - uses: oven-sh/setup-bun@v2
+      - uses: extractions/setup-just@v2
+      - run: bun install
+      - run: bunx playwright install --with-deps chromium firefox
+      - run: just ci

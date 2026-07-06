@@ -144,7 +144,7 @@ function onCollapseAll(): void {
 			@facet-change="onFacetChange"
 		/>
 
-		<div class="app-main">
+		<main class="app-main">
 			<LandingScreen
 				v-if="state.phase === 'landing' || state.phase === 'loading'"
 				:app-state="state"
@@ -177,7 +177,7 @@ function onCollapseAll(): void {
 			<div v-else-if="state.phase === 'error'" class="error-page" role="alert">
 				<p>Error: {{ state.message }}</p>
 			</div>
-		</div>
+		</main>
 	</div>
 </template>
 
