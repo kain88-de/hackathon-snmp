@@ -176,7 +176,7 @@ const walkConfig = computed((): WalkConfig | null => {
 	<aside class="sidebar" aria-label="Controls">
 		<!-- Brand -->
 		<div class="sidebar-brand">
-			<span class="sidebar-brand-name">OIDviz</span>
+			<h1 class="sidebar-brand-name">OIDviz</h1>
 			<span class="sidebar-brand-sub">.oidtrace viewer</span>
 		</div>
 

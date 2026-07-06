@@ -8,15 +8,15 @@
 
 :root {
 	/* Dim tokens */
-	--dim-slow: #3b82f6;
+	--dim-slow: #1d4ed8;
 	--dim-slow-bg: #dbeafe;
-	--dim-violation: #f59e0b;
+	--dim-violation: #92400e;
 	--dim-violation-bg: #fef3c7;
-	--dim-retry: #93c5fd;
+	--dim-retry: #6d28d9;
 	--dim-retry-bg: #e0f2fe;
-	--dim-timeout: #ef4444;
+	--dim-timeout: #991b1b;
 	--dim-timeout-bg: #fee2e2;
-	--dim-none: #94a3b8;
+	--dim-none: #475569;
 	--dim-none-bg: #f1f5f9;
 
 	/* Layout / theme tokens */
@@ -29,7 +29,7 @@
 	--color-warn: #d97706;
 	--color-err: #dc2626;
 	--color-text: #0f172a;
-	--color-text-muted: #64748b;
+	--color-text-muted: #475569;
 
 	/* Sidebar tokens */
 	--sidebar-bg: #1e293b;
