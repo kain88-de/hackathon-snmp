@@ -20,6 +20,11 @@ const UNKNOWN_RECORD_TYPE_DATA_PATH = path.resolve(
 	"./test-data/unknown-record-type.oidtrace.jsonl.gz",
 );
 
+const TRUNCATED_DATA_PATH = path.resolve(
+	__dirname,
+	"./test-data/truncated.oidtrace.jsonl.gz",
+);
+
 test("drop zone visible, no console errors", async ({ page }) => {
 	const consoleErrors: string[] = [];
 	page.on("console", (msg) => {
@@ -77,4 +82,19 @@ test("unknown record skipped", async ({ page }) => {
 		'.sidebar-section:has(.sidebar-section-title:has-text("Walk info")) .info-row:has(.info-key:has-text("Exchanges")) .info-val',
 	);
 	await expect(exchangesValue).toHaveText("2");
+});
+
+test("truncated file → viewer phase with truncation warning", async ({
+	page,
+}) => {
+	await page.goto("/");
+
+	const fileInput = page.locator('input[type="file"]');
+	await fileInput.setInputFiles(TRUNCATED_DATA_PATH);
+
+	await expect(page.locator('[data-phase="viewer"]')).toBeVisible({
+		timeout: 10000,
+	});
+
+	await expect(page.getByText("Warning: trace was truncated")).toBeVisible();
 });
