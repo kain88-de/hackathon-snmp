@@ -30,6 +30,8 @@ const NO_SUMMARY_DATA_PATH = path.resolve(
 	"./test-data/no-summary.oidtrace.jsonl.gz",
 );
 
+// Landing screen (no file loaded yet) must expose the upload drop zone and
+// load without console errors.
 test("drop zone visible, no console errors", async ({ page }) => {
 	const consoleErrors: string[] = [];
 	page.on("console", (msg) => {
@@ -48,7 +50,9 @@ test("drop zone visible, no console errors", async ({ page }) => {
 	expect(consoleErrors).toHaveLength(0);
 });
 
-test("valid file → viewer phase", async ({ page }) => {
+// canonical is a complete, well-formed trace; uploading it must reach the
+// viewer phase.
+test("a well-formed trace reaches the viewer phase", async ({ page }) => {
 	await page.goto("/");
 
 	const fileInput = page.locator('input[type="file"]');
@@ -59,7 +63,10 @@ test("valid file → viewer phase", async ({ page }) => {
 	});
 });
 
-test("invalid gzip → error", async ({ page }) => {
+// not-gzip is plain text saved with a .gz extension, so decompression fails.
+// The app must show the error phase and an accessible alert, not crash
+// silently or hang.
+test("a file that isn't actually gzip shows an error", async ({ page }) => {
 	await page.goto("/");
 
 	const fileInput = page.locator('input[type="file"]');
@@ -72,7 +79,12 @@ test("invalid gzip → error", async ({ page }) => {
 	await expect(page.getByRole("alert")).toBeVisible();
 });
 
-test("unknown record skipped", async ({ page }) => {
+// unknown-record-type has a record with an unrecognized "type" between two
+// valid exchanges. Per the format spec (§3, "unknown fields"), readers must
+// ignore it and keep parsing, so the exchange count must still be 2.
+test("an unrecognized record type is skipped without breaking the parse", async ({
+	page,
+}) => {
 	await page.goto("/");
 
 	const fileInput = page.locator('input[type="file"]');
@@ -89,6 +101,10 @@ test("unknown record skipped", async ({ page }) => {
 	await expect(exchangesValue).toHaveText("2");
 });
 
+// truncated has a complete header + exchange 1, then exchange 2 cut off
+// mid-record with no trailing newline (simulates a crash mid-write). The
+// truncated-file fix must still reach the viewer, with a warning, rather
+// than the error page.
 test("truncated file → viewer phase with truncation warning", async ({
 	page,
 }) => {
@@ -104,6 +120,11 @@ test("truncated file → viewer phase with truncation warning", async ({
 	await expect(page.getByText("Warning: trace was truncated")).toBeVisible();
 });
 
+// no-summary has 2 exchanges and no summary record: exchange 1 has 1
+// violation ("oid-not-increasing"), exchange 2 has none, and their response
+// OIDs differ so there are 2 unique OIDs. The missing-summary-derivation fix
+// must compute Violations/OIDs seen from the exchanges instead of falling
+// back to 0/"—".
 test("missing summary → totals derived from exchanges", async ({ page }) => {
 	await page.goto("/");
 
@@ -114,8 +135,6 @@ test("missing summary → totals derived from exchanges", async ({ page }) => {
 		timeout: 10000,
 	});
 
-	// Verify Walk info "Violations" = 1 and "OIDs seen" = 2, derived from the
-	// two exchange records since the trace has no summary record.
 	const violationsValue = page.locator(
 		'.sidebar-section:has(.sidebar-section-title:has-text("Walk info")) .info-row:has(.info-key:has-text("Violations")) .info-val',
 	);

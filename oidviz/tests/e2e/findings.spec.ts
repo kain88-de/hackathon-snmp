@@ -26,6 +26,8 @@ async function loadCanonical(page: import("@playwright/test").Page) {
 	});
 }
 
+// Findings must be the active view immediately after upload, with no
+// view-switch click.
 test("Findings is the default view", async ({ page }) => {
 	await loadCanonical(page);
 
@@ -33,10 +35,11 @@ test("Findings is the default view", async ({ page }) => {
 	await expect(findingsContainer).toBeVisible();
 });
 
+// canonical's default facets (1000ms threshold) put seq 2 (1500ms) in Slow,
+// seq 3 (no response) in Timed out, and seq 1/4/5 (all ≤50ms) in Fast.
 test("sections partition by outcome", async ({ page }) => {
 	await loadCanonical(page);
 
-	// Check that all three section headers are visible with correct counts
 	await expect(
 		page.locator('.section-header[data-label="Slow (1)"]'),
 	).toBeVisible();
@@ -48,10 +51,12 @@ test("sections partition by outcome", async ({ page }) => {
 	).toBeVisible();
 });
 
+// All three outcome sections render expanded by default — this is current,
+// deliberately-unfixed app behavior (the written spec calls for collapsed
+// by default; that gap is out of scope for this suite).
 test("sections expanded by default", async ({ page }) => {
 	await loadCanonical(page);
 
-	// All three section headers should have aria-expanded="true"
 	const sectionHeaders = page.locator(".section-header");
 	await expect(sectionHeaders).toHaveCount(3);
 
@@ -63,41 +68,47 @@ test("sections expanded by default", async ({ page }) => {
 	}
 });
 
+// canonical seq 2 is the only exchange in the Slow section; collapsing that
+// section must remove its row from the DOM entirely, not just hide it.
 test("collapsing a header hides its rows", async ({ page }) => {
 	await loadCanonical(page);
 
-	// Get the Slow section header and click it
 	const slowHeader = page.locator('.section-header[data-label="Slow (1)"]');
 	await slowHeader.click();
 
-	// After clicking, aria-expanded should be false
 	await expect(slowHeader).toHaveAttribute("aria-expanded", "false");
 
-	// The row with seq 2 should not be visible
 	const seq2Row = page.locator('.exchange-row[data-seq="2"]');
 	await expect(seq2Row).not.toBeVisible();
 });
 
-test("violation badge", async ({ page }) => {
+// canonical seq 4: 20ms, 1 violation ("oid-not-increasing"), 1 attempt. An
+// exchange with violations must render a violation-count badge.
+test("exchange with a violation shows a violation-count badge", async ({
+	page,
+}) => {
 	await loadCanonical(page);
 
-	// Find the row with seq 4 and check its violation badge
 	const seq4Row = page.locator('.exchange-row[data-seq="4"]');
 	const violationBadge = seq4Row.locator(".badge-violation");
 
 	await expect(violationBadge).toHaveText("1 viol");
 });
 
-test("retry badge", async ({ page }) => {
+// canonical seq 5: 2 attempts (first timed out, retry got the response). An
+// exchange with more than one attempt must render a retry-count badge.
+test("exchange with a retry shows a retry-count badge", async ({ page }) => {
 	await loadCanonical(page);
 
-	// Find the row with seq 5 and check its retry badge
 	const seq5Row = page.locator('.exchange-row[data-seq="5"]');
 	const retryBadge = seq5Row.locator(".badge-retry");
 
 	await expect(retryBadge).toHaveText("×2");
 });
 
+// trace-5k is a real ~5000-exchange capture — the one place this shared
+// fixture is still used, as a volume/perf smoke check. It must load without
+// console errors and render at least one row.
 test("large real trace loads cleanly", async ({ page }) => {
 	const consoleErrors: string[] = [];
 	page.on("console", (msg) => {
@@ -115,11 +126,9 @@ test("large real trace loads cleanly", async ({ page }) => {
 		timeout: 10000,
 	});
 
-	// Check that at least 1 exchange row is visible
 	const exchangeRows = page.locator(".exchange-row");
 	const count = await exchangeRows.count();
 	expect(count).toBeGreaterThanOrEqual(1);
 
-	// Check no console errors
 	expect(consoleErrors).toHaveLength(0);
 });

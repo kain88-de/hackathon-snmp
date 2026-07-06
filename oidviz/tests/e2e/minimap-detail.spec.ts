@@ -23,6 +23,8 @@ async function openMinimapDetail(page: import("@playwright/test").Page) {
 	await page.getByRole("button", { name: "Minimap + Detail" }).click();
 }
 
+// The Minimap+Detail view renders two canvases (minimap overview + detail);
+// both must have non-zero layout width once mounted — not fixture-dependent.
 test("both canvases render with non-zero width", async ({ page }) => {
 	await openMinimapDetail(page);
 
@@ -37,6 +39,8 @@ test("both canvases render with non-zero width", async ({ page }) => {
 	}
 });
 
+// The colour legend is a fixed, data-independent list of the 5 exchange
+// statuses in a fixed order — not fixture-dependent.
 test("colour legend shows all 5 statuses in order", async ({ page }) => {
 	await openMinimapDetail(page);
 
@@ -55,6 +59,8 @@ test("colour legend shows all 5 statuses in order", async ({ page }) => {
 	]);
 });
 
+// The minimap canvas gets tabindex="0" in onMounted so keyboard users can
+// reach it — not fixture-dependent.
 test("minimap canvas is keyboard-focusable", async ({ page }) => {
 	await openMinimapDetail(page);
 
@@ -63,6 +69,9 @@ test("minimap canvas is keyboard-focusable", async ({ page }) => {
 	await expect(miniCanvas).toBeFocused();
 });
 
+// Canvas pixel/selection state isn't introspectable from Playwright without
+// adding test-only instrumentation (out of scope); this only checks that a
+// drag doesn't throw or log an error, not the resulting selection/window.
 test("dragging on the minimap canvas produces no console errors", async ({
 	page,
 }) => {

@@ -11,12 +11,16 @@ const TEST_DATA_PATH = path.resolve(
 	"test-data/canonical.oidtrace.jsonl.gz",
 );
 
+// WCAG 2.1 AA is a hard gate on DOM content (canvas is exempt); the landing
+// screen must have zero axe violations.
 test("a11y: landing page has no violations", async ({ page }) => {
 	await page.goto("/");
 	const results = await new AxeBuilder({ page }).analyze();
 	expect(results.violations).toEqual([]);
 });
 
+// canonical reaches the viewer/findings view; that DOM must also have zero
+// axe violations.
 test("a11y: viewer (findings) has no violations", async ({ page }) => {
 	await page.goto("/");
 	const fileInput = page.locator('input[type="file"]');

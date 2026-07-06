@@ -8,7 +8,7 @@
     "build": "vue-tsc --noEmit && vite build",
     "preview": "vite preview",
     "test": "bun test --path-ignore-patterns \"tests/e2e/**\" --pass-with-no-tests",
-    "lint": "bunx oxlint -D all -c .oxlintrc.json --ignore-pattern \"src/lib/types.gen.ts\" src/ && bunx biome check --formatter-enabled=false --error-on-warnings src/ && bunx eslint --max-warnings 0 src/"
+    "lint": "bunx oxlint -D all -c .oxlintrc.json --ignore-pattern \"src/lib/types.gen.ts\" src/ && bunx biome check --formatter-enabled=false --error-on-warnings src/ && bunx eslint --max-warnings 0 src/ tests/e2e/"
   },
   "dependencies": {
     "vue": "^3.5.0"

@@ -15,6 +15,8 @@ const NO_SUMMARY_DATA_PATH = path.resolve(
 	"./test-data/no-summary.oidtrace.jsonl.gz",
 );
 
+// Any trace that reaches the viewer phase must render a "Controls" sidebar
+// landmark with the three view-switch buttons — not fixture-dependent.
 test("aside landmark + 3 view buttons", async ({ page }) => {
 	await page.goto("/");
 
@@ -25,11 +27,9 @@ test("aside landmark + 3 view buttons", async ({ page }) => {
 		timeout: 10000,
 	});
 
-	// Verify complementary landmark (sidebar) with name "Controls"
 	const sidebar = page.getByRole("complementary", { name: "Controls" });
 	await expect(sidebar).toBeVisible();
 
-	// Verify 3 view buttons
 	const findingsButton = page.getByRole("button", { name: "Findings" });
 	await expect(findingsButton).toBeVisible();
 
@@ -40,7 +40,12 @@ test("aside landmark + 3 view buttons", async ({ page }) => {
 	await expect(oidTreeButton).toBeVisible();
 });
 
-test("Device section fields", async ({ page }) => {
+// canonical's system_info: sysDescr "Test Device R1\nBuild 42" (the embedded
+// newline must render as first-line-only), sysObjectID 1.3.6.1.4.1.9999.1,
+// sysUpTime 12345.
+test("Device section shows the system_info values, sysDescr truncated to its first line", async ({
+	page,
+}) => {
 	await page.goto("/");
 
 	const fileInput = page.locator('input[type="file"]');
@@ -50,26 +55,27 @@ test("Device section fields", async ({ page }) => {
 		timeout: 10000,
 	});
 
-	// Verify sysDescr = "Test Device R1" (first line only)
 	const sysDescrValue = page.locator(
 		'.sidebar-section:has(.sidebar-section-title:has-text("Device")) .info-row:has(.info-key:has-text("sysDescr")) .info-val',
 	);
 	await expect(sysDescrValue).toHaveText("Test Device R1");
 
-	// Verify sysObjectID = "1.3.6.1.4.1.9999.1"
 	const sysObjectIDValue = page.locator(
 		'.sidebar-section:has(.sidebar-section-title:has-text("Device")) .info-row:has(.info-key:has-text("sysObjectID")) .info-val',
 	);
 	await expect(sysObjectIDValue).toHaveText("1.3.6.1.4.1.9999.1");
 
-	// Verify sysUpTime = "12345"
 	const sysUpTimeValue = page.locator(
 		'.sidebar-section:has(.sidebar-section-title:has-text("Device")) .info-row:has(.info-key:has-text("sysUpTime")) .info-val',
 	);
 	await expect(sysUpTimeValue).toHaveText("12345");
 });
 
-test("Device section hidden", async ({ page }) => {
+// no-summary has no system_info record, so deviceInfo must be null and the
+// whole Device section — including its title — must not render at all.
+test("Device section is absent when the trace has no system_info", async ({
+	page,
+}) => {
 	await page.goto("/");
 
 	const fileInput = page.locator('input[type="file"]');
@@ -79,14 +85,17 @@ test("Device section hidden", async ({ page }) => {
 		timeout: 10000,
 	});
 
-	// Verify Device section title doesn't exist (since no system_info record)
 	const deviceSectionTitle = page.locator(
 		'.sidebar-section:has(.sidebar-section-title:has-text("Device"))',
 	);
 	await expect(deviceSectionTitle).not.toBeVisible();
 });
 
-test("Walk info fields", async ({ page }) => {
+// canonical's header/summary: label "test-walk", snmp v2c, start OID
+// 1.3.6.1, 5 exchanges, end_reason "completed".
+test("Walk info section shows the header and summary fields", async ({
+	page,
+}) => {
 	await page.goto("/");
 
 	const fileInput = page.locator('input[type="file"]');
@@ -96,38 +105,37 @@ test("Walk info fields", async ({ page }) => {
 		timeout: 10000,
 	});
 
-	// Verify Label = "test-walk"
 	const labelValue = page.locator(
 		'.sidebar-section:has(.sidebar-section-title:has-text("Walk info")) .info-row:has(.info-key:has-text("Label")) .info-val',
 	);
 	await expect(labelValue).toHaveText("test-walk");
 
-	// Verify SNMP = "v2c"
 	const snmpValue = page.locator(
 		'.sidebar-section:has(.sidebar-section-title:has-text("Walk info")) .info-row:has(.info-key:has-text("SNMP")) .info-val',
 	);
 	await expect(snmpValue).toHaveText("v2c");
 
-	// Verify Start OID = "1.3.6.1"
 	const startOIDValue = page.locator(
 		'.sidebar-section:has(.sidebar-section-title:has-text("Walk info")) .info-row:has(.info-key:has-text("Start OID")) .info-val',
 	);
 	await expect(startOIDValue).toHaveText("1.3.6.1");
 
-	// Verify Exchanges = "5"
 	const exchangesValue = page.locator(
 		'.sidebar-section:has(.sidebar-section-title:has-text("Walk info")) .info-row:has(.info-key:has-text("Exchanges")) .info-val',
 	);
 	await expect(exchangesValue).toHaveText("5");
 
-	// Verify End reason = "completed"
 	const endReasonValue = page.locator(
 		'.sidebar-section:has(.sidebar-section-title:has-text("Walk info")) .info-row:has(.info-key:has-text("End reason")) .info-val',
 	);
 	await expect(endReasonValue).toHaveText("completed");
 });
 
-test("Walk info violations styling", async ({ page }) => {
+// canonical's summary has 1 violation total ("oid-not-increasing" × 1); a
+// non-zero violation count must render in the "err" style, not "ok".
+test("a non-zero violation count renders in the error style", async ({
+	page,
+}) => {
 	await page.goto("/");
 
 	const fileInput = page.locator('input[type="file"]');
@@ -137,17 +145,18 @@ test("Walk info violations styling", async ({ page }) => {
 		timeout: 10000,
 	});
 
-	// Verify Violations = "1"
 	const violationsValue = page.locator(
 		'.sidebar-section:has(.sidebar-section-title:has-text("Walk info")) .info-row:has(.info-key:has-text("Violations")) .info-val',
 	);
 	await expect(violationsValue).toHaveText("1");
-
-	// Verify it has class "info-val--err"
 	await expect(violationsValue).toHaveClass(/info-val--err/);
 });
 
-test("Walk config fields", async ({ page }) => {
+// canonical's header.settings: bulk_size 10, timeout_s 2, retries 1,
+// time_budget_s 30, resume_from 1.3.6.1.2.1.4.20.
+test("Walk config section shows the header's settings fields", async ({
+	page,
+}) => {
 	await page.goto("/");
 
 	const fileInput = page.locator('input[type="file"]');
@@ -157,31 +166,26 @@ test("Walk config fields", async ({ page }) => {
 		timeout: 10000,
 	});
 
-	// Verify Bulk size = "10"
 	const bulkSizeValue = page.locator(
 		'.sidebar-section:has(.sidebar-section-title:has-text("Walk config")) .info-row:has(.info-key:has-text("Bulk size")) .info-val',
 	);
 	await expect(bulkSizeValue).toHaveText("10");
 
-	// Verify Timeout = "2s"
 	const timeoutValue = page.locator(
 		'.sidebar-section:has(.sidebar-section-title:has-text("Walk config")) .info-row:has(.info-key:has-text("Timeout")) .info-val',
 	);
 	await expect(timeoutValue).toHaveText("2s");
 
-	// Verify Retries = "1"
 	const retriesValue = page.locator(
 		'.sidebar-section:has(.sidebar-section-title:has-text("Walk config")) .info-row:has(.info-key:has-text("Retries")) .info-val',
 	);
 	await expect(retriesValue).toHaveText("1");
 
-	// Verify Budget = "30s"
 	const budgetValue = page.locator(
 		'.sidebar-section:has(.sidebar-section-title:has-text("Walk config")) .info-row:has(.info-key:has-text("Budget")) .info-val',
 	);
 	await expect(budgetValue).toHaveText("30s");
 
-	// Verify Resume = "1.3.6.1.2.1.4.20"
 	const resumeValue = page.locator(
 		'.sidebar-section:has(.sidebar-section-title:has-text("Walk config")) .info-row:has(.info-key:has-text("Resume")) .info-val',
 	);

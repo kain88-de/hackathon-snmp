@@ -23,6 +23,8 @@ async function openOidTree(page: import("@playwright/test").Page) {
 	await page.getByRole("button", { name: "OID Tree" }).click();
 }
 
+// canonical has 5 exchanges, so building the tree must produce at least one
+// row (branch or leaf).
 test("renders at least one row", async ({ page }) => {
 	await openOidTree(page);
 
@@ -31,6 +33,8 @@ test("renders at least one row", async ({ page }) => {
 	});
 });
 
+// canonical has exactly 5 exchanges; the toolbar count must reflect the
+// current match count.
 test("toolbar count reads 5 exchanges", async ({ page }) => {
 	await openOidTree(page);
 
@@ -38,43 +42,41 @@ test("toolbar count reads 5 exchanges", async ({ page }) => {
 	await expect(count).toHaveText("5 exchanges");
 });
 
+// autoExpand() expands any node whose child count is at or below the
+// auto-expand threshold; with only 5 exchanges the tree is shallow, so at
+// least one branch node must end up expanded without a click.
 test("anomalous nodes auto-expand", async ({ page }) => {
 	await openOidTree(page);
 
-	// At least one branch node should be expanded by default due to auto-expand
 	const expandedNodes = page.locator('.trie-node[aria-expanded="true"]');
 	await expect(expandedNodes.first()).toBeVisible({
 		timeout: 5000,
 	});
 });
 
+// Auto-expand state is data-dependent, so read the node's actual
+// aria-expanded value first rather than assuming a starting state; a click
+// must flip it either way.
 test("clicking a node toggles it", async ({ page }) => {
 	await openOidTree(page);
 
-	// Get the first trie node (branch node, not leaf)
 	const firstNode = page.locator(".trie-node").first();
 
-	// Get its initial expanded state
 	const initialExpanded = await firstNode.getAttribute("aria-expanded");
-
-	// Click to toggle
 	await firstNode.click();
-
-	// Get the new expanded state
 	const newExpanded = await firstNode.getAttribute("aria-expanded");
 
-	// They should be different
 	expect(initialExpanded).not.toBe(newExpanded);
 });
 
+// Regardless of how many nodes auto-expand initially, "Collapse all" must
+// leave zero nodes expanded.
 test("Collapse all button collapses all nodes", async ({ page }) => {
 	await openOidTree(page);
 
-	// Click the "Collapse all" button
 	const collapseButton = page.locator(".oid-tree-collapse-btn");
 	await collapseButton.click();
 
-	// After collapsing, no trie-node should have aria-expanded="true"
 	const expandedNodes = page.locator('.trie-node[aria-expanded="true"]');
 	await expect(expandedNodes).toHaveCount(0, { timeout: 5000 });
 });
