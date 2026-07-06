@@ -1,4 +1,4 @@
-import { describe, expect, test } from "bun:test";
+import { describe, expect, test } from "vitest";
 import { asOid } from "../../src/lib/model.ts";
 import type { DomainExchange } from "../../src/lib/model.ts";
 import { minMaxValues, rttCssClass, rttCssClassFromRtt } from "../../src/lib/utils.ts";

@@ -1,4 +1,4 @@
-import { describe, expect, test } from "bun:test";
+import { describe, expect, test } from "vitest";
 import { asOid } from "../../src/lib/model.ts";
 import type { DomainExchange, FacetState } from "../../src/lib/model.ts";
 import { matchesFacets } from "../../src/lib/filters.ts";

@@ -7,7 +7,7 @@
     "dev": "vite",
     "build": "vue-tsc --noEmit && vite build",
     "preview": "vite preview",
-    "test": "bun test --path-ignore-patterns \"tests/e2e/**\" --pass-with-no-tests",
+    "test": "vitest run",
     "lint": "bunx oxlint -D all -c .oxlintrc.json --ignore-pattern \"src/lib/types.gen.ts\" src/ && bunx biome check --formatter-enabled=false --error-on-warnings src/ && bunx eslint --max-warnings 0 src/ tests/e2e/"
   },
   "dependencies": {
@@ -22,12 +22,16 @@
     "@types/node": "^26.0.0",
     "@typescript-eslint/parser": "^8.0.0",
     "@vitejs/plugin-vue": "^5.1.0",
+    "@vitest/coverage-v8": "^4.1.10",
+    "@vue/test-utils": "^2.4.11",
     "eslint": "^9.0.0",
     "eslint-plugin-vue": "^9.0.0",
+    "happy-dom": "^20.10.6",
     "json-schema-to-typescript": "^15.0.0",
     "oxlint": "^0.9.0",
     "typescript": "^5.5.0",
     "vite": "^5.4.0",
+    "vitest": "^4.1.10",
     "vue-eslint-parser": "^9.0.0",
     "vue-tsc": "^2.1.0"
   },

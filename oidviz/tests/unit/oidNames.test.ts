@@ -1,4 +1,4 @@
-import { describe, expect, test } from "bun:test";
+import { describe, expect, test } from "vitest";
 import { asOid } from "../../src/lib/model.ts";
 import { lookupOidName } from "../../src/lib/oidNames.ts";
 
