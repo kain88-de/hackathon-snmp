@@ -5,7 +5,7 @@ import path from "node:path";
 const __filename = fileURLToPath(import.meta.url);
 const __dirname = path.dirname(__filename);
 
-const FIXTURE_PATH = path.resolve(
+const TEST_DATA_PATH = path.resolve(
 	__dirname,
 	"../../../traceformat/examples/trace-5k.oidtrace.jsonl.gz",
 );
@@ -32,7 +32,7 @@ test("file upload: transitions to viewer phase", async ({ page }) => {
 	await page.goto("/");
 
 	const fileInput = page.locator('input[type="file"]');
-	await fileInput.setInputFiles(FIXTURE_PATH);
+	await fileInput.setInputFiles(TEST_DATA_PATH);
 
 	await expect(page.locator('[data-phase="viewer"]')).toBeVisible({
 		timeout: 10000,
@@ -43,7 +43,7 @@ test("findings view: shows rows after file upload", async ({ page }) => {
 	await page.goto("/");
 
 	const fileInput = page.locator('input[type="file"]');
-	await fileInput.setInputFiles(FIXTURE_PATH);
+	await fileInput.setInputFiles(TEST_DATA_PATH);
 
 	await expect(page.locator('[data-phase="viewer"]')).toBeVisible({
 		timeout: 10000,
@@ -62,7 +62,7 @@ test("sidebar: aside landmark present, all three view buttons visible", async ({
 
 	// Upload a file so we're in viewer phase where sidebar is rendered
 	const fileInput = page.locator('input[type="file"]');
-	await fileInput.setInputFiles(FIXTURE_PATH);
+	await fileInput.setInputFiles(TEST_DATA_PATH);
 	await expect(page.locator('[data-phase="viewer"]')).toBeVisible({
 		timeout: 10000,
 	});
@@ -85,7 +85,7 @@ test("minimap view: both canvases have non-zero clientWidth", async ({
 	await page.goto("/");
 
 	const fileInput = page.locator('input[type="file"]');
-	await fileInput.setInputFiles(FIXTURE_PATH);
+	await fileInput.setInputFiles(TEST_DATA_PATH);
 
 	await expect(page.locator('[data-phase="viewer"]')).toBeVisible({
 		timeout: 10000,
@@ -110,7 +110,7 @@ test("oid tree: at least one trie row visible", async ({ page }) => {
 	await page.goto("/");
 
 	const fileInput = page.locator('input[type="file"]');
-	await fileInput.setInputFiles(FIXTURE_PATH);
+	await fileInput.setInputFiles(TEST_DATA_PATH);
 
 	await expect(page.locator('[data-phase="viewer"]')).toBeVisible({
 		timeout: 10000,
@@ -124,4 +124,3 @@ test("oid tree: at least one trie row visible", async ({ page }) => {
 		timeout: 5000,
 	});
 });
-

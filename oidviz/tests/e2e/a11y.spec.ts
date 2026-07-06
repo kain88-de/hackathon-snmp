@@ -6,7 +6,7 @@ import { fileURLToPath } from "node:url";
 const __filename = fileURLToPath(import.meta.url);
 const __dirname = path.dirname(__filename);
 
-const FIXTURE_PATH = path.resolve(
+const TEST_DATA_PATH = path.resolve(
 	__dirname,
 	"../../../traceformat/examples/trace-5k.oidtrace.jsonl.gz",
 );
@@ -28,7 +28,7 @@ test("a11y: landing page has no critical violations", async ({ page }) => {
 test("a11y: viewer (findings) has no critical violations", async ({ page }) => {
 	await page.goto("/");
 	const fileInput = page.locator('input[type="file"]');
-	await fileInput.setInputFiles(FIXTURE_PATH);
+	await fileInput.setInputFiles(TEST_DATA_PATH);
 	await expect(page.locator('[data-phase="viewer"]')).toBeVisible({
 		timeout: 10000,
 	});
