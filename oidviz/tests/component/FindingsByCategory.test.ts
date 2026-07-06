@@ -202,18 +202,18 @@ describe("FindingsByCategory", () => {
 		expect(emitted![0]).toEqual([42]);
 	});
 
-	// Create three exchanges: one fast (rtt: 300, slowMs: 500), one slow
-	// (rtt: 600, slowMs: 500), one timeout (isTimeout: true). Each row's .rtt
-	// element must have the correct CSS class: dim-fast, dim-slow, dim-timeout
-	// respectively. This proves rttCssClass categorises correctly and the
-	// component applies the right class to the visual rendering.
+	// Uses the same slowMs: 1000 boundary values as tests/unit/utils.test.ts's
+	// rttCssClass suite: rtt: 1000 (exactly at slowMs, seq 1) must be dim-fast
+	// — proving the component wires up rttCssClass's strict `>` comparison
+	// rather than `>=`; rtt: 1500 (seq 2) must be dim-slow; isTimeout: true
+	// (seq 3) must be dim-timeout regardless of rtt.
 	test("row rtt element has correct class matching exchange status", () => {
 		const exchanges = [
-			makeExchange({ seq: 1, rtt: 300 }), // fast
-			makeExchange({ seq: 2, rtt: 600 }), // slow
+			makeExchange({ seq: 1, rtt: 1000 }), // at slowMs boundary -> fast
+			makeExchange({ seq: 2, rtt: 1500 }), // above slowMs -> slow
 			makeExchange({ seq: 3, isTimeout: true }), // timeout
 		];
-		const facetState = makeFacetState({ slowMs: 500 });
+		const facetState = makeFacetState({ slowMs: 1000 });
 
 		const wrapper = mount(FindingsByCategory, {
 			props: { exchanges, facetState },
