@@ -25,6 +25,11 @@ const TRUNCATED_DATA_PATH = path.resolve(
 	"./test-data/truncated.oidtrace.jsonl.gz",
 );
 
+const NO_SUMMARY_DATA_PATH = path.resolve(
+	__dirname,
+	"./test-data/no-summary.oidtrace.jsonl.gz",
+);
+
 test("drop zone visible, no console errors", async ({ page }) => {
 	const consoleErrors: string[] = [];
 	page.on("console", (msg) => {
@@ -97,4 +102,27 @@ test("truncated file → viewer phase with truncation warning", async ({
 	});
 
 	await expect(page.getByText("Warning: trace was truncated")).toBeVisible();
+});
+
+test("missing summary → totals derived from exchanges", async ({ page }) => {
+	await page.goto("/");
+
+	const fileInput = page.locator('input[type="file"]');
+	await fileInput.setInputFiles(NO_SUMMARY_DATA_PATH);
+
+	await expect(page.locator('[data-phase="viewer"]')).toBeVisible({
+		timeout: 10000,
+	});
+
+	// Verify Walk info "Violations" = 1 and "OIDs seen" = 2, derived from the
+	// two exchange records since the trace has no summary record.
+	const violationsValue = page.locator(
+		'.sidebar-section:has(.sidebar-section-title:has-text("Walk info")) .info-row:has(.info-key:has-text("Violations")) .info-val',
+	);
+	await expect(violationsValue).toHaveText("1");
+
+	const oidsSeenValue = page.locator(
+		'.sidebar-section:has(.sidebar-section-title:has-text("Walk info")) .info-row:has(.info-key:has-text("OIDs seen")) .info-val',
+	);
+	await expect(oidsSeenValue).toHaveText("2");
 });

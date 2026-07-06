@@ -4,6 +4,7 @@ import type {
 	ActiveView,
 	AppState,
 	FacetState,
+	OidString,
 	ParseResult,
 } from "../lib/model.ts";
 
@@ -128,7 +129,10 @@ const walkInfo = computed((): WalkInfo | null => {
 				(a: number, b: number): number => a + b,
 				0,
 			)
-		: 0;
+		: r.exchanges.reduce(
+				(a: number, ex): number => a + ex.violations.length,
+				0,
+			);
 	const durationSec = r.summary?.at ?? null;
 	let duration = "—";
 	if (durationSec !== null) {
@@ -142,7 +146,9 @@ const walkInfo = computed((): WalkInfo | null => {
 		endReason: r.summary?.end_reason ?? "—",
 		exchangeCount: r.exchanges.length,
 		label: r.header.label ?? "—",
-		oidsSeen: r.summary?.oids_seen ?? "—",
+		oidsSeen:
+			r.summary?.oids_seen ??
+			new Set(r.exchanges.flatMap((ex): OidString[] => ex.responseOids)).size,
 		parseMs: r.parseMs,
 		snmpVersion: r.header.snmp.version,
 		startOid: r.header.settings.start_oid,
