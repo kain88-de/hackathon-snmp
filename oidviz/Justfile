@@ -17,7 +17,7 @@ fmt-check:
 lint:
     bunx oxlint -D all -c .oxlintrc.json --ignore-pattern "src/lib/types.gen.ts" src/
     bunx biome check --formatter-enabled=false --error-on-warnings src/
-    bunx eslint --max-warnings 0 src/ tests/e2e/
+    bunx eslint --max-warnings 0 --no-error-on-unmatched-pattern src/ tests/e2e/ tests/component/
 
 types:
     bunx vue-tsc --noEmit --skipLibCheck

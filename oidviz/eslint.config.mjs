@@ -57,7 +57,7 @@ export default [
     },
   },
   {
-    files: ["tests/e2e/**/*.spec.ts"],
+    files: ["tests/e2e/**/*.spec.ts", "tests/component/**/*.test.ts"],
     plugins: {
       local: localRules,
     },
