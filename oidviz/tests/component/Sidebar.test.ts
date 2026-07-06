@@ -173,7 +173,10 @@ describe("Sidebar", () => {
 		// header.label = "test-walk", default header.snmp.version "2c" and
 		// settings.start_oid "1.3.6.1", 2 exchanges — each Walk info field must
 		// reflect the summary/header data rather than deriving from exchanges.
-		test("renders label, snmp version, start OID, exchange count, oids seen, and end reason from the summary", () => {
+		// The two-key violation_counts (2 + 1) also proves the component sums
+		// the counts' *values*, not just counts the number of violation kinds
+		// (which would coincidentally also read "2" for a single-key map).
+		test("renders label, snmp version, start OID, exchange count, oids seen, violations, and end reason from the summary", () => {
 			const wrapper = mountSidebar({
 				result: makeParseResult({
 					header: makeHeader({ label: "test-walk" }),
@@ -196,6 +199,7 @@ describe("Sidebar", () => {
 			expect(infoValue(section!, "Start OID").text()).toBe("1.3.6.1");
 			expect(infoValue(section!, "Exchanges").text()).toBe("2");
 			expect(infoValue(section!, "OIDs seen").text()).toBe("7");
+			expect(infoValue(section!, "Violations").text()).toBe("3");
 			expect(infoValue(section!, "End reason").text()).toBe("completed");
 		});
 
