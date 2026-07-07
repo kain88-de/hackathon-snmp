@@ -10,7 +10,7 @@ lint:
     uv run ruff check src tests
 
 types:
-    @echo "types: SKIPPED (temporarily disabled by main session for cleanup speed — do not commit this Justfile)"
+    uv run pyrefly check
 
 types-pyright:
     uv run pyright src tests
