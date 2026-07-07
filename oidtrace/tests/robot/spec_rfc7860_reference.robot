@@ -13,7 +13,7 @@ Documentation    RFC 7860 interoperability spec: SHA-256 auth crosswalk against 
 ...              walker's key derivation is also correct. Two independent parties on
 ...              one shared channel, breaking the circularity.
 ...
-...              Run with: just robot-reference   (or: REQUIRE_REFERENCE_TOOLS=1 just robot)
+...              Run with: just robot-reference
 Library          OidtraceLibrary
 
 
