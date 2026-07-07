@@ -40,12 +40,21 @@ _MINIMAL_SYSTEM_INFO: dict[str, Any] = {
     "values": {"1.3.6.1.2.1.1.1.0": "Linux"},
 }
 
-_MINIMAL_EXCHANGE: dict[str, Any] = {
-    "type": "exchange",
-    "seq": 1,
-    "request": {"pdu": "get", "request_id": 1, "oids": ["1.3.6.1"]},
-    "attempts": [{"sent_at": 0.1, "received_at": 0.2}],
-}
+
+def _exchange(
+    request: dict[str, Any] | None = None,
+    attempts: list[dict[str, Any] | None] | None = None,
+    **extra: Any,
+) -> dict[str, Any]:
+    """A minimal valid exchange, with just the parts a test case cares about swapped in."""
+    if request is None:
+        request = {"pdu": "get", "request_id": 1, "oids": ["1.3.6.1"]}
+    if attempts is None:
+        attempts = [{"sent_at": 0.1, "received_at": 0.2}]
+    return {"type": "exchange", "seq": 1, "request": request, "attempts": attempts, **extra}
+
+
+_MINIMAL_EXCHANGE: dict[str, Any] = _exchange()
 
 _MINIMAL_EVENT: dict[str, Any] = {"type": "event", "at": 1.0, "kind": "walk-aborted-by-user"}
 
@@ -58,90 +67,71 @@ _MINIMAL_SUMMARY: dict[str, Any] = {
     "violation_counts": {},
 }
 
-_CASES: list[tuple[str, dict[str, Any], bool]] = [
-    ("header-minimal", _MINIMAL_HEADER, True),
-    ("header-snmp-v3-sanctioned", {**_MINIMAL_HEADER, "snmp": {"version": "3"}}, True),
-    ("system-info-minimal", _MINIMAL_SYSTEM_INFO, True),
-    ("event-minimal", _MINIMAL_EVENT, True),
-    ("summary-minimal", _MINIMAL_SUMMARY, True),
-    ("exchange-minimal", _MINIMAL_EXCHANGE, True),
-    (
-        "exchange-discovery-sanctioned",
-        {
-            "type": "exchange",
-            "seq": 1,
-            "request": {"pdu": "discovery", "request_id": 1, "oids": []},
-            "attempts": [{"sent_at": 0.1, "received_at": 0.2}],
-        },
+# One row per case: the fixture, then whether it should be accepted by BOTH jsonschema
+# and parse_record (the two must always agree — see module docstring). `id=` names the
+# invariant under test; look there first when a row fails.
+_CASES = [
+    pytest.param(_MINIMAL_HEADER, True, id="header-minimal"),
+    pytest.param(
+        {**_MINIMAL_HEADER, "snmp": {"version": "3"}}, True, id="header-snmp-v3-sanctioned"
+    ),
+    pytest.param(_MINIMAL_SYSTEM_INFO, True, id="system-info-minimal"),
+    pytest.param(_MINIMAL_EVENT, True, id="event-minimal"),
+    pytest.param(_MINIMAL_SUMMARY, True, id="summary-minimal"),
+    pytest.param(_MINIMAL_EXCHANGE, True, id="exchange-minimal"),
+    pytest.param(
+        _exchange(request={"pdu": "discovery", "request_id": 1, "oids": []}),
         True,
+        id="exchange-discovery-sanctioned",
     ),
-    (
-        "exchange-response-and-malformed-rejected",
-        {
-            **_MINIMAL_EXCHANGE,
-            "response": {"request_id": 1, "error_status": 0, "error_index": 0, "varbinds": []},
-            "malformed": {"error": "bad-ber"},
-        },
+    pytest.param(
+        _exchange(
+            response={"request_id": 1, "error_status": 0, "error_index": 0, "varbinds": []},
+            malformed={"error": "bad-ber"},
+        ),
         False,
+        id="exchange-response-and-malformed-rejected",
     ),
-    (
-        "exchange-getbulk-missing-repetition-fields-rejected",
-        {
-            "type": "exchange",
-            "seq": 1,
-            "request": {"pdu": "getbulk", "request_id": 1, "oids": ["1.3.6.1"]},
-            "attempts": [{"sent_at": 0.1, "received_at": 0.2}],
-        },
+    pytest.param(
+        _exchange(request={"pdu": "getbulk", "request_id": 1, "oids": ["1.3.6.1"]}),
         False,
+        id="exchange-getbulk-missing-repetition-fields-rejected",
     ),
-    (
-        "exchange-getbulk-with-repetition-fields-accepted",
-        {
-            "type": "exchange",
-            "seq": 1,
-            "request": {
+    pytest.param(
+        _exchange(
+            request={
                 "pdu": "getbulk",
                 "request_id": 1,
                 "oids": ["1.3.6.1"],
                 "non_repeaters": 0,
                 "max_repetitions": 10,
-            },
-            "attempts": [{"sent_at": 0.1, "received_at": 0.2}],
-        },
+            }
+        ),
         True,
+        id="exchange-getbulk-with-repetition-fields-accepted",
     ),
-    (
-        "exchange-attempt-error-with-received-at-rejected",
-        {
-            "type": "exchange",
-            "seq": 1,
-            "request": {"pdu": "get", "request_id": 1, "oids": ["1.3.6.1"]},
-            "attempts": [{"sent_at": 0.1, "received_at": 0.2, "error": "send-failed"}],
-        },
+    pytest.param(
+        _exchange(attempts=[{"sent_at": 0.1, "received_at": 0.2, "error": "send-failed"}]),
         False,
+        id="exchange-attempt-error-with-received-at-rejected",
     ),
-    (
-        "exchange-attempt-error-with-null-received-at-accepted",
-        {
-            "type": "exchange",
-            "seq": 1,
-            "request": {"pdu": "get", "request_id": 1, "oids": ["1.3.6.1"]},
-            "attempts": [{"sent_at": 0.1, "received_at": None, "error": "send-failed"}],
-        },
+    pytest.param(
+        _exchange(attempts=[{"sent_at": 0.1, "received_at": None, "error": "send-failed"}]),
         True,
+        id="exchange-attempt-error-with-null-received-at-accepted",
     ),
-    (
-        "summary-negative-violation-count-rejected",
+    pytest.param(
         {**_MINIMAL_SUMMARY, "violation_counts": {"oid-not-increasing": -1}},
         False,
+        id="summary-negative-violation-count-rejected",
     ),
-    (
-        "summary-multiple-violation-counts-accepted",
+    pytest.param(
         {
             **_MINIMAL_SUMMARY,
             "violation_counts": {"oid-not-increasing": 2, "duplicate-response": 1},
         },
         True,
+        id="summary-multiple-violation-counts-accepted",
     ),
 ]
 
@@ -158,7 +148,7 @@ def _parse_valid(line: str) -> bool:
     return True
 
 
-@pytest.mark.parametrize("data,expected_valid", [c[1:] for c in _CASES], ids=[c[0] for c in _CASES])
+@pytest.mark.parametrize("data,expected_valid", _CASES)
 def test_schema_and_parse_record_agree(data: dict[str, Any], expected_valid: bool) -> None:
     line = json.dumps(data)
     assert _schema_valid(data) is expected_valid
