@@ -67,7 +67,7 @@ First record of every file.
 | `started_at`     | string | yes  | ISO 8601 UTC wall-clock walk start                  |
 | `label`          | string | no   | Admin-chosen run label; the only correlation handle |
 | `session`        | object | yes  | Ties files of one invocation together (see below)   |
-| `snmp.version`   | string | yes  | `"1"` or `"2c"` (v3 fields reserved for later)      |
+| `snmp.version`   | string | yes  | `"1"`, `"2c"`, or `"3"`                              |
 | `settings`       | object | yes  | See below                                           |
 
 `session` fields: `id` (string — random UUID generated per `walk` invocation; derived
@@ -81,7 +81,10 @@ single walk is `run: 1, runs_total: 1`.
 `resume_from` (OID string, optional — the walk cursor was continued from a previous
 run's stopping point; `start_oid` remains the subtree bound).
 
-The header deliberately contains **no target host name, IP, or port** (§ 7).
+The header deliberately contains **no target host name, IP, or port** (§ 7). SNMPv3
+walks (`snmp.version: "3"`) still carry no credentials or engine parameters here — the
+discovery exchange that establishes them is recorded as an ordinary `exchange` record
+with `request.pdu: "discovery"` (§ 4.3), same as every other request.
 
 ```json
 {
@@ -158,8 +161,10 @@ One record per logical request. `seq` starts at 1 and increments per logical req
 \* Exactly one of: `response` present (decoded), `malformed` present (undecodable), or
 both absent (no answer at all — every attempt timed out).
 
-`request`: `pdu` (`"get"` | `"getnext"` | `"getbulk"`), `request_id` (int, as sent),
-`oids` (array of OID strings), `non_repeaters` + `max_repetitions` (int, getbulk only).
+`request`: `pdu` (`"get"` | `"getnext"` | `"getbulk"` | `"discovery"` — the SNMPv3
+authoritative-engine probe that precedes the walk proper, always `seq: 1`, `oids: []`),
+`request_id` (int, as sent), `oids` (array of OID strings), `non_repeaters` +
+`max_repetitions` (int, getbulk only).
 
 `attempts[]`: `sent_at` (number), `received_at` (number | null — null means this attempt
 got no datagram), `error` (string, optional, open enum — a socket-level error for this
