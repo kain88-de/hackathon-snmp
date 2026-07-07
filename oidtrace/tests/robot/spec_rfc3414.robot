@@ -36,3 +36,26 @@ RFC 3414 §4 - V3 Discovery Failure Terminates Walk As UNRESPONSIVE
     Walk V3 As User    noAuthUser    give_up_after=2
     Trace Should Have End Reason    unresponsive
     [Teardown]    Stop Emulator
+
+RFC 3414 §4 - V3 Discovery Report PDU Is Not Flagged As A Violation
+    [Tags]    rfc3414    v3
+    [Documentation]    The discovery response is a Report PDU (0xA8), a different PDU
+    ...                type than the Response PDU (0xA2) every other exchange returns.
+    ...                oidtrace does not validate the response PDU tag, so this expected
+    ...                type difference is never recorded as a violation on the exchange.
+    Start Emulator
+    Walk V3 As User    noAuthUser
+    Trace First Exchange Should Be Discovery
+    Trace First Exchange Should Have No Violations
+    [Teardown]    Stop Emulator
+
+RFC 3414 §4 - V3 Walk Requires A Username
+    [Tags]    rfc3414    v3
+    [Documentation]    USM has no anonymous identity — every message carries a
+    ...                msgUserName — so `--user` is mandatory on the v3 subcommand.
+    ...                A missing value is an argparse error (exit 2, no trace file, no
+    ...                network I/O), not a defaulted or silently accepted omission.
+    Walk V3 With No User
+    Last Exit Code Should Be    2
+    Stderr Should Contain    --user
+    No Trace File Should Exist

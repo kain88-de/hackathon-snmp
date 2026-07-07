@@ -340,6 +340,20 @@ class OidtraceLibrary:
         self._trace_path = traces[0] if traces else None
         return self._rc
 
+    @keyword("Walk V3 With No User")
+    def walk_v3_with_no_user(self, host: str | None = None) -> int:
+        """Attempt `oidtrace walk v3` without --user — USM has no anonymous identity."""
+        self._out_dir = Path(tempfile.mkdtemp())
+        h = host or self._host or "127.0.0.1"
+        cmd = ["oidtrace", "walk", "v3", h, "--out", str(self._out_dir)]
+        result = subprocess.run(cmd, capture_output=True, text=True, check=False)
+        self._rc = result.returncode
+        self._stdout = result.stdout
+        self._stderr = result.stderr
+        traces = list(self._out_dir.glob("*.oidtrace.jsonl.gz"))
+        self._trace_path = traces[0] if traces else None
+        return self._rc
+
     # ------------------------------------------------------------------
     # Assertions: exit code and output streams
     # ------------------------------------------------------------------
@@ -448,6 +462,17 @@ class OidtraceLibrary:
             if isinstance(record, Exchange):
                 pdu = record.request.pdu.value
                 assert pdu == "discovery", f"Expected first exchange pdu='discovery', got {pdu!r}"
+                return
+        raise AssertionError("No Exchange records in trace")
+
+    @keyword("Trace First Exchange Should Have No Violations")
+    def trace_first_exchange_should_have_no_violations(self) -> None:
+        assert self._trace_path, "No trace file found"
+        for record in read_trace(self._trace_path):
+            if isinstance(record, Exchange):
+                assert not record.violations, (
+                    f"Expected no violations on first exchange, got {record.violations}"
+                )
                 return
         raise AssertionError("No Exchange records in trace")
 
