@@ -137,6 +137,19 @@ class EmuProtocol(asyncio.DatagramProtocol):
         self._tasks.add(task)
         task.add_done_callback(self._tasks.discard)
 
+    async def aclose(self) -> None:
+        """Cancel and await any in-flight datagram handlers.
+
+        Called from the emulator's own event loop at shutdown so pending
+        tasks don't get garbage-collected mid-flight ("Task was destroyed
+        but it is pending!").
+        """
+        tasks = list(self._tasks)
+        for task in tasks:
+            task.cancel()
+        if tasks:
+            await asyncio.gather(*tasks, return_exceptions=True)
+
     @override
     def error_received(self, exc: Exception) -> None:  # pragma: no cover
         pass
@@ -363,7 +376,7 @@ def _run_emulator_on_thread(
         state["loop"] = loop
         state["stop"] = stop
         state_ready.set()
-        transport, _ = await loop.create_datagram_endpoint(
+        transport, protocol = await loop.create_datagram_endpoint(
             lambda: EmuProtocol(device),
             local_addr=("127.0.0.1", 0),
         )
@@ -372,6 +385,7 @@ def _run_emulator_on_thread(
         port_ready.set()
         await stop.wait()
         transport.close()
+        await protocol.aclose()
 
     loop.run_until_complete(_serve())
     loop.close()
