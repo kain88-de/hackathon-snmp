@@ -82,11 +82,3 @@ below consumers' records/walker boundaries.
 
 `just fmt` / `lint` / `lint-schema` / `types` / `test` / `cov` / `gen-types` /
 `types-fresh` / `ci`. `just cov` requires 100% branch coverage.
-
-## Backlog
-
-- Reader-side conveniences for OIDViz/doctor — e.g. a streaming `iter_records(path)`
-  that pairs tolerant truncation with `parse_record`. Today that logic lives in
-  `oidtrace.tracefile`; move it here when a second consumer needs it.
-- Format v2 (packet capture) would regenerate models from a v2 schema — versioned
-  module or package split, to be designed then.
