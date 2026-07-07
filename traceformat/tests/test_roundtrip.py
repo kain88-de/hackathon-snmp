@@ -193,6 +193,22 @@ def test_exchange_with_response_roundtrip() -> None:
             varbinds=[Varbind(oid=Oid("1.3.6.1.2.1.1.1.0"), vtype="OctetString", vlen=12)],
         ),
         violations=["request-id-mismatch"],
+    )
+    assert parse_record(dump_record(exchange)) == exchange
+
+
+def test_exchange_with_malformed_roundtrip() -> None:
+    # response and malformed are mutually exclusive (trace-format.md §4.3); this
+    # covers the malformed-datagram branch that the above response case doesn't.
+    exchange = Exchange(
+        type="exchange",
+        seq=3,
+        request=Request(
+            pdu=Pdu.getnext,
+            request_id=100,
+            oids=[Oid("1.3.6.1.2.1.1")],
+        ),
+        attempts=[Attempt(sent_at=Reltime(0.2), received_at=Reltime(0.3))],
         malformed=Malformed(error="bad-ber", length=10),
     )
     assert parse_record(dump_record(exchange)) == exchange

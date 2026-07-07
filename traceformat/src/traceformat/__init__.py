@@ -4,6 +4,7 @@ from __future__ import annotations
 
 from pydantic import TypeAdapter
 
+from ._validators import TraceFormatViolationError, check_invariants
 from .models import Event, Exchange, Header, Summary, SystemInfo
 
 TraceRecord = Header | SystemInfo | Exchange | Event | Summary
@@ -16,6 +17,7 @@ __all__ = [
     "Header",
     "Summary",
     "SystemInfo",
+    "TraceFormatViolationError",
     "TraceRecord",
     "dump_record",
     "parse_record",
@@ -27,4 +29,6 @@ def dump_record(record: TraceRecord) -> str:
 
 
 def parse_record(line: str) -> TraceRecord:
-    return _adapter.validate_json(line)
+    record = _adapter.validate_json(line)
+    check_invariants(record)
+    return record

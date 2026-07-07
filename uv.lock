@@ -817,6 +817,7 @@ dependencies = [
 [package.dev-dependencies]
 dev = [
     { name = "datamodel-code-generator" },
+    { name = "jsonschema" },
     { name = "pyrefly" },
     { name = "pyright" },
     { name = "pytest" },
@@ -830,6 +831,7 @@ requires-dist = [{ name = "pydantic", specifier = ">=2" }]
 [package.metadata.requires-dev]
 dev = [
     { name = "datamodel-code-generator", specifier = ">=0.25" },
+    { name = "jsonschema", specifier = ">=4" },
     { name = "pyrefly", specifier = ">=1.0" },
     { name = "pyright", specifier = ">=1.1" },
     { name = "pytest", specifier = ">=8" },
