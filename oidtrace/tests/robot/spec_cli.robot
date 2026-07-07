@@ -67,3 +67,21 @@ Community String Never Appears In The Trace File
     Trace File Should Exist
     Trace Bytes Should Not Contain    topsecretcommunity
     [Teardown]    Stop Emulator
+
+Walk With No Version Prints Usage And Exits 2
+    [Tags]    cli
+    [Documentation]    `oidtrace walk` with no v1/v2c/v3 sub-subcommand prints usage to
+    ...                stderr and exits 2 — no network I/O, no trace file.
+    Run Oidtrace Walk With No Version
+    Last Exit Code Should Be    2
+    Stderr Should Contain    usage
+
+V1 Subcommand Rejects The bulk-size Flag
+    [Tags]    cli    v1
+    [Documentation]    SNMP v1 uses GetNext (one OID per request); `--bulk-size` is a
+    ...                GetBulk-only concept and does not exist on the v1 subcommand.
+    ...                Supplying it is an argparse error, not a silently ignored flag.
+    Walk V1 With Bulk Size Flag
+    Last Exit Code Should Be    2
+    Stderr Should Contain    unrecognized
+    No Trace File Should Exist

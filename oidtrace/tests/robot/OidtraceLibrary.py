@@ -316,6 +316,30 @@ class OidtraceLibrary:
             give_up_after=int(give_up_after),
         )
 
+    @keyword("Run Oidtrace Walk With No Version")
+    def run_oidtrace_walk_with_no_version(self) -> int:
+        """Invoke `oidtrace walk` with no v1/v2c/v3 sub-subcommand."""
+        result = subprocess.run(["oidtrace", "walk"], capture_output=True, text=True, check=False)
+        self._rc = result.returncode
+        self._stdout = result.stdout
+        self._stderr = result.stderr
+        self._trace_path = None
+        return self._rc
+
+    @keyword("Walk V1 With Bulk Size Flag")
+    def walk_v1_with_bulk_size_flag(self, host: str | None = None) -> int:
+        """Attempt `oidtrace walk v1 --bulk-size` — v1 has no such flag."""
+        self._out_dir = Path(tempfile.mkdtemp())
+        h = host or self._host or "127.0.0.1"
+        cmd = ["oidtrace", "walk", "v1", h, "--bulk-size", "10", "--out", str(self._out_dir)]
+        result = subprocess.run(cmd, capture_output=True, text=True, check=False)
+        self._rc = result.returncode
+        self._stdout = result.stdout
+        self._stderr = result.stderr
+        traces = list(self._out_dir.glob("*.oidtrace.jsonl.gz"))
+        self._trace_path = traces[0] if traces else None
+        return self._rc
+
     # ------------------------------------------------------------------
     # Assertions: exit code and output streams
     # ------------------------------------------------------------------

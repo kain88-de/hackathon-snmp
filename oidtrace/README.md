@@ -125,6 +125,43 @@ authenticity** — a response signed with the wrong key is still accepted. It is
 diagnostic tracer, not a security client. This is pinned by a `known-limitation`
 scenario in `tests/robot/spec_rfc7860.robot`.
 
+## CLI shape: `walk v1 | v2c | v3`
+
+The SNMP version is a sub-subcommand, not a flag — `oidtrace walk v1|v2c|v3 <host>
+[options]` — so each version exposes exactly the options it needs, with no
+cross-version conditional gating. Shared across all three: `--port` (default 161),
+`--out` (default `.`), `--label`, `--timeout` (default 2.0s), `--retries` (default 2),
+`--start-oid` (default `1.3.6.1`), `--time-budget` (default unlimited),
+`--give-up-after` (default 3), and `-v`/`-vv` for INFO/DEBUG logging. `oidtrace walk`
+with no version prints usage to stderr and exits 2 before any network I/O.
+
+- **v1** — `--community` (default `public`). GetNext, one OID per request;
+  `--bulk-size` does not exist on this subcommand — supplying it is an argparse error,
+  not a silently accepted no-op.
+- **v2c** — `--community` (default `public`), `--bulk-size` (default 10, GetBulk
+  max-repetitions).
+- **v3** — `--user` (required), `--auth-proto`, `--auth-pass`, `--priv-proto`,
+  `--priv-pass`. `--auth-proto` accepts exactly the members of `AuthProto`
+  (`src/oidtrace/auth.py`): `MD5`, `SHA` (SHA-1), `SHA-256`. Any other value is
+  rejected with an error naming the accepted set — nothing wider (e.g. SHA-384,
+  SHA-512) is implemented.
+
+### SNMPv3 security-level support matrix
+
+Security level is inferred from which credentials are supplied, not from an explicit
+`--security-level` flag:
+
+| Supplied | Security level | Status |
+|----------|-----------------|--------|
+| `--user` only | noAuthNoPriv | implemented |
+| `--user --auth-proto --auth-pass` | authNoPriv | implemented (MD5, SHA-1, SHA-256) |
+| `--user --auth-proto --auth-pass --priv-proto --priv-pass` | authPriv | **not implemented** |
+
+Supplying `--priv-proto`/`--priv-pass` is not a CLI error: oidtrace prints a warning to
+stderr that privacy is unsupported and ignored, then proceeds at whatever level the
+auth flags alone imply (noAuthNoPriv or authNoPriv). See "Not implemented" above for
+why full authPriv is out of scope for now.
+
 ## Out of scope
 
 - **SNMPv3 privacy** as above; when it arrives the plan is to reuse an existing
