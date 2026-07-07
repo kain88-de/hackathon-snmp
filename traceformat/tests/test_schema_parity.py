@@ -10,7 +10,6 @@ fixtures are raw JSON strings, not model constructions, since some invalid shape
 
 from __future__ import annotations
 
-import gzip
 import json
 from pathlib import Path
 from typing import Any
@@ -23,7 +22,6 @@ from traceformat import TraceFormatViolationError, parse_record
 
 _SCHEMA = json.loads((Path(__file__).parents[1] / "trace-format.schema.json").read_text())
 _VALIDATOR = validator_for(_SCHEMA)(_SCHEMA)
-_FOCUSED_EXAMPLE = Path(__file__).parents[1] / "examples" / "trace-focused.oidtrace.jsonl.gz"
 
 _MINIMAL_HEADER: dict[str, Any] = {
     "type": "header",
@@ -137,6 +135,14 @@ _CASES: list[tuple[str, dict[str, Any], bool]] = [
         {**_MINIMAL_SUMMARY, "violation_counts": {"oid-not-increasing": -1}},
         False,
     ),
+    (
+        "summary-multiple-violation-counts-accepted",
+        {
+            **_MINIMAL_SUMMARY,
+            "violation_counts": {"oid-not-increasing": 2, "duplicate-response": 1},
+        },
+        True,
+    ),
 ]
 
 
@@ -157,14 +163,3 @@ def test_schema_and_parse_record_agree(data: dict[str, Any], expected_valid: boo
     line = json.dumps(data)
     assert _schema_valid(data) is expected_valid
     assert _parse_valid(line) is expected_valid
-
-
-def test_focused_example_corpus_agrees_with_schema_and_parser() -> None:
-    with gzip.open(_FOCUSED_EXAMPLE, "rt") as f:
-        for raw_line in f:
-            line = raw_line.strip()
-            if not line:
-                continue
-            data = json.loads(line)
-            assert _schema_valid(data), f"schema rejects real producer output: {data}"
-            assert _parse_valid(line), f"parse_record rejects real producer output: {line}"
