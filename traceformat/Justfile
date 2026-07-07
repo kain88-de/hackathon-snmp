@@ -23,7 +23,7 @@ cov:
 
 gen-types:
     uv run datamodel-codegen \
-        --input ../docs/trace-format.schema.json \
+        --input trace-format.schema.json \
         --input-file-type jsonschema \
         --output src/traceformat/models.py \
         --output-model-type pydantic_v2.BaseModel \
@@ -40,7 +40,7 @@ types-fresh:
     tmp="src/traceformat/_models_fresh.py"
     trap 'rm -f "$tmp"' EXIT
     uv run datamodel-codegen \
-        --input ../docs/trace-format.schema.json \
+        --input trace-format.schema.json \
         --input-file-type jsonschema \
         --output "$tmp" \
         --output-model-type pydantic_v2.BaseModel \

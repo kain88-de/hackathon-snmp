@@ -16,7 +16,7 @@ records parsed wire evidence — per-attempt timing, the request-id the device a
 returned, protocol violations — into a portable gzipped-JSONL trace. Traces contain no
 values, no packet bytes, and no device identity; an admin can read one with `zcat`
 before sharing it. Format spec:
-`docs/trace-format.md` (+ JSON Schema).
+`traceformat/trace-format.md` (+ JSON Schema).
 
 **OIDViz** — renders a trace or session bundle as a self-contained HTML report:
 verdict panel, latency waterfall, subtree heat, run comparison. Opens by double-click,
@@ -79,6 +79,6 @@ Then serve `dist/` with any static file server or open `dist/index.html` directl
 snmpd), then deliberately deleted for a one-shot replay experiment — the refined spec
 and contract-level plan are the surviving artifacts and the input for the rebuild.
 Design specs live in `docs/superpowers/specs/`; the trace format
-(`docs/trace-format.md` + `docs/trace-format.schema.json`) is authoritative and
+(`traceformat/trace-format.md` + `traceformat/trace-format.schema.json`) is authoritative and
 validated by experiments in `experiments/`. The plan to execute:
 `docs/superpowers/plans/2026-06-11-oidtrace.md`. Next: the doctor, then OIDViz.

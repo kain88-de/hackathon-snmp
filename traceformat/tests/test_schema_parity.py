@@ -2,7 +2,7 @@
 
 datamodel-code-generator does not translate the JSON Schema `not`/`if-then-else`
 keywords into pydantic validators, so four real invariants in
-docs/trace-format.schema.json are silently absent from models.py. These tests prove
+trace-format.schema.json are silently absent from models.py. These tests prove
 traceformat.parse_record enforces what the schema enforces at the wire boundary —
 fixtures are raw JSON strings, not model constructions, since some invalid shapes
 (e.g. an exchange with both response and malformed) construct just fine today.
@@ -21,7 +21,7 @@ from pydantic import ValidationError
 
 from traceformat import TraceFormatViolationError, parse_record
 
-_SCHEMA = json.loads((Path(__file__).parents[2] / "docs" / "trace-format.schema.json").read_text())
+_SCHEMA = json.loads((Path(__file__).parents[1] / "trace-format.schema.json").read_text())
 _VALIDATOR = validator_for(_SCHEMA)(_SCHEMA)
 _FOCUSED_EXAMPLE = Path(__file__).parents[1] / "examples" / "trace-focused.oidtrace.jsonl.gz"
 

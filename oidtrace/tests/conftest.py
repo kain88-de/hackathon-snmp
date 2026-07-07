@@ -18,6 +18,6 @@ def record_validator() -> Draft202012Validator:
     Used to belt-and-braces validate produced records against the schema,
     independently of the pydantic models.
     """
-    schema_path = Path(__file__).parents[2] / "docs" / "trace-format.schema.json"
+    schema_path = Path(__file__).parents[2] / "traceformat" / "trace-format.schema.json"
     schema = json.loads(schema_path.read_text())
     return Draft202012Validator(schema)

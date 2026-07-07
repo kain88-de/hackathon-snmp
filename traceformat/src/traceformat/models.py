@@ -164,6 +164,6 @@ class Summary(BaseModel):
 class OidtraceRecordFormatVersion1(RootModel[Header | SystemInfo | Exchange | Event | Summary]):
     root: Header | SystemInfo | Exchange | Event | Summary = Field(
         ...,
-        description="Validates one line of an .oidtrace.jsonl.gz file. Authoritative prose spec: docs/trace-format.md. Unknown extra fields are permitted everywhere (readers must ignore them); open enums (violations, event.kind, end_reason, vtype) are deliberately unconstrained strings.",
+        description="Validates one line of an .oidtrace.jsonl.gz file. Authoritative prose spec: trace-format.md. Unknown extra fields are permitted everywhere (readers must ignore them); open enums (violations, event.kind, end_reason, vtype) are deliberately unconstrained strings.",
         title="OIDTrace record (format version 1)",
     )

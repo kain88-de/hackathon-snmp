@@ -2,7 +2,7 @@
   "$schema": "https://json-schema.org/draft/2020-12/schema",
   "$id": "https://checkmk.com/oidsense/trace-format/v1.schema.json",
   "title": "OIDTrace record (format version 1)",
-  "description": "Validates one line of an .oidtrace.jsonl.gz file. Authoritative prose spec: docs/trace-format.md. Unknown extra fields are permitted everywhere (readers must ignore them); open enums (violations, event.kind, end_reason, vtype) are deliberately unconstrained strings.",
+  "description": "Validates one line of an .oidtrace.jsonl.gz file. Authoritative prose spec: trace-format.md. Unknown extra fields are permitted everywhere (readers must ignore them); open enums (violations, event.kind, end_reason, vtype) are deliberately unconstrained strings.",
   "oneOf": [
     { "$ref": "#/$defs/header" },
     { "$ref": "#/$defs/system_info" },

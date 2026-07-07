@@ -32,7 +32,7 @@ bun test                                                                        
 | `ci`        | lint → types → fmt-check → test |
 | `a11y`      | build → vite preview :4173 → axe-core → kill |
 | `fmt`       | `biome format --write src/` |
-| `gen-types` | `json-schema-to-typescript ../docs/trace-format.schema.json -o src/lib/types.gen.ts` |
+| `gen-types` | `json-schema-to-typescript ../traceformat/trace-format.schema.json -o src/lib/types.gen.ts` |
 
 ---
 
@@ -76,7 +76,7 @@ Logic that the compiler can validate lives in `.ts` files. `.vue` files contain 
 
 ```sh
 just gen-types
-# bunx json-schema-to-typescript ../docs/trace-format.schema.json -o src/lib/types.gen.ts
+# bunx json-schema-to-typescript ../traceformat/trace-format.schema.json -o src/lib/types.gen.ts
 ```
 
 Do not hand-write trace record types. The generated file is excluded from all linters.

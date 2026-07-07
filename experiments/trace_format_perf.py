@@ -1,6 +1,6 @@
 """Experiment: validate the trace-format performance claims.
 
-Claims under test (docs/trace-format.md §6a, OIDEmu draft "Performance model"):
+Claims under test (traceformat/trace-format.md §6a, OIDEmu draft "Performance model"):
   H1 size:   100k-OID device -> tens of MB raw, single-digit MB gz; 1k OIDs -> ~hundreds of KB
   H2 speed:  streaming parse + fit-style aggregation of worst file (bulk-1, 100k lines) = seconds
   H3 memory: peak memory ~ distinct OIDs (aggregate), far below uncompressed file size
@@ -19,7 +19,7 @@ import tracemalloc
 from pathlib import Path
 
 OUT = Path(__file__).parent / "data"
-SCHEMA = Path(__file__).parent.parent / "docs" / "trace-format.schema.json"
+SCHEMA = Path(__file__).parent.parent / "traceformat" / "trace-format.schema.json"
 
 VTYPES = ["Integer", "OctetString", "Counter32", "Gauge32", "TimeTicks", "ObjectIdentifier"]
 

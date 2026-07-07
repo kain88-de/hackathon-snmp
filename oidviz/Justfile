@@ -37,7 +37,7 @@ a11y:
     bunx playwright test tests/e2e/a11y.spec.ts
 
 gen-types:
-    bunx json-schema-to-typescript ../docs/trace-format.schema.json -o src/lib/types.gen.ts
+    bunx json-schema-to-typescript ../traceformat/trace-format.schema.json -o src/lib/types.gen.ts
 
 gen-test-data:
     bun tests/e2e/test-data/generate.mjs

@@ -2,7 +2,7 @@
 
 datamodel-code-generator does not translate the JSON Schema `not`/`if-then-else`
 keywords into pydantic validators, so these checks close the gap between what
-docs/trace-format.schema.json forbids and what models.py actually rejects.
+trace-format.schema.json forbids and what models.py actually rejects.
 """
 
 from __future__ import annotations
@@ -12,7 +12,7 @@ from .models import Exchange, Pdu, Summary
 
 class TraceFormatViolationError(ValueError):
     """A record matches its pydantic model but violates a schema invariant
-    datamodel-code-generator couldn't translate (see docs/trace-format.schema.json)."""
+    datamodel-code-generator couldn't translate (see trace-format.schema.json)."""
 
 
 def check_invariants(record: object) -> None:

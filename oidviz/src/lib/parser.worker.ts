@@ -104,7 +104,8 @@ function mapExchange(exchange: Exchange): DomainExchange {
 		attemptCount: exchange.attempts.length,
 		isTimeout,
 		receivedAtMs,
-		requestOid: asOid(exchange.request.oids[0]),
+		// SNMPv3 discovery exchanges carry no OID (oids: []); empty string reads as "none".
+		requestOid: asOid(exchange.request.oids[0] ?? ""),
 		responseOids: responseOids.map(asOid),
 		rtt,
 		sentAtMs,

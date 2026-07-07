@@ -4,8 +4,8 @@ Exercised end to end:
   1. Hand-rolled minimal BER codec (encode GetBulk, decode Response) — feasibility/size.
   2. Tolerant transport: a device answering with a FIXED request-id (1) is walked
      successfully; the violation is recorded, not dropped.
-  3. Trace emission per docs/trace-format.md, every line validated against
-     docs/trace-format.schema.json; survey + pinpoint runs share a session id.
+  3. Trace emission per traceformat/trace-format.md, every line validated against
+     traceformat/trace-format.schema.json; survey + pinpoint runs share a session id.
   4. Profile-driven emulator (OIDEmu idea): tree + latency rules + quirks, served
      over real loopback UDP.
   5. Settings-finder idea: survey walk (bulk 10) finds slow ranges; pinpoint walk
@@ -26,7 +26,7 @@ import time
 from pathlib import Path
 
 OUT = Path(__file__).parent / "data"
-SCHEMA = Path(__file__).parent.parent / "docs" / "trace-format.schema.json"
+SCHEMA = Path(__file__).parent.parent / "traceformat" / "trace-format.schema.json"
 
 # ---------------------------------------------------------------- BER codec
 
@@ -177,7 +177,7 @@ class Emulator(threading.Thread):
 
 def walk(port: int, path: Path, session: dict, bulk: int, start_oid: str,
          stop_prefix: str | None = None, timeout_s: float = 2.0) -> None:
-    """GetBulk walk writing a trace per docs/trace-format.md."""
+    """GetBulk walk writing a trace per traceformat/trace-format.md."""
     sock = socket.socket(socket.AF_INET, socket.SOCK_DGRAM)
     sock.settimeout(timeout_s)
     t0 = time.monotonic()

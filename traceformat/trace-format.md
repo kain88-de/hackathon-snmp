@@ -314,7 +314,7 @@ cardinalities), value types and lengths, timing, and the optional admin-chosen `
 
 ## 8. JSON Schema
 
-A machine-checkable companion schema lives at **`docs/trace-format.schema.json`** (JSON
+A machine-checkable companion schema lives at **`traceformat/trace-format.schema.json`** (JSON
 Schema draft 2020-12): one `oneOf` branch per record type, validating any single line of a
 trace. It encodes the structural rules of this document — including the
 `response`/`malformed` mutual exclusion and the getbulk-requires-repetition-fields rule —

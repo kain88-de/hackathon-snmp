@@ -6,7 +6,7 @@
  */
 
 /**
- * Validates one line of an .oidtrace.jsonl.gz file. Authoritative prose spec: docs/trace-format.md. Unknown extra fields are permitted everywhere (readers must ignore them); open enums (violations, event.kind, end_reason, vtype) are deliberately unconstrained strings.
+ * Validates one line of an .oidtrace.jsonl.gz file. Authoritative prose spec: trace-format.md. Unknown extra fields are permitted everywhere (readers must ignore them); open enums (violations, event.kind, end_reason, vtype) are deliberately unconstrained strings.
  */
 export type OIDTraceRecordFormatVersion1 = Header | SystemInfo | Exchange | Event | Summary;
 export type Oid = string;
@@ -34,7 +34,7 @@ export interface Header {
     [k: string]: unknown;
   };
   snmp: {
-    version: "1" | "2c";
+    version: "1" | "2c" | "3";
     [k: string]: unknown;
   };
   settings: {
@@ -67,12 +67,12 @@ export interface Exchange {
   type: "exchange";
   seq: number;
   request: {
-    pdu: "get" | "getnext" | "getbulk";
+    pdu: "get" | "getnext" | "getbulk" | "discovery";
     request_id: number;
     /**
-     * @minItems 1
+     * @minItems 0
      */
-    oids: [Oid, ...Oid[]];
+    oids: Oid[];
     non_repeaters?: number;
     max_repetitions?: number;
     [k: string]: unknown;

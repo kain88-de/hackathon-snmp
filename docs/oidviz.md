@@ -32,8 +32,8 @@ not an oversight:
 ## Tech stack
 
 Vue 3 · TypeScript · Bun · Vite. Trace record types are generated from
-`docs/trace-format.schema.json` via `just gen-types` — never hand-write types for trace records,
-the schema is authoritative (see `docs/trace-format.md`).
+`traceformat/trace-format.schema.json` via `just gen-types` — never hand-write types for trace
+records, the schema is authoritative (see `traceformat/trace-format.md`).
 
 ## Visual language
 

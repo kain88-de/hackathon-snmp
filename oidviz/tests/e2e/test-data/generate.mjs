@@ -1,7 +1,7 @@
 // Generates the 5 e2e test-data fixtures consumed by the Playwright suite.
 // Run via `just gen-test-data` (or `bun tests/e2e/test-data/generate.mjs`).
 //
-// Record shapes follow docs/trace-format.md §4; the consumer that reads these
+// Record shapes follow traceformat/trace-format.md §4; the consumer that reads these
 // files is oidviz/src/lib/parser.worker.ts. Keep the two in sync.
 //
 // NOTE: response OIDs are truncated to their first 7 arcs before dedup in the
