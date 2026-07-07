@@ -140,6 +140,13 @@ _CASES: list[tuple[str, dict[str, Any], bool]] = [
 ]
 
 
+def test_schema_is_valid_jsonschema() -> None:
+    # is_valid()/validate() never check the schema itself against its meta-schema —
+    # unknown keywords are silently ignored per spec, and other defects only surface
+    # (as confusing internal errors) if some fixture happens to exercise them.
+    validator_for(_SCHEMA).check_schema(_SCHEMA)
+
+
 def _schema_valid(data: dict[str, Any]) -> bool:
     return _VALIDATOR.is_valid(data)
 
