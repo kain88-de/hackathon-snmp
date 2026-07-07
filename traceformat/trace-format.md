@@ -48,7 +48,10 @@ sequence of self-describing JSON records. Design goals, in priority order:
   is a non-breaking change; removing or re-typing a field requires bumping
   `format_version`.
 - **Open enums**: `violations[]`, `event.kind`, and `end_reason` may grow values within a
-  format version; readers MUST tolerate unknown values.
+  format version; readers MUST tolerate unknown values. Producers should emit the closed
+  `StrEnum`s in `traceformat/vocab.py` (`Violation`, `EventKind`, `EndReason`,
+  `AttemptError`) rather than ad hoc strings — see that package's README for the
+  procedure for adding a new value.
 
 ## 4. Record types
 
