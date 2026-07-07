@@ -6,7 +6,9 @@ Documentation    RFC 7860 compliance spec: HMAC-SHA-2 authentication for SNMPv3 
 ...              identical to RFC 3414 Appendix A.2 but uses SHA-256 instead of SHA-1.
 ...
 ...              These scenarios validate that oidtrace correctly derives keys, sends
-...              authenticated messages, and verifies responses for SHA-256 auth users.
+...              authenticated messages, and correctly signs outgoing requests for
+...              SHA-256 auth users. oidtrace does not verify inbound response
+...              authenticity — see the known-limitation scenario below.
 Library          OidtraceLibrary
 
 
@@ -59,4 +61,17 @@ RFC 7860 §2.1 - SHA-256 Walk Begins With A Discovery Exchange
     Start Emulator With Auth User    sha256user    SHA-256    testpass256
     Walk V3 With Auth    sha256user    SHA-256    testpass256
     Trace First Exchange Should Be Discovery
+    [Teardown]    Stop Emulator
+
+RFC 7860 §2.1 - Tampered Response Authenticity Is Not Verified (Known Limitation)
+    [Tags]    rfc7860    v3    auth    known-limitation
+    [Documentation]    oidtrace authenticates its own outgoing requests but deliberately
+    ...                does not verify inbound response authenticity (walker.py:
+    ...                "diagnostic tracer, not a security client"). This documents that
+    ...                a response signed with the wrong key is still accepted and the
+    ...                walk completes normally. Intentional current behavior, not a
+    ...                defect this spec expects fixed.
+    Start Emulator With Auth User And Corrupted Responses    sha256user    SHA-256    testpass256
+    Walk V3 With Auth    sha256user    SHA-256    testpass256
+    Trace Should Have End Reason    completed
     [Teardown]    Stop Emulator

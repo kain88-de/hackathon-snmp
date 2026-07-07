@@ -74,6 +74,18 @@ class OidtraceLibrary:
         self._emulator = EmulatorThread(auth_users=auth_users)
         self._host, self._port = self._emulator.__enter__()
 
+    @keyword("Start Emulator With Auth User And Corrupted Responses")
+    def start_emulator_with_auth_user_and_corrupted_responses(
+        self, username: str, proto: str, password: str
+    ) -> None:
+        auth_proto = AuthProto(proto.upper())
+        kul = password_to_key(password.encode(), EMU_ENGINE_ID, auth_proto)
+        auth_users = {username.encode(): (auth_proto, kul)}
+        self._emulator = EmulatorThread(
+            quirks=Quirks(corrupt_auth_responses=True), auth_users=auth_users
+        )
+        self._host, self._port = self._emulator.__enter__()
+
     @keyword("Stop Emulator")
     def stop_emulator(self) -> None:
         if self._emulator is not None:

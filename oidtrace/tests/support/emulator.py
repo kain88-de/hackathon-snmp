@@ -59,6 +59,7 @@ class Quirks:
     slow_prefix: Oid | None = None
     per_oid_delay_s: float = 0.0
     drop_all: bool = False
+    corrupt_auth_responses: bool = False
 
 
 # Varbind tree entry: (oid, tag, value_length)
@@ -301,7 +302,12 @@ class EmuProtocol(asyncio.DatagramProtocol):
             )
             if needs_auth:
                 assert auth_kul is not None and auth_proto is not None
-                response = authenticate_msg(response, auth_kul, auth_proto)
+                sign_kul = (
+                    auth_kul[:-1] + bytes([auth_kul[-1] ^ 0xFF])
+                    if self._device.quirks.corrupt_auth_responses
+                    else auth_kul
+                )
+                response = authenticate_msg(response, sign_kul, auth_proto)
             assert self._transport is not None
             self._transport.sendto(response, addr)
             return
@@ -328,7 +334,12 @@ class EmuProtocol(asyncio.DatagramProtocol):
             )
             if needs_auth:
                 assert auth_kul is not None and auth_proto is not None
-                response = authenticate_msg(response, auth_kul, auth_proto)
+                sign_kul = (
+                    auth_kul[:-1] + bytes([auth_kul[-1] ^ 0xFF])
+                    if self._device.quirks.corrupt_auth_responses
+                    else auth_kul
+                )
+                response = authenticate_msg(response, sign_kul, auth_proto)
             assert self._transport is not None
             self._transport.sendto(response, addr)
 
