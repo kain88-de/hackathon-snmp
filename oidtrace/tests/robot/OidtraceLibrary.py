@@ -12,6 +12,8 @@ work equally well.
 from __future__ import annotations
 
 import gzip
+import os
+import select
 import shutil
 import signal
 import socket
@@ -268,24 +270,70 @@ class OidtraceLibrary:
 
     @keyword("Walk V2c And Interrupt After")
     def walk_v2c_and_interrupt_after(self, delay_s: float = 0.3) -> int:
-        """Start a walk, send SIGINT after delay_s, and capture the outcome.
+        """Start a walk, wait until it is actually walking, then send SIGINT.
 
         Exercises the Ctrl-C-is-a-first-class-exit contract: the CLI flushes the
         interrupted summary, prints the terminal verdict, and exits 0.
+
+        The signal must land *inside* the walk loop, not during the child's
+        interpreter startup and imports (which take longer than any fixed sleep
+        and happen before the CLI installs its KeyboardInterrupt-suppressing
+        block). Firing early races that startup and gets the child killed by
+        raw SIGINT (rc=-2) instead of the graceful exit-0 path. So we wait for
+        the first progress line on stderr — emitted only once the walk loop is
+        running — then let delay_s of real walking elapse before interrupting.
         """
         self._out_dir = Path(tempfile.mkdtemp())
         cmd = self._build_walk_cmd(
             ["v2c"], None, None, 2, None, timeout="5.0", time_budget=None, community=None
         )
-        proc = subprocess.Popen(cmd, stdout=subprocess.PIPE, stderr=subprocess.PIPE, text=True)
+        proc = subprocess.Popen(cmd, stdout=subprocess.PIPE, stderr=subprocess.PIPE)
+        stderr_prefix = self._wait_for_walk_start(proc, marker=b"exchanges", timeout_s=10.0)
         time.sleep(float(delay_s))
         proc.send_signal(signal.SIGINT)
-        self._stdout, self._stderr = proc.communicate(timeout=15)
+        out, err = proc.communicate(timeout=15)
+        self._stdout = out.decode()
+        self._stderr = (stderr_prefix + err).decode()
         self._rc = proc.returncode
 
         traces = list(self._out_dir.glob("*.oidtrace.jsonl.gz"))
         self._trace_path = traces[0] if traces else None
         return self._rc
+
+    @staticmethod
+    def _wait_for_walk_start(
+        proc: subprocess.Popen[bytes], marker: bytes, timeout_s: float
+    ) -> bytes:
+        """Block until the child prints the progress marker on stderr.
+
+        Returns the stderr bytes consumed while waiting, so the caller can
+        prepend them to the rest captured by communicate(). Raises if the child
+        exits or the marker never appears within timeout_s (a real failure: the
+        walk never started).
+        """
+        assert proc.stderr is not None
+        fd = proc.stderr.fileno()
+        no_fds: list[int] = []
+        buf = b""
+        deadline = time.monotonic() + timeout_s
+        while marker not in buf:
+            remaining = deadline - time.monotonic()
+            if remaining <= 0:
+                raise AssertionError(
+                    f"walk did not emit progress within {timeout_s}s; "
+                    f"stderr so far:\n{buf.decode(errors='replace')}"
+                )
+            ready, _, _ = select.select([fd], no_fds, no_fds, remaining)
+            if not ready:
+                continue
+            chunk = os.read(fd, 4096)
+            if not chunk:  # EOF: child exited before walking
+                raise AssertionError(
+                    f"walk exited before emitting progress (rc={proc.poll()}); "
+                    f"stderr:\n{buf.decode(errors='replace')}"
+                )
+            buf += chunk
+        return buf
 
     @keyword("Walk V1")
     def walk_v1(self, host: str | None = None, give_up_after: int = 2) -> int:
