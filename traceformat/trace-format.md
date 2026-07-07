@@ -4,9 +4,9 @@ Version: 1 (`format_version: 1`)
 Status: draft
 
 This document is the authoritative specification of the OIDTrace file format. The
-architecture rationale lives in
-`superpowers/specs/2026-06-11-oidtrace-architecture-design.md`; where the two disagree,
-this document wins.
+architecture rationale for the capture tool lives in
+[`../oidtrace/README.md`](../oidtrace/README.md); where the two disagree, this
+document wins.
 
 ## 1. Overview
 

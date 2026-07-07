@@ -75,10 +75,9 @@ Then serve `dist/` with any static file server or open `dist/index.html` directl
 
 ## Where things stand
 
-**Status**: the capture layer was implemented end-to-end (validated against a real
-snmpd), then deliberately deleted for a one-shot replay experiment — the refined spec
-and contract-level plan are the surviving artifacts and the input for the rebuild.
-Design specs live in `docs/superpowers/specs/`; the trace format
-(`traceformat/trace-format.md` + `traceformat/trace-format.schema.json`) is authoritative.
-The plan to execute: `docs/superpowers/plans/2026-06-11-oidtrace.md`. Next: the doctor,
-then OIDViz.
+**Status**: the capture layer (`oidtrace`) is implemented end-to-end — SNMP v1/v2c
+and v3 authNoPriv, validated against a real snmpd and net-snmp cross-walks. Its
+architecture and current limitations are documented in
+[`oidtrace/README.md`](oidtrace/README.md); the trace format
+(`traceformat/trace-format.md` + `traceformat/trace-format.schema.json`) is
+authoritative. Next: the doctor, then further OIDViz work.
