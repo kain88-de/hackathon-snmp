@@ -36,7 +36,7 @@ export function makeFacetState(overrides: Partial<FacetState> = {}): FacetState 
 	};
 }
 
-function makeHeader(overrides: Partial<Header> = {}): Header {
+export function makeHeader(overrides: Partial<Header> = {}): Header {
 	return {
 		type: "header",
 		format_version: 1,

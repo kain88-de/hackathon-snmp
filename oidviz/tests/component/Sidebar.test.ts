@@ -8,9 +8,8 @@ import type {
 	FacetState,
 	ParseResult,
 } from "../../src/lib/model.ts";
-import type { Header } from "../../src/lib/types.gen.ts";
 import Sidebar from "../../src/components/Sidebar.vue";
-import { makeExchange, makeFacetState, makeParseResult } from "./helpers.ts";
+import { makeExchange, makeFacetState, makeHeader, makeParseResult } from "./helpers.ts";
 
 const SYSDESCR_OID = "1.3.6.1.2.1.1.1.0";
 const SYSOID_OID = "1.3.6.1.2.1.1.2.0";
@@ -35,28 +34,6 @@ function mountSidebar(overrides: Partial<SidebarProps> = {}) {
 }
 
 type SidebarWrapper = ReturnType<typeof mountSidebar>;
-
-// Header.settings only accepts a fully-formed object on override (ParseResult's
-// header field is `Header`, not `Partial<Header>`), so tests that need a custom
-// label/settings build a full header from this local factory instead of
-// hand-rolling ParseResult from scratch.
-function makeHeader(overrides: Partial<Header> = {}): Header {
-	return {
-		type: "header",
-		format_version: 1,
-		tool: "oidtrace 0.1.0",
-		started_at: "2026-06-11T14:03:07Z",
-		session: { id: "5e1f3a9c-6a86-4a0b-9b6e-2f6d6a9c1d42", run: 1, runs_total: 1 },
-		snmp: { version: "2c" },
-		settings: {
-			bulk_size: 10,
-			timeout_s: 2,
-			retries: 1,
-			start_oid: "1.3.6.1",
-		},
-		...overrides,
-	};
-}
 
 // Scans .sidebar-section elements for one whose .sidebar-section-title text
 // matches — the component has no data-testid hooks, and several sections

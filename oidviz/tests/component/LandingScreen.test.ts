@@ -191,4 +191,59 @@ describe("LandingScreen", () => {
 
 		expect(emitted[0][0]).toBe(errorMessage);
 	});
+
+	// appState = { phase: "landing" } — Dragging a file over the drop zone must
+	// add the drag-over class for visual feedback, and dragleave must remove it,
+	// proving the drag state toggles rather than sticking permanently.
+	test("dragover adds the drag-over class, dragleave removes it", async () => {
+		const appState: AppState = { phase: "landing" };
+		const wrapper = mount(LandingScreen, { props: { appState } });
+
+		const dropZone = wrapper.find('[role="region"]');
+		expect(dropZone.classes()).not.toContain("drag-over");
+
+		dropZone.element.dispatchEvent(
+			new DragEvent("dragover", { bubbles: true, cancelable: true }),
+		);
+		await wrapper.vm.$nextTick();
+		expect(dropZone.classes()).toContain("drag-over");
+
+		dropZone.element.dispatchEvent(new DragEvent("dragleave", { bubbles: true }));
+		await wrapper.vm.$nextTick();
+		expect(dropZone.classes()).not.toContain("drag-over");
+	});
+
+	// appState = { phase: "landing" }, a synthetic File selected via the hidden
+	// native <input type="file"> (not drag-drop) — The input's change handler
+	// must read the same way as onDrop and emit file-selected, proving the
+	// file-picker path (opened via click/keyboard) works independently of drag-drop.
+	test("selecting a file via the native file input emits file-selected", async () => {
+		const appState: AppState = { phase: "landing" };
+		const wrapper = mount(LandingScreen, { props: { appState } });
+
+		const fileContent = "picked-file-content";
+		const file = new File([fileContent], "picked.oidtrace.jsonl.gz", {
+			type: "application/gzip",
+		});
+
+		const fileInput = wrapper.find('input[type="file"]');
+		Object.defineProperty(fileInput.element, "files", {
+			value: {
+				item: (index: number) => (index === 0 ? file : null),
+			},
+			configurable: true,
+		});
+
+		await fileInput.trigger("change");
+		await new Promise((resolve) => setTimeout(resolve, 50));
+
+		const emittedRaw = wrapper.emitted("file-selected");
+		expect(emittedRaw).toBeDefined();
+		const emitted = emittedRaw as any;
+		expect(emitted).toHaveLength(1);
+
+		const emittedBuffer: ArrayBuffer = emitted[0][0];
+		const decoded = new TextDecoder().decode(emittedBuffer);
+		expect(decoded).toBe(fileContent);
+	});
 });
