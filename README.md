@@ -79,6 +79,6 @@ Then serve `dist/` with any static file server or open `dist/index.html` directl
 snmpd), then deliberately deleted for a one-shot replay experiment — the refined spec
 and contract-level plan are the surviving artifacts and the input for the rebuild.
 Design specs live in `docs/superpowers/specs/`; the trace format
-(`traceformat/trace-format.md` + `traceformat/trace-format.schema.json`) is authoritative and
-validated by experiments in `experiments/`. The plan to execute:
-`docs/superpowers/plans/2026-06-11-oidtrace.md`. Next: the doctor, then OIDViz.
+(`traceformat/trace-format.md` + `traceformat/trace-format.schema.json`) is authoritative.
+The plan to execute: `docs/superpowers/plans/2026-06-11-oidtrace.md`. Next: the doctor,
+then OIDViz.

@@ -287,8 +287,8 @@ to its own aggregates (e.g. distinct OIDs), never to file size. This is a normat
 constraint on future format changes: no record type may require look-ahead or whole-file
 loading.
 
-Realistic scale for consumers (measured, see
-`experiments/2026-06-11-trace-format-perf-results.md`): a 100k-OID device walked at
+Realistic scale for consumers (measured against synthetic profiles in an experiment
+retired from the tree — git history holds it): a 100k-OID device walked at
 bulk 1 is ~100k lines, ~3 MB gzipped / ~56 MB uncompressed (measured before packet-bytes
 fields were removed from the format — v1 traces are smaller), streamed and aggregated in under 2 s
 with peak memory bounded by the per-OID aggregate (~40 MB), not file size. Trace files
