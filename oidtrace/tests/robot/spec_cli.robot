@@ -56,3 +56,14 @@ Terminal Summary Contains End Reason And Exchange Count
     Stdout Should Contain    end_reason
     Stdout Should Contain    exchanges
     [Teardown]    Stop Emulator
+
+Community String Never Appears In The Trace File
+    [Tags]    cli    privacy
+    [Documentation]    Privacy contract: the community string is a credential and must
+    ...                never be written to the trace. A walk with a distinctive community
+    ...                produces a trace whose decompressed bytes do not contain it.
+    Start Emulator
+    Walk V2c    community=topsecretcommunity
+    Trace File Should Exist
+    Trace Bytes Should Not Contain    topsecretcommunity
+    [Teardown]    Stop Emulator

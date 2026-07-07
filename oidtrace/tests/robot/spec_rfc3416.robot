@@ -17,14 +17,41 @@ RFC 3416 - Normal GetBulk Walk Completes With COMPLETED End Reason
     Trace Should Have End Reason    completed
     [Teardown]    Stop Emulator
 
-RFC 3416 §4.2 - Response With Wrong Request ID Is Recorded As Violation
+RFC 3416 §4.2 - Response With Wrong Request ID Is Recorded As Violation And Walk Continues
     [Tags]    rfc3416    violation
     [Documentation]    RFC 3416 §4.2: the response-id in a GetResponse PDU must equal
-    ...                the request-id. Mismatches are recorded as request-id-mismatch
-    ...                violations; the walk continues (device misbehaviour is data).
+    ...                the request-id. The transport never uses request-ids to match
+    ...                responses, so a mismatch is recorded as a request-id-mismatch
+    ...                violation and the walk still runs to a normal completion
+    ...                (device misbehaviour is data, not an error).
     Start Emulator With Fixed Request Id    1
     Walk V2c
     Trace Should Have Violation    request-id-mismatch
+    Trace Should Have End Reason    completed
+    [Teardown]    Stop Emulator
+
+RFC 3416 §4.2 - Duplicate Response Is Recorded As A Violation Not Dropped
+    [Tags]    rfc3416    violation
+    [Documentation]    The transport records every datagram that arrives, including a
+    ...                duplicate of the response drained as a stray. The extra copy is
+    ...                recorded as a duplicate-response violation; the walk is unaffected
+    ...                and completes normally.
+    Start Emulator With Duplicate Responses
+    Walk V2c
+    Trace Should Have Violation    duplicate-response
+    Trace Should Have End Reason    completed
+    [Teardown]    Stop Emulator
+
+RFC 3416 - Subtree-Scoped Walk Completes By Leaving The Subtree
+    [Tags]    rfc3416
+    [Documentation]    A walk bounded to a --start-oid subtree terminates COMPLETED as
+    ...                soon as the cursor advances past the subtree — without ever seeing
+    ...                EndOfMibView. This is the capture-scope guidance path: bound the
+    ...                walk to the subtree monitoring actually polls.
+    Start Emulator
+    Walk V2c    start_oid=1.3.6.1.2.1.2.2.1.1
+    Trace Should Have End Reason    completed
+    Trace Should Not Contain End Of Mib
     [Teardown]    Stop Emulator
 
 RFC 3416 §4.2 - Non-Increasing OIDs Terminate Walk With OID_LOOP End Reason

@@ -11,7 +11,9 @@ work equally well.
 
 from __future__ import annotations
 
+import gzip
 import shutil
+import signal
 import socket
 import subprocess
 import tempfile
@@ -22,8 +24,12 @@ from robot.api.deco import keyword
 from traceformat.models import Exchange, Header, Summary
 
 from oidtrace.auth import AuthProto, password_to_key
+from oidtrace.oid import Oid
 from oidtrace.tracefile import read_trace
 from tests.support.emulator import EMU_ENGINE_ID, EmulatorThread, EndOfMib, Quirks
+
+# All emulator OIDs live under this ifTable-like prefix (see EmuDevice.simple).
+_EMU_TREE_PREFIX = "1.3.6.1.2.1.2.2.1"
 
 
 class OidtraceLibrary:
@@ -63,6 +69,26 @@ class OidtraceLibrary:
     @keyword("Start Emulator With Drop All")
     def start_emulator_with_drop_all(self) -> None:
         self._emulator = EmulatorThread(quirks=Quirks(drop_all=True))
+        self._host, self._port = self._emulator.__enter__()
+
+    @keyword("Start Emulator With Duplicate Responses")
+    def start_emulator_with_duplicate_responses(self) -> None:
+        self._emulator = EmulatorThread(quirks=Quirks(duplicate_responses=True))
+        self._host, self._port = self._emulator.__enter__()
+
+    @keyword("Start Emulator With Slow Oids")
+    def start_emulator_with_slow_oids(self, per_oid_delay: float = 0.05) -> None:
+        """Emulator that stalls per_oid_delay seconds per returned OID.
+
+        Used to make a walk long enough to hit a time budget or a Ctrl-C
+        before it completes on its own.
+        """
+        self._emulator = EmulatorThread(
+            quirks=Quirks(
+                slow_prefix=Oid.from_str(_EMU_TREE_PREFIX),
+                per_oid_delay_s=float(per_oid_delay),
+            )
+        )
         self._host, self._port = self._emulator.__enter__()
 
     @keyword("Start Emulator With Auth User")
@@ -162,15 +188,17 @@ class OidtraceLibrary:
     # Walk invocation
     # ------------------------------------------------------------------
 
-    def _run_walk(
+    def _build_walk_cmd(
         self,
         version_args: list[str],
-        host: str | None = None,
-        label: str | None = None,
-        give_up_after: int = 2,
-        start_oid: str | None = None,
-    ) -> int:
-        self._out_dir = Path(tempfile.mkdtemp())
+        host: str | None,
+        label: str | None,
+        give_up_after: int,
+        start_oid: str | None,
+        timeout: str,
+        time_budget: str | None,
+        community: str | None,
+    ) -> list[str]:
         h = host or self._host or "127.0.0.1"
         cmd = ["oidtrace", "walk", *version_args, h]
         if self._port is not None:
@@ -179,7 +207,7 @@ class OidtraceLibrary:
             "--out",
             str(self._out_dir),
             "--timeout",
-            "1.0",
+            timeout,
             "--retries",
             "0",
             "--give-up-after",
@@ -189,7 +217,26 @@ class OidtraceLibrary:
             cmd += ["--label", label]
         if start_oid:
             cmd += ["--start-oid", start_oid]
+        if time_budget:
+            cmd += ["--time-budget", time_budget]
+        if community:
+            cmd += ["--community", community]
+        return cmd
 
+    def _run_walk(
+        self,
+        version_args: list[str],
+        host: str | None = None,
+        label: str | None = None,
+        give_up_after: int = 2,
+        start_oid: str | None = None,
+        time_budget: str | None = None,
+        community: str | None = None,
+    ) -> int:
+        self._out_dir = Path(tempfile.mkdtemp())
+        cmd = self._build_walk_cmd(
+            version_args, host, label, give_up_after, start_oid, "1.0", time_budget, community
+        )
         result = subprocess.run(cmd, capture_output=True, text=True, check=False)
         self._rc = result.returncode
         self._stdout = result.stdout
@@ -206,10 +253,39 @@ class OidtraceLibrary:
         label: str | None = None,
         give_up_after: int = 2,
         start_oid: str | None = None,
+        time_budget: str | None = None,
+        community: str | None = None,
     ) -> int:
         return self._run_walk(
-            ["v2c"], host=host, label=label, give_up_after=int(give_up_after), start_oid=start_oid
+            ["v2c"],
+            host=host,
+            label=label,
+            give_up_after=int(give_up_after),
+            start_oid=start_oid,
+            time_budget=time_budget,
+            community=community,
         )
+
+    @keyword("Walk V2c And Interrupt After")
+    def walk_v2c_and_interrupt_after(self, delay_s: float = 0.3) -> int:
+        """Start a walk, send SIGINT after delay_s, and capture the outcome.
+
+        Exercises the Ctrl-C-is-a-first-class-exit contract: the CLI flushes the
+        interrupted summary, prints the terminal verdict, and exits 0.
+        """
+        self._out_dir = Path(tempfile.mkdtemp())
+        cmd = self._build_walk_cmd(
+            ["v2c"], None, None, 2, None, timeout="5.0", time_budget=None, community=None
+        )
+        proc = subprocess.Popen(cmd, stdout=subprocess.PIPE, stderr=subprocess.PIPE, text=True)
+        time.sleep(float(delay_s))
+        proc.send_signal(signal.SIGINT)
+        self._stdout, self._stderr = proc.communicate(timeout=15)
+        self._rc = proc.returncode
+
+        traces = list(self._out_dir.glob("*.oidtrace.jsonl.gz"))
+        self._trace_path = traces[0] if traces else None
+        return self._rc
 
     @keyword("Walk V1")
     def walk_v1(self, host: str | None = None, give_up_after: int = 2) -> int:
@@ -313,6 +389,33 @@ class OidtraceLibrary:
                 )
                 return
         raise AssertionError("No Summary record in trace")
+
+    @keyword("Trace Should Not Contain End Of Mib")
+    def trace_should_not_contain_end_of_mib(self) -> None:
+        """Assert no exchange carries an EndOfMibView varbind.
+
+        A full-MIB walk ends *because* the device returns EndOfMibView; a
+        subtree-scoped walk ends because the cursor left the subtree, so no
+        EndOfMibView is ever seen. This distinguishes the two COMPLETED paths.
+        """
+        assert self._trace_path, "No trace file found"
+        for record in read_trace(self._trace_path):
+            if isinstance(record, Exchange) and record.response is not None:
+                for vb in record.response.varbinds:
+                    assert vb.vtype != "EndOfMibView", (
+                        f"Unexpected EndOfMibView varbind at {vb.oid.root}"
+                    )
+
+    @keyword("Trace Bytes Should Not Contain")
+    def trace_bytes_should_not_contain(self, text: str) -> None:
+        """Assert the raw decompressed trace never contains the given text.
+
+        Guards the privacy contract: the community string (and any other
+        sensitive input) must never reach the trace file in any record.
+        """
+        assert self._trace_path, "No trace file found"
+        raw = gzip.decompress(self._trace_path.read_bytes())
+        assert text.encode() not in raw, f"Trace unexpectedly contains {text!r}"
 
     @keyword("Trace First Exchange Should Be Discovery")
     def trace_first_exchange_should_be_discovery(self) -> None:

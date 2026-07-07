@@ -40,6 +40,9 @@ select = ["E", "F", "W", "I", "N", "UP", "B", "A", "C4", "SIM", "ARG", "RUF", "A
 
 [tool.ruff.lint.per-file-ignores]
 "tests/**" = ["PLR2004"]
+# Robot keyword wrappers mirror the CLI flag surface, so wide optional-parameter
+# signatures are idiomatic here.
+"tests/robot/OidtraceLibrary.py" = ["PLR2004", "PLR0913"]
 
 [tool.pyrefly]
 project_includes = ["src", "tests"]
