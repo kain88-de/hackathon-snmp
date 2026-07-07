@@ -21,6 +21,9 @@ test:
 cov:
     uv run pytest --cov=traceformat --cov-branch --cov-report=term-missing
 
+lint-schema:
+    uv run python -c 'import json; from jsonschema.validators import validator_for; s = json.load(open("trace-format.schema.json")); validator_for(s).check_schema(s); print("trace-format.schema.json: valid JSON Schema")'
+
 gen-types:
     uv run datamodel-codegen \
         --input trace-format.schema.json \
@@ -52,4 +55,4 @@ types-fresh:
         --disable-timestamp
     diff src/traceformat/models.py "$tmp"
 
-ci: types-fresh lint types test
+ci: lint-schema types-fresh lint types test

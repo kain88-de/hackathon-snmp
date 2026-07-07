@@ -80,5 +80,5 @@ below consumers' records/walker boundaries.
 
 ## Running
 
-`just fmt` / `lint` / `types` / `test` / `cov` / `gen-types` / `types-fresh` / `ci`.
-`just cov` requires 100% branch coverage.
+`just fmt` / `lint` / `lint-schema` / `types` / `test` / `cov` / `gen-types` /
+`types-fresh` / `ci`. `just cov` requires 100% branch coverage.
