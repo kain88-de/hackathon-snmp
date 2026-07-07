@@ -1,34 +1,34 @@
 # traceformat Implementation Plan (contract level)
 
-> **Status: READY TO EXECUTE (one-shot replay).** Spec:
-> `docs/superpowers/specs/2026-06-12-traceformat-design.md`. A first implementation was
-> built and deliberately deleted (git history holds it); the contracts and traps below
-> are the distilled input for the rebuild. Build this package BEFORE oidtrace (it is
-> oidtrace's only runtime dependency).
+> **Status: DONE.** Scaffold, codegen, vocab, and union+helpers below are all built and
+> tested; see `traceformat/README.md` for the as-built package documentation. The
+> design spec this plan executed (`docs/superpowers/specs/2026-06-12-traceformat-design.md`)
+> is retired — superseded by the README and the passing test suite, same as the oidviz
+> spec retirements. This file stays for the Backlog below.
 
 **Goal:** the shared format-types package: schema-generated pydantic models +
 producer vocabulary + serialization helpers, consumed by every suite tool.
 
 ## Tasks
 
-- [ ] **Scaffold**: workspace member `traceformat/` (pydantic>=2 runtime dep only,
+- [x] **Scaffold**: workspace member `traceformat/` (pydantic>=2 runtime dep only,
       hatchling, py.typed); same strict toolchain as oidtrace (ruff select list,
       pyrefly with workspace-venv interpreter, pyright strict, pytest); Justfile
       `fmt/lint/types/test/ci/cov` + `gen-types`/`types-fresh`.
-- [ ] **Codegen**: `models.py` generated from `docs/trace-format.schema.json`
+- [x] **Codegen**: `models.py` generated from `trace-format.schema.json`
       (datamodel-code-generator, `--formatters ruff-format`, `--disable-timestamp`);
       generated file excluded from ruff/pyright; `types-fresh` drift gate in ci with
       the temp file **inside the package tree** (ruff config resolution).
-- [ ] **Vocab**: `vocab.py` StrEnums — `Violation`, `EndReason`, `EventKind`,
+- [x] **Vocab**: `vocab.py` StrEnums — `Violation`, `EndReason`, `EventKind`,
       `AttemptError`; test iterates all members asserting wire-string identity.
-- [ ] **Union + helpers**: `TraceRecord` union; `dump_record` (compact,
+- [x] **Union + helpers**: `TraceRecord` union; `dump_record` (compact,
       `exclude_unset` — required-but-nullable `received_at` serializes as `null`,
       unset optional keys absent); `parse_record` via module-level `TypeAdapter`;
       round-trip tests.
 
 ## Invariants to preserve when extending
 
-- The schema is generated-from, never generated-to: `docs/trace-format.md` wins, the
+- The schema is generated-from, never generated-to: `trace-format.md` wins, the
   schema follows it, the models follow the schema.
 - New open-vocabulary values: vocab enum + schema `description`, never a schema `enum`.
 - `exclude_unset` semantics are load-bearing; any new serialization path must keep the
