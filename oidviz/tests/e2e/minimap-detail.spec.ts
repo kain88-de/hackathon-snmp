@@ -1,6 +1,7 @@
 import { test, expect } from "@playwright/test";
 import { fileURLToPath } from "node:url";
 import path from "node:path";
+import { MT, RG, RH } from "../../src/lib/minimapDraw.ts";
 
 const __filename = fileURLToPath(import.meta.url);
 const __dirname = path.dirname(__filename);
@@ -10,11 +11,21 @@ const CANONICAL_DATA_PATH = path.resolve(
 	"./test-data/canonical.oidtrace.jsonl.gz",
 );
 
-async function openMinimapDetail(page: import("@playwright/test").Page) {
+// Real ~5000-exchange capture (also used by findings.spec.ts) — needed here
+// as a window large enough to exceed the detail canvas's row capacity.
+const TRACE_5K_DATA_PATH = path.resolve(
+	__dirname,
+	"../../../traceformat/examples/trace-5k.oidtrace.jsonl.gz",
+);
+
+async function openMinimapDetail(
+	page: import("@playwright/test").Page,
+	fixturePath: string = CANONICAL_DATA_PATH,
+) {
 	await page.goto("/");
 
 	const fileInput = page.locator('input[type="file"]');
-	await fileInput.setInputFiles(CANONICAL_DATA_PATH);
+	await fileInput.setInputFiles(fixturePath);
 
 	await expect(page.locator('[data-phase="viewer"]')).toBeVisible({
 		timeout: 10000,
@@ -101,4 +112,62 @@ test("dragging on the minimap canvas produces no console errors", async ({
 
 	await expect(miniCanvas).toBeVisible();
 	expect(consoleErrors).toHaveLength(0);
+});
+
+// trace-5k is a real ~5000-exchange capture spanning ~89s (see
+// findings.spec.ts). Selecting the minimap's full width puts every one of
+// those exchanges in the detail window — far more than the ~2726 rows that
+// fit under drawDetail's MAX_H canvas-height cap (minimapDraw.ts:256-261).
+//
+// findings.md #4: this is a "silently clips" bug, not a "must render via
+// canvas" bug — the fix strategy (compress row spacing to fit, virtualize,
+// or truncate-with-a-visible-warning) isn't chosen yet, so this asserts the
+// fix-agnostic contract instead of a specific rendering approach: every
+// exchange in the window is reachable by scrolling, OR the UI says some
+// were dropped. Sidebar.vue already has a warning for the (unrelated)
+// file-truncation case ("Warning: trace was truncated") — reuse that
+// wording convention as the detector for "the app told the user".
+// Currently neither holds, so this test fails until a fix lands.
+test("a very large selected window shows every exchange or warns some are hidden", async ({
+	page,
+}) => {
+	await openMinimapDetail(page, TRACE_5K_DATA_PATH);
+
+	const miniCanvas = page.locator(".minimap-canvas");
+	const box = await miniCanvas.boundingBox();
+	if (!box) {
+		throw new Error("minimap canvas has no bounding box");
+	}
+	const y = box.y + box.height / 2;
+	const leftX = box.x + 0.5;
+	const rightX = box.x + box.width - 0.5;
+
+	// Autofocus (on mount) may have placed the initial selection anywhere.
+	// Click the right edge first so the selection is unambiguously away from
+	// column 0, then drag left-to-right is guaranteed to be a fresh "create"
+	// drag spanning the full width, not a pan/edge-resize of that window.
+	await page.mouse.click(rightX, y);
+	await page.mouse.move(leftX, y);
+	await page.mouse.down();
+	await page.mouse.move(rightX, y);
+	await page.mouse.up();
+
+	const { scrollHeight } = await page.evaluate(() => {
+		const container = document.querySelector(".detail-section") as HTMLElement;
+		return { scrollHeight: container.scrollHeight };
+	});
+
+	// How many rows the user can actually scroll to, using drawDetail's own
+	// row-pitch formula (MT header + RH+RG pitch per row).
+	const maxReachableRows = Math.floor((scrollHeight - MT) / (RH + RG));
+	const KNOWN_EXCHANGE_COUNT = 5000;
+	const allExchangesReachable = maxReachableRows >= KNOWN_EXCHANGE_COUNT;
+
+	const warningVisible = await page
+		.getByText(/truncat|clipped|hidden|not (all )?shown/i)
+		.first()
+		.isVisible()
+		.catch(() => false);
+
+	expect(allExchangesReachable || warningVisible).toBe(true);
 });

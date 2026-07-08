@@ -241,16 +241,16 @@ export function drawDetail(
 	canvas: HTMLCanvasElement,
 	windowExchanges: DomainExchange[],
 	slowMs: number,
-): void {
+): { hiddenCount: number } {
 	const ctx = canvas.getContext("2d");
 	if (!ctx) {
-		return;
+		return { hiddenCount: 0 };
 	}
 	const style = getComputedStyle(canvas);
 
 	if (windowExchanges.length === 0) {
 		drawEmpty(canvas);
-		return;
+		return { hiddenCount: 0 };
 	}
 
 	const rows = windowExchanges.length;
@@ -281,8 +281,16 @@ export function drawDetail(
 		MT / CANVAS_CENTER_DIVISOR,
 	);
 
+	let hiddenCount = 0;
 	for (const [i, ex] of windowExchanges.entries()) {
 		const y = MT + i * (RH + RG);
+		if (y + RH > newH) {
+			// Rows are drawn in increasing y order, so once one no longer fits
+			// under the (possibly MAX_H-capped) canvas height, neither does any
+			// row after it.
+			hiddenCount = rows - i;
+			break;
+		}
 
 		const relMs = ex.sentAtMs - wMinT;
 		ctx.fillStyle = style.getPropertyValue("--color-text-muted").trim();
@@ -297,6 +305,8 @@ export function drawDetail(
 		ctx.fillStyle = exchangeColour(ex, slowMs, style);
 		ctx.fillRect(xPos, y, Math.min(barW, w - xPos), RH);
 	}
+
+	return { hiddenCount };
 }
 
 export function autoFocus(

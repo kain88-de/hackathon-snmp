@@ -1,7 +1,8 @@
 import { afterEach, beforeEach, describe, expect, test, vi } from "vitest";
 import type { MockInstance } from "vitest";
 import { mount } from "@vue/test-utils";
-import { MT, RG, RH } from "../../src/lib/minimapDraw.ts";
+import { nextTick } from "vue";
+import { MAX_H, MT, RG, RH } from "../../src/lib/minimapDraw.ts";
 import { asOid } from "../../src/lib/model.ts";
 import type { DomainExchange, FacetState } from "../../src/lib/model.ts";
 import MinimapDetail from "../../src/components/MinimapDetail.vue";
@@ -336,6 +337,43 @@ describe("MinimapDetail", () => {
 			dispatchMouse(detail.element, "click", 50, MT - 10);
 
 			expect(wrapper.emitted("focus-exchange")).toBeUndefined();
+		});
+	});
+
+	describe("truncation warning", () => {
+		// makeHoverSet(): 4 rows, far under drawDetail's MAX_H row cap — the
+		// truncation warning must stay hidden so ordinary traces never show it.
+		test("a small window does not render a truncation warning", async () => {
+			const wrapper = mountMinimap(makeHoverSet());
+			await nextTick();
+
+			const warning = wrapper.find(".detail-truncation");
+			expect(warning.classes()).not.toContain("detail-truncation--visible");
+		});
+
+		// 3000 exchanges all sharing makeExchange()'s default sentAtMs: 0 — they
+		// collapse into a single minimap bucket, so auto-focus's window around
+		// that bucket still contains the entire list (findings.md #4's repro
+		// needs every row in the detail window, not just a narrow slice of it).
+		// drawDetail's real row-counting logic runs here (the fake 2D context
+		// is a no-op spy, not a stub that short-circuits the loop), so the
+		// hidden count below is the actual MAX_H-vs-row-pitch arithmetic, not a
+		// guess: only floor((MAX_H - MT - RH) / (RH + RG)) + 1 rows fit before
+		// a row's own height would cross MAX_H.
+		test("a window with more rows than the canvas can show renders a truncation warning naming the hidden count", async () => {
+			const rows = 3000;
+			const exchanges = Array.from({ length: rows }, (_, i) =>
+				makeExchange({ seq: i + 1 }),
+			);
+			const maxVisibleRows = Math.floor((MAX_H - MT - RH) / (RH + RG)) + 1;
+			const expectedHidden = rows - maxVisibleRows;
+
+			const wrapper = mountMinimap(exchanges);
+			await nextTick();
+
+			const warning = wrapper.find(".detail-truncation");
+			expect(warning.classes()).toContain("detail-truncation--visible");
+			expect(warning.text()).toContain(`${expectedHidden} exchanges hidden`);
 		});
 	});
 });

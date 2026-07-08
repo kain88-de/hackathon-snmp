@@ -28,6 +28,7 @@ const containerEl = ref<HTMLElement | null>(null);
 const miniCanvas = ref<HTMLCanvasElement | null>(null);
 const detailCanvas = ref<HTMLCanvasElement | null>(null);
 const tooltipEl = ref<HTMLDivElement | null>(null);
+const hiddenCount = ref(0);
 
 // Mutable selection state — plain vars for perf (no reactive overhead per frame)
 let selectedColStart = 0;
@@ -223,7 +224,11 @@ function redraw(): void {
 		);
 	}
 	if (detail) {
-		drawDetail(detail, windowExchanges(), props.facetState.slowMs);
+		hiddenCount.value = drawDetail(
+			detail,
+			windowExchanges(),
+			props.facetState.slowMs,
+		).hiddenCount;
 	}
 }
 
@@ -402,6 +407,18 @@ watch(
 				aria-label="Minimap overview"
 			/>
 		</div>
+		<div
+			role="status"
+			aria-live="polite"
+			class="detail-truncation"
+			:class="{ 'detail-truncation--visible': hiddenCount > 0 }"
+		>
+			<span v-if="hiddenCount > 0">
+				Warning: {{ hiddenCount }} exchange{{ hiddenCount === 1 ? "" : "s" }}
+				hidden — narrow the selected window to see
+				{{ hiddenCount === 1 ? "it" : "them" }}
+			</span>
+		</div>
 		<div class="detail-section">
 			<canvas
 				ref="detailCanvas"
@@ -436,6 +453,18 @@ watch(
 	cursor: crosshair;
 	border: 1px solid var(--color-border);
 	border-radius: 4px;
+}
+
+.detail-truncation {
+	flex-shrink: 0;
+	padding: 6px 12px;
+	font-size: 12px;
+	color: var(--dim-timeout);
+	display: none;
+}
+
+.detail-truncation--visible {
+	display: block;
 }
 
 .detail-section {
