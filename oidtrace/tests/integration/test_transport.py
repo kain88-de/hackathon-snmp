@@ -2,6 +2,7 @@
 
 from __future__ import annotations
 
+import asyncio
 import socket
 import time
 from collections.abc import Callable
@@ -99,6 +100,81 @@ async def test_icmp_port_unreachable() -> None:
     assert len(result.attempts) == 2  # 1 initial + 1 retry
     for attempt in result.attempts:
         assert attempt.error == AttemptError.ICMP_PORT_UNREACHABLE
+
+
+async def test_late_reply_from_timed_out_exchange_not_consumed_by_next() -> None:
+    """Without an accept predicate, a stale reply to a timed-out exchange is
+    wrongly attributed to the next one — exchange() has no correlation of its
+    own and hands back whatever datagram is first in the queue.
+    """
+    device_sock = socket.socket(socket.AF_INET, socket.SOCK_DGRAM)
+    device_sock.bind(("127.0.0.1", 0))
+    device_sock.setblocking(False)
+    device_port = device_sock.getsockname()[1]
+    loop = asyncio.get_event_loop()
+
+    try:
+        async with await UdpTransport.create("127.0.0.1", device_port, _rel) as t:
+            exchange1 = asyncio.ensure_future(t.exchange(_RAW, timeout_s=0.1, retries=0))
+            _, addr = await loop.sock_recvfrom(device_sock, 4096)
+            result1 = await exchange1
+            assert result1.response is None  # timed out — nobody is waiting anymore
+
+            # The device's reply to exchange 1 finally arrives, late.
+            device_sock.sendto(b"STALE-REPLY-FOR-EXCHANGE-1", addr)
+            await asyncio.sleep(0.02)  # let datagram_received() enqueue it first
+
+            exchange2 = asyncio.ensure_future(t.exchange(_RAW, timeout_s=2.0, retries=0))
+            _, addr2 = await loop.sock_recvfrom(device_sock, 4096)
+            device_sock.sendto(b"REAL-REPLY-FOR-EXCHANGE-2", addr2)
+            result2 = await exchange2
+    finally:
+        device_sock.close()
+
+    assert result2.response is not None
+    assert result2.response[1] == b"STALE-REPLY-FOR-EXCHANGE-1"
+
+
+async def test_late_reply_is_skipped_when_accept_rejects_it() -> None:
+    """A caller-supplied accept predicate lets exchange() tell a stale leftover
+    apart from its own answer: the leftover is filed as a stray instead of
+    being consumed as the response, and exchange() keeps waiting — within the
+    same attempt's timeout budget, no extra retry spent — for one that passes.
+    """
+    device_sock = socket.socket(socket.AF_INET, socket.SOCK_DGRAM)
+    device_sock.bind(("127.0.0.1", 0))
+    device_sock.setblocking(False)
+    device_port = device_sock.getsockname()[1]
+    loop = asyncio.get_event_loop()
+
+    try:
+        async with await UdpTransport.create("127.0.0.1", device_port, _rel) as t:
+            exchange1 = asyncio.ensure_future(t.exchange(_RAW, timeout_s=0.1, retries=0))
+            _, addr = await loop.sock_recvfrom(device_sock, 4096)
+            result1 = await exchange1
+            assert result1.response is None  # timed out — nobody is waiting anymore
+
+            # The device's reply to exchange 1 finally arrives, late.
+            device_sock.sendto(b"STALE-REPLY-FOR-EXCHANGE-1", addr)
+            await asyncio.sleep(0.02)  # let datagram_received() enqueue it first
+
+            exchange2 = asyncio.ensure_future(
+                t.exchange(
+                    _RAW,
+                    timeout_s=2.0,
+                    retries=0,
+                    accept=lambda data: data == b"REAL-REPLY-FOR-EXCHANGE-2",
+                )
+            )
+            _, addr2 = await loop.sock_recvfrom(device_sock, 4096)
+            device_sock.sendto(b"REAL-REPLY-FOR-EXCHANGE-2", addr2)
+            result2 = await exchange2
+    finally:
+        device_sock.close()
+
+    assert result2.response is not None
+    assert result2.response[1] == b"REAL-REPLY-FOR-EXCHANGE-2"
+    assert any(raw == b"STALE-REPLY-FOR-EXCHANGE-1" for _, raw in result2.strays)
 
 
 # ---------------------------------------------------------------------------

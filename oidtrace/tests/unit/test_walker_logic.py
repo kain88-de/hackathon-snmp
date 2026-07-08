@@ -83,7 +83,14 @@ class FakeTransport:
     responses: list[_ResponseEntry] = field(default_factory=list)
     _index: int = field(default=0, init=False)
 
-    async def exchange(self, raw: bytes, *, timeout_s: float, retries: int) -> ExchangeIO:  # noqa: ARG002
+    async def exchange(
+        self,
+        raw: bytes,
+        *,
+        timeout_s: float,  # noqa: ARG002
+        retries: int,  # noqa: ARG002
+        accept: Callable[[bytes], bool] | None = None,  # noqa: ARG002
+    ) -> ExchangeIO:
         assert self._index < len(self.responses), (
             f"FakeTransport exhausted at index {self._index}: no more scripted responses"
         )
@@ -509,7 +516,14 @@ async def test_walk_with_transport_cancellation_emits_interrupted_summary(
 
     # Infinite no-response to stall the walk
     class SlowTransport:
-        async def exchange(self, raw: bytes, *, timeout_s: float, retries: int) -> ExchangeIO:  # noqa: ARG002
+        async def exchange(
+            self,
+            raw: bytes,  # noqa: ARG002
+            *,
+            timeout_s: float,  # noqa: ARG002
+            retries: int,  # noqa: ARG002
+            accept: Callable[[bytes], bool] | None = None,  # noqa: ARG002
+        ) -> ExchangeIO:
             await asyncio.sleep(10.0)  # will be cancelled
             return _no_response_exchange()
 

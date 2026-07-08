@@ -75,6 +75,20 @@ RFC 3416 - Silent Agent Terminates Walk With UNRESPONSIVE End Reason
     Trace File Should Exist
     [Teardown]    Stop Emulator
 
+RFC 3416 §4.2 - Late Reply To A Timed-Out Exchange Must Not Corrupt A Later One
+    [Tags]    rfc3416    violation
+    [Documentation]    A response that arrives after its own exchange already gave up is
+    ...                a stray, not data for whatever exchange happens to be waiting when
+    ...                it lands. The walker tracks its own past request-ids and rejects a
+    ...                datagram echoing one of them as this exchange's answer, filing it as
+    ...                a stray instead — so a late reply to exchange 1 no longer misattributes
+    ...                its (already-passed) OIDs and falsely trips oid-not-increasing/oid-loop
+    ...                on an otherwise healthy, merely-slow agent.
+    Start Emulator With Delayed First Response    0.6
+    Walk V2c    timeout=0.2    bulk_size=1
+    Trace Should Have End Reason    completed
+    [Teardown]    Stop Emulator
+
 RFC 3416 - V1 Walk Completes With COMPLETED End Reason Via GetNext
     [Tags]    rfc3416    v1
     [Documentation]    SNMPv1 uses GetNext instead of GetBulk and signals end-of-MIB

@@ -93,6 +93,27 @@ class OidtraceLibrary:
         )
         self._host, self._port = self._emulator.__enter__()
 
+    @keyword("Start Emulator With Delayed First Response")
+    def start_emulator_with_delayed_first_response(self, delay_s: float = 0.6) -> None:
+        """Emulator whose very first reply is delayed; every later one is slow but on time.
+
+        Used to simulate a genuinely late response: the walker's first exchange
+        times out (no correlation to save it), the walk continues, and the
+        stale reply lands in the transport's queue sometime later, during a
+        subsequent exchange's wait window. Every other reply is throttled via
+        the existing per-OID delay so the walk stays alive long enough (many
+        seconds) for the stale reply to land mid-walk rather than after the
+        walk (and its socket) is already gone.
+        """
+        self._emulator = EmulatorThread(
+            quirks=Quirks(
+                delay_first_response_s=float(delay_s),
+                slow_prefix=Oid.from_str(_EMU_TREE_PREFIX),
+                per_oid_delay_s=0.05,
+            )
+        )
+        self._host, self._port = self._emulator.__enter__()
+
     @keyword("Start Emulator With Auth User")
     def start_emulator_with_auth_user(self, username: str, proto: str, password: str) -> None:
         # Normalize case: "sha-256" -> "SHA-256", "md5" -> "MD5", etc.
@@ -200,6 +221,7 @@ class OidtraceLibrary:
         timeout: str,
         time_budget: str | None,
         community: str | None,
+        bulk_size: int | None = None,
     ) -> list[str]:
         h = host or self._host or "127.0.0.1"
         cmd = ["oidtrace", "walk", *version_args, h]
@@ -223,6 +245,8 @@ class OidtraceLibrary:
             cmd += ["--time-budget", time_budget]
         if community:
             cmd += ["--community", community]
+        if bulk_size is not None:
+            cmd += ["--bulk-size", str(bulk_size)]
         return cmd
 
     def _run_walk(
@@ -234,10 +258,20 @@ class OidtraceLibrary:
         start_oid: str | None = None,
         time_budget: str | None = None,
         community: str | None = None,
+        timeout: str = "1.0",
+        bulk_size: int | None = None,
     ) -> int:
         self._out_dir = Path(tempfile.mkdtemp())
         cmd = self._build_walk_cmd(
-            version_args, host, label, give_up_after, start_oid, "1.0", time_budget, community
+            version_args,
+            host,
+            label,
+            give_up_after,
+            start_oid,
+            timeout,
+            time_budget,
+            community,
+            bulk_size,
         )
         result = subprocess.run(cmd, capture_output=True, text=True, check=False)
         self._rc = result.returncode
@@ -257,6 +291,8 @@ class OidtraceLibrary:
         start_oid: str | None = None,
         time_budget: str | None = None,
         community: str | None = None,
+        timeout: str = "1.0",
+        bulk_size: int | None = None,
     ) -> int:
         return self._run_walk(
             ["v2c"],
@@ -266,6 +302,8 @@ class OidtraceLibrary:
             start_oid=start_oid,
             time_budget=time_budget,
             community=community,
+            timeout=timeout,
+            bulk_size=bulk_size,
         )
 
     @keyword("Walk V2c And Interrupt After")

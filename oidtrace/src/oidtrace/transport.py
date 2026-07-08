@@ -74,7 +74,14 @@ class ExchangeIO:
 class Transport(Protocol):
     """Minimal async transport protocol consumed by the walker."""
 
-    async def exchange(self, raw: bytes, *, timeout_s: float, retries: int) -> ExchangeIO: ...
+    async def exchange(
+        self,
+        raw: bytes,
+        *,
+        timeout_s: float,
+        retries: int,
+        accept: Callable[[bytes], bool] | None = None,
+    ) -> ExchangeIO: ...
 
 
 # ---------------------------------------------------------------------------
@@ -220,15 +227,30 @@ class UdpTransport:
     # exchange
     # ------------------------------------------------------------------
 
-    async def exchange(self, raw: bytes, *, timeout_s: float, retries: int) -> ExchangeIO:
+    async def exchange(
+        self,
+        raw: bytes,
+        *,
+        timeout_s: float,
+        retries: int,
+        accept: Callable[[bytes], bool] | None = None,
+    ) -> ExchangeIO:
         """Send *raw* and wait for a response, retrying up to *retries* times.
 
         Per-attempt behaviour:
         - Send the byte-identical datagram.
-        - Wait up to *timeout_s* for the first queue event.
-        - Datagram → record as response, stop.
+        - Wait up to *timeout_s* for a queue event.
+        - Datagram rejected by *accept* → record as a stray, keep waiting on the
+          same attempt (it costs no retry — a stale leftover isn't this attempt's
+          answer, but the real one may still be forthcoming within the budget).
+        - Datagram accepted → record as response, stop.
         - ICMP error → record error on this attempt, continue to next attempt.
         - Timeout → record unanswered attempt, continue to next retry.
+
+        *accept* stays optional and opaque-bytes: this module still does no SNMP
+        decoding itself. A caller (the walker) that can tell a genuine leftover
+        from an earlier exchange apart from this exchange's own answer passes a
+        predicate; omitting it preserves the old first-datagram-wins behaviour.
 
         After the retry loop: yield to the event loop once (``asyncio.sleep(0)``),
         then drain all immediately-available datagrams from the queue into
@@ -239,6 +261,7 @@ class UdpTransport:
         protocol = self._protocol
         attempts: list[Attempt] = []
         response: tuple[float, bytes] | None = None
+        strays: list[tuple[float, bytes]] = []
 
         total_sends = 1 + retries
 
@@ -249,7 +272,21 @@ class UdpTransport:
 
             try:
                 async with asyncio.timeout(timeout_s):
-                    item = await protocol.queue.get()
+                    while True:
+                        item = await protocol.queue.get()
+                        if (
+                            isinstance(item, _DatagramEvent)
+                            and accept is not None
+                            and not accept(item.data)
+                        ):
+                            log.debug(
+                                "send #%d ignored stale datagram at %.6f",
+                                send_idx,
+                                item.received_at,
+                            )
+                            strays.append((item.received_at, item.data))
+                            continue
+                        break
             except TimeoutError:
                 log.debug("send #%d timed out", send_idx)
                 attempts.append(Attempt(sent_at=sent_at))
@@ -269,7 +306,6 @@ class UdpTransport:
                 # rule); a single queue.get() per attempt means no cross-attempt deferral.
 
         await asyncio.sleep(0)
-        strays: list[tuple[float, bytes]] = []
         while not protocol.queue.empty():
             item = protocol.queue.get_nowait()
             if isinstance(item, _DatagramEvent):

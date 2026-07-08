@@ -60,6 +60,7 @@ class Quirks:
     per_oid_delay_s: float = 0.0
     drop_all: bool = False
     corrupt_auth_responses: bool = False
+    delay_first_response_s: float = 0.0
 
 
 # Varbind tree entry: (oid, tag, value_length)
@@ -125,6 +126,7 @@ class EmuProtocol(asyncio.DatagramProtocol):
         self._transport: asyncio.DatagramTransport | None = None
         # Keep references to spawned tasks (RUF006 compliance).
         self._tasks: set[asyncio.Task[None]] = set()
+        self._delayed_first_response = False
 
     @override
     def connection_made(self, transport: asyncio.BaseTransport) -> None:
@@ -210,6 +212,12 @@ class EmuProtocol(asyncio.DatagramProtocol):
 
         if quirks.drop_all:
             return
+
+        if quirks.delay_first_response_s > 0 and not self._delayed_first_response:
+            self._delayed_first_response = True
+            # Runs as its own task (see datagram_received) so later requests
+            # are handled concurrently, not blocked behind this delay.
+            await asyncio.sleep(quirks.delay_first_response_s)
 
         # Try v3 first; fall through to v1/v2c if not a valid v3 message.
         v3_result = decode_v3_message(data)

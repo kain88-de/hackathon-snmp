@@ -215,6 +215,38 @@ def _make_settings_model(settings: WalkSettings) -> tf.Settings:
     return tf.Settings.model_validate(fields)
 
 
+def _make_response_accept(
+    snmp_version: Literal["1", "2c", "3"],
+    sent_request_ids: set[int],
+    current_request_id: int,
+) -> Callable[[bytes], bool]:
+    """Build a Transport.exchange() accept predicate for one exchange.
+
+    Rejects only a datagram whose request-id matches one of *our own* past
+    exchanges — a genuine late reply that arrived after we gave up on it, so
+    it must not be misattributed as this exchange's answer (it would carry
+    already-passed OIDs and falsely trip oid-not-increasing/oid-loop on an
+    otherwise healthy, merely-slow agent). Any other id — this exchange's own,
+    or one we never sent (e.g. a misbehaving device echoing a fixed id) — is
+    still accepted as data, preserving existing request-id-mismatch handling.
+    """
+
+    def accept(raw: bytes) -> bool:
+        if snmp_version == "3":
+            decoded = decode_v3_message(raw)
+            if isinstance(decoded, Malformed):
+                return True
+            incoming_id = decoded[0].request_id
+        else:
+            decoded_msg = decode_message(raw)
+            if isinstance(decoded_msg, Malformed):
+                return True
+            incoming_id = decoded_msg.request_id
+        return incoming_id == current_request_id or incoming_id not in sent_request_ids
+
+    return accept
+
+
 def _transport_attempt_to_model(attempt: TransportAttempt) -> tf.Attempt:
     """Convert transport.Attempt → models.Attempt.
 
@@ -310,6 +342,7 @@ async def walk_records(  # noqa: PLR0912, PLR0913, PLR0915
     end_reason: EndReason | None = None
     v3_params: V3Params | None = None
     v3_kul: bytes | None = None
+    sent_request_ids: set[int] = set()
 
     # --- SNMPv3 discovery (recorded as seq=1; the GetBulk loop starts at seq=2) ---
     if settings.snmp_version == "3":
@@ -317,11 +350,13 @@ async def walk_records(  # noqa: PLR0912, PLR0913, PLR0915
         seq = 1
         msg_id = random.randint(1, 2**31 - 1)
         request_id = random.randint(1, 2**31 - 1)
+        sent_request_ids.add(request_id)
         raw_request = encode_v3_discovery(msg_id, request_id)
         exchange_io = await transport.exchange(
             raw_request,
             timeout_s=settings.timeout_s,
             retries=settings.retries,
+            accept=_make_response_accept(settings.snmp_version, sent_request_ids, request_id),
         )
         log.debug(
             "exchange seq=1 request_id=%d response=%s (v3 discovery)",
@@ -392,6 +427,7 @@ async def walk_records(  # noqa: PLR0912, PLR0913, PLR0915
 
         seq += 1
         request_id = random.randint(1, 2**31 - 1)
+        sent_request_ids.add(request_id)
 
         if settings.snmp_version == "1":
             raw_request = encode_getnext(
@@ -449,6 +485,7 @@ async def walk_records(  # noqa: PLR0912, PLR0913, PLR0915
             raw_request,
             timeout_s=settings.timeout_s,
             retries=settings.retries,
+            accept=_make_response_accept(settings.snmp_version, sent_request_ids, request_id),
         )
 
         log.debug(
