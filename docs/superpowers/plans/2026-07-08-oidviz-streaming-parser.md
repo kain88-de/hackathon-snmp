@@ -58,117 +58,33 @@ Playwright e2e fixtures as the regression oracle. Full design context:
 
 - [ ] **Step 2: Replace `readAllChunks`, `decompressGzip`, and `parseTrace`'s body**
 
-  Delete `readAllChunks` (lines 13-33) and `decompressGzip` (lines 35-60) entirely, and replace
-  `parseTrace` (lines 117-175) with:
+  Delete `readAllChunks` (lines 13-33) and `decompressGzip` (lines 35-60) entirely. Rewrite
+  `parseTrace` (lines 117-175) to open the `DecompressionStream` directly instead of going through
+  `decompressGzip`:
 
-  ```ts
-  function parseTrace(buffer: ArrayBuffer): Promise<ParseResult> {
-  	const t0 = performance.now();
+  - Move the per-record-type `switch` (header/system_info/exchange/summary) out of the old loop
+    body and into a `handleLine(line)` helper that parses one JSON line, updates the same
+    `header`/`summary`/`systemInfo`/`exchanges`/`truncated` locals as today, and returns `false`
+    when `JSON.parse` fails (setting `truncated = true`) or `true` otherwise.
+  - Drive a `pump()` loop against the stream's reader: decode each chunk with
+    `TextDecoder({ stream: true })`, append to a `leftover` buffer, split on `"\n"`, pop the last
+    (possibly incomplete) piece back into `leftover`, and run every complete line through
+    `handleLine`. On `done`, flush the decoder and run any remaining `leftover` through
+    `handleLine` as the final line.
+  - Keep the existing `CRITICAL` comment and the `Promise.all([writeDone, pump()])` structure
+    unchanged — the writer must still write-then-close concurrently with the reader being pumped,
+    or the stream deadlocks on backpressure exactly as the comment already warns.
+  - The one behavioral change: when `handleLine` returns `false`, `pump()` must call
+    `reader.cancel()` and stop instead of draining the rest of the stream.
 
-  	let header: Header | null = null;
-  	let summary: Summary | null = null;
-  	let systemInfo: SystemInfo | null = null;
-  	const exchanges: DomainExchange[] = [];
-  	let truncated = false;
+  The trap to get right: cancelling the readable side of a `DecompressionStream` also errors its
+  writable side. The write promise's `.catch` must swallow exactly that self-inflicted error —
+  guarded by a `stopped` flag set synchronously in the same tick as the `reader.cancel()` call, so
+  there's no race with a rejecting microtask — otherwise an intentional early-stop-on-truncation
+  would incorrectly surface as a hard parse error instead of a clean `truncated: true` result.
 
-  	// Returns false to tell the pump to stop feeding further lines — used
-  	// when a line fails to parse. oidtrace only ever appends, so nothing
-  	// valid follows a bad line; there's no reason to keep decoding.
-  	function handleLine(line: string): boolean {
-  		if (line.trim().length === 0) {
-  			return true;
-  		}
-  		let record: { type: string; [k: string]: unknown };
-  		try {
-  			record = JSON.parse(line) as { type: string; [k: string]: unknown };
-  		} catch {
-  			truncated = true;
-  			return false;
-  		}
-  		switch (record.type) {
-  			case "header": {
-  				header = record as unknown as Header;
-  				break;
-  			}
-  			case "system_info": {
-  				systemInfo = record as unknown as SystemInfo;
-  				break;
-  			}
-  			case "exchange": {
-  				exchanges.push(mapExchange(record as unknown as Exchange));
-  				break;
-  			}
-  			case "summary": {
-  				summary = record as unknown as Summary;
-  				break;
-  			}
-  			default:
-  		}
-  		return true;
-  	}
-
-  	const ds = new DecompressionStream("gzip");
-  	const writer = ds.writable.getWriter();
-  	const reader = ds.readable.getReader();
-  	const decoder = new TextDecoder();
-  	let leftover = "";
-  	let stopped = false;
-
-  	function pump(): Promise<void> {
-  		return reader.read().then(({ done, value }): Promise<void> => {
-  			if (done) {
-  				const finalLine = leftover + decoder.decode();
-  				if (finalLine.trim().length > 0) {
-  					handleLine(finalLine);
-  				}
-  				return Promise.resolve();
-  			}
-  			leftover += decoder.decode(value, { stream: true });
-  			const parts = leftover.split("\n");
-  			leftover = parts.pop() ?? "";
-  			for (const part of parts) {
-  				if (!handleLine(part)) {
-  					stopped = true;
-  					break;
-  				}
-  			}
-  			if (stopped) {
-  				return reader.cancel().catch((): void => {});
-  			}
-  			return pump();
-  		});
-  	}
-
-  	// CRITICAL: read and write MUST run concurrently to avoid deadlock.
-  	// Writing to the writable side blocks on backpressure if the readable
-  	// side is not already being consumed.
-  	const writeDone = writer
-  		.write(new Uint8Array(buffer))
-  		.then((): Promise<void> => writer.close())
-  		.catch((err: unknown): void => {
-  			// Cancelling the reader early (on a bad line) also errors the
-  			// writable side — swallow only that self-inflicted case.
-  			if (!stopped) {
-  				throw err;
-  			}
-  		});
-
-  	return Promise.all([writeDone, pump()]).then((): ParseResult => {
-  		if (header === null) {
-  			throw new Error("Trace file missing header record");
-  		}
-  		const parseMs = performance.now() - t0;
-  		return { exchanges, header, parseMs, summary, systemInfo, truncated };
-  	});
-  }
-  ```
-
-  The trap this code has to get right: calling `reader.cancel()` on the readable side of a
-  `DecompressionStream` also errors its writable side. If `writeDone`'s `.catch` didn't check
-  `stopped` and swallow that specific case, an intentional early-stop-on-truncation would
-  incorrectly surface as a hard parse error instead of a clean `truncated: true` result. The
-  `stopped` flag is set synchronously in the same tick as the `reader.cancel()` call, before any
-  microtask can reject `writeDone` — so the check is race-free.
+  After both promises settle, keep the existing `header === null` check and the
+  `parseMs`/`ParseResult` construction unchanged.
 
 - [ ] **Step 3: Run `just hook`**
 
@@ -187,31 +103,30 @@ Playwright e2e fixtures as the regression oracle. Full design context:
   | `canonical` | `landing.spec.ts`, `findings.spec.ts`, `facets.spec.ts`, `sidebar.spec.ts`, `oid-tree.spec.ts`, `minimap-detail.spec.ts`, `a11y.spec.ts` | A well-formed trace still parses fully and reaches the viewer with correct data |
   | `not-gzip` | `landing.spec.ts` | Genuine decompression failure (not the self-cancel path) still rejects `parseTrace` and reaches the error phase |
   | `unknown-record-type` | `landing.spec.ts` | An unrecognized `type` is still skipped without breaking the parse |
-  | `truncated` | `landing.spec.ts`, `minimap-detail.spec.ts` | A bad line still triggers `truncated: true` with the earlier valid exchange kept — now via the early-cancel path instead of draining to completion |
+  | `truncated` | `landing.spec.ts`, `minimap-detail.spec.ts` | A bad line still triggers `truncated: true` with the earlier valid exchange kept |
   | `no-summary` | `landing.spec.ts`, `sidebar.spec.ts` | Missing summary record still falls back to derived totals |
 
   All tests must pass with the same pass count as the Step 1 baseline — no test silently skipped
   or newly flaky.
 
+  **Coverage gap, confirmed by the final review:** the `truncated` fixture's bad data is a
+  trailing line with no newline (`tests/e2e/test-data/generate.mjs`), so it is handled by the
+  `leftover`/`done` branch, not by the new mid-stream `reader.cancel()` path — that fixture alone
+  does not exercise the early-cancel behavior. No existing fixture contains a newline-terminated
+  unparseable line followed by more data, so the `reader.cancel()` call and its race-free
+  `stopped`-guarded `.catch` are verified by code inspection only, not by any test. Global
+  Constraints forbid adding a new fixture to close this gap; it is accepted as a known,
+  inspection-only-verified path rather than fixed.
+
 - [ ] **Step 5: Commit**
 
-  ```bash
-  git add oidviz/src/lib/parser.worker.ts
-  git commit -m "$(cat <<'EOF'
-  fix(oidviz): stream-decode and stream-parse traces instead of materializing full copies
-
-  parser.worker.ts held 4-5 full-size copies of a trace in memory at once
-  (chunk array, merged buffer, decoded string, split-lines array) before
-  parsing a single record. Decoding and line-dispatching now happen
-  incrementally as gzip chunks arrive, cutting peak memory to roughly the
-  decompressed size plus the parsed output. An unparseable line now cancels
-  the stream immediately instead of finishing decompression first, since
-  oidtrace only ever appends and nothing valid follows a bad line.
-
-  findings.md #5.
-  EOF
-  )"
-  ```
+  Commit `oidviz/src/lib/parser.worker.ts` with a message explaining that it held 4-5 full-size
+  copies of a trace in memory at once (chunk array, merged buffer, decoded string, split-lines
+  array) before parsing a single record, and that decoding/dispatching now happen incrementally
+  as gzip chunks arrive — cutting peak memory to roughly the decompressed size plus the parsed
+  output. Note that an unparseable line now cancels the stream immediately instead of finishing
+  decompression first, since oidtrace only ever appends and nothing valid follows a bad line.
+  Reference findings.md #5.
 
 ---
 
