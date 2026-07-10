@@ -1,5 +1,7 @@
 # traceformat
 
+[![Traceformat CI](https://github.com/kain88-de/hackathon-snmp/actions/workflows/traceformat-ci.yml/badge.svg)](https://github.com/kain88-de/hackathon-snmp/actions/workflows/traceformat-ci.yml)
+
 The shared package holding the **types of the trace format**. Every
 producer and consumer in the suite (oidtrace, oidviz) imports the same models and
 vocabulary instead of re-testing dict shapes at each consumer.
