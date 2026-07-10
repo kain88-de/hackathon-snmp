@@ -10,55 +10,6 @@ import type { Exchange, Header, Summary, SystemInfo } from "./types.gen.ts";
 const MS_PER_SECOND = 1000;
 const OID_TRUNCATE_ARCS = 7;
 
-function readAllChunks(
-	readable: ReadableStream<Uint8Array>,
-): Promise<Uint8Array[]> {
-	const chunks: Uint8Array[] = [];
-	const reader = readable.getReader();
-
-	function pump(): Promise<Uint8Array[]> {
-		return reader
-			.read()
-			.then(({ done, value }): Promise<Uint8Array[]> | Uint8Array[] => {
-				if (done) {
-					reader.releaseLock();
-					return chunks;
-				}
-				chunks.push(value);
-				return pump();
-			});
-	}
-
-	return pump();
-}
-
-function decompressGzip(buffer: ArrayBuffer): Promise<string> {
-	const ds = new DecompressionStream("gzip");
-	const writer = ds.writable.getWriter();
-
-	// CRITICAL: read and write MUST run concurrently to avoid deadlock.
-	// Writing to the writable side blocks on backpressure if the readable
-	// side is not already being consumed.
-	return Promise.all([
-		writer
-			.write(new Uint8Array(buffer))
-			.then((): Promise<void> => writer.close()),
-		readAllChunks(ds.readable),
-	]).then(([, chunks]): string => {
-		const totalLength = chunks.reduce(
-			(sum: number, c: Uint8Array): number => sum + c.length,
-			0,
-		);
-		const merged = new Uint8Array(totalLength);
-		let offset = 0;
-		for (const chunk of chunks) {
-			merged.set(chunk, offset);
-			offset += chunk.length;
-		}
-		return new TextDecoder().decode(merged);
-	});
-}
-
 function truncateOid(oid: string): string {
 	return oid.split(".").slice(0, OID_TRUNCATE_ARCS).join(".");
 }
@@ -117,46 +68,99 @@ function mapExchange(exchange: Exchange): DomainExchange {
 function parseTrace(buffer: ArrayBuffer): Promise<ParseResult> {
 	const t0 = performance.now();
 
-	return decompressGzip(buffer).then((text: string): ParseResult => {
-		const lines = text
-			.split("\n")
-			.filter((l: string): boolean => l.trim().length > 0);
+	let header: Header | null = null;
+	let summary: Summary | null = null;
+	let systemInfo: SystemInfo | null = null;
+	const exchanges: DomainExchange[] = [];
+	let truncated = false;
 
-		let header: Header | null = null;
-		let summary: Summary | null = null;
-		let systemInfo: SystemInfo | null = null;
-		const exchanges: DomainExchange[] = [];
-		let truncated = false;
-
-		for (const line of lines) {
-			let record: { type: string; [k: string]: unknown };
-			try {
-				record = JSON.parse(line) as { type: string; [k: string]: unknown };
-			} catch {
-				truncated = true;
+	// Parses one JSON line and dispatches it into the locals above via the
+	// per-record-type switch. Returns false when the line fails to parse
+	// (and sets truncated = true), true otherwise.
+	function handleLine(line: string): boolean {
+		if (line.trim().length === 0) {
+			return true;
+		}
+		let record: { type: string; [k: string]: unknown };
+		try {
+			record = JSON.parse(line) as { type: string; [k: string]: unknown };
+		} catch {
+			truncated = true;
+			return false;
+		}
+		switch (record.type) {
+			case "header": {
+				header = record as unknown as Header;
 				break;
 			}
-			switch (record.type) {
-				case "header": {
-					header = record as unknown as Header;
-					break;
-				}
-				case "system_info": {
-					systemInfo = record as unknown as SystemInfo;
-					break;
-				}
-				case "exchange": {
-					exchanges.push(mapExchange(record as unknown as Exchange));
-					break;
-				}
-				case "summary": {
-					summary = record as unknown as Summary;
-					break;
-				}
-				default:
+			case "system_info": {
+				systemInfo = record as unknown as SystemInfo;
+				break;
 			}
+			case "exchange": {
+				exchanges.push(mapExchange(record as unknown as Exchange));
+				break;
+			}
+			case "summary": {
+				summary = record as unknown as Summary;
+				break;
+			}
+			default:
 		}
+		return true;
+	}
 
+	const ds = new DecompressionStream("gzip");
+	const writer = ds.writable.getWriter();
+	const reader = ds.readable.getReader();
+	const decoder = new TextDecoder();
+
+	// Set synchronously with reader.cancel() below, in the same tick, so the
+	// writer's rejection handler can never race ahead of it: by the time the
+	// self-inflicted write error reaches .catch, stopped is already true.
+	let stopped = false;
+
+	let leftover = "";
+
+	function pump(): Promise<void> {
+		return reader.read().then(({ done, value }): Promise<void> | void => {
+			if (done) {
+				const finalLine = leftover + decoder.decode();
+				handleLine(finalLine);
+				return;
+			}
+			const chunk = leftover + decoder.decode(value, { stream: true });
+			const parts = chunk.split("\n");
+			leftover = parts.pop() ?? "";
+			for (const line of parts) {
+				if (!handleLine(line)) {
+					stopped = true;
+					reader.cancel();
+					return;
+				}
+			}
+			return pump();
+		});
+	}
+
+	// CRITICAL: read and write MUST run concurrently to avoid deadlock.
+	// Writing to the writable side blocks on backpressure if the readable
+	// side is not already being consumed.
+	return Promise.all([
+		writer
+			.write(new Uint8Array(buffer))
+			.then((): Promise<void> => writer.close())
+			.catch((error: unknown): void => {
+				// Cancelling the readable side also errors the writable side.
+				// Swallow that self-inflicted error; anything else (e.g. the
+				// not-gzip fixture) is a genuine decompression failure and
+				// must propagate.
+				if (!stopped) {
+					throw error;
+				}
+			}),
+		pump(),
+	]).then((): ParseResult => {
 		if (header === null) {
 			throw new Error("Trace file missing header record");
 		}
