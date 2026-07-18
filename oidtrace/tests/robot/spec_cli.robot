@@ -76,6 +76,40 @@ Walk With No Version Prints Usage And Exits 2
     Last Exit Code Should Be    2
     Stderr Should Contain    usage
 
+Label With Path Separator Is Rejected
+    [Tags]    cli    security
+    [Documentation]    findings.md #7: --label is spliced unsanitized into the trace
+    ...                filename (out_dir / f"{prefix}-{timestamp}..."), and Path treats
+    ...                any "/" in that string as a real subdirectory separator. Before
+    ...                the fix, a label like "sub/evil" was accepted as-is and the walk
+    ...                crashed with an uncaught FileNotFoundError (the implied "sub/"
+    ...                directory under --out never exists) instead of a clean CLI error.
+    ...                The CLI must reject the label up front, before path construction.
+    Start Emulator
+    Walk V2c    label=sub/evil
+    Last Exit Code Should Be    2
+    Stderr Should Contain    label
+    No Trace File Should Exist
+    [Teardown]    Stop Emulator
+
+Label With Parent Traversal Is Rejected And Does Not Escape Out Dir
+    [Tags]    cli    security
+    [Documentation]    findings.md #7: before the fix, a label containing ".." (e.g.
+    ...                "../escape-marker") was not rejected, and Path silently resolved
+    ...                out_dir / "../escape-marker-<ts>.oidtrace.jsonl.gz" to a location
+    ...                outside --out entirely — reproduced during development as a real
+    ...                file landing directly in /tmp. A label that is a full absolute
+    ...                path (e.g. "/etc/cron.d/x") is worse still: Path discards out_dir
+    ...                completely and --out is silently ignored. Both cases go through
+    ...                the same path-separator check as the sibling scenario above.
+    Start Emulator
+    Walk V2c    label=../escape-marker
+    Last Exit Code Should Be    2
+    Stderr Should Contain    label
+    No Trace File Should Exist
+    No File Matching Should Exist In Out Dir Parent    escape-marker-*.oidtrace.jsonl.gz
+    [Teardown]    Stop Emulator
+
 V1 Subcommand Rejects The bulk-size Flag
     [Tags]    cli    v1
     [Documentation]    SNMP v1 uses GetNext (one OID per request); `--bulk-size` is a

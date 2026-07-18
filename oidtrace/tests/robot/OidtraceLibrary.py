@@ -479,6 +479,18 @@ class OidtraceLibrary:
             f"Expected filename starting with {prefix!r}, got {self._trace_path.name!r}"
         )
 
+    @keyword("No File Matching Should Exist In Out Dir Parent")
+    def no_file_matching_should_exist_in_out_dir_parent(self, pattern: str) -> None:
+        """Assert a hostile --label did not write a file outside --out.
+
+        Cleans up any leaked file so a pre-fix (failing) run doesn't litter /tmp.
+        """
+        assert self._out_dir, "No out dir recorded"
+        leaked = list(self._out_dir.parent.glob(pattern))
+        for f in leaked:
+            f.unlink(missing_ok=True)
+        assert not leaked, f"Label caused file(s) to escape --out directory: {leaked}"
+
     # ------------------------------------------------------------------
     # Assertions: trace records
     # ------------------------------------------------------------------
