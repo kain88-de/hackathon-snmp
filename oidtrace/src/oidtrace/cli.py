@@ -244,6 +244,11 @@ def main(argv: list[str] | None = None) -> int:
     out_dir.mkdir(parents=True, exist_ok=True)
 
     label: str | None = args.label
+    if label is not None and ("/" in label or "\\" in label or ".." in label):
+        print(
+            f"error: --label must not contain path separators or '..': {label!r}", file=sys.stderr
+        )
+        return 2
     prefix = label if label else "walk"
     timestamp = datetime.now(UTC).strftime("%Y%m%dT%H%M%SZ")
     trace_path = out_dir / f"{prefix}-{timestamp}.oidtrace.jsonl.gz"

@@ -38,6 +38,13 @@ line-length = 100
 [tool.ruff.lint]
 select = ["E", "F", "W", "I", "N", "UP", "B", "A", "C4", "SIM", "ARG", "RUF", "ASYNC", "TC", "PTH", "PL"]
 
+[tool.ruff.lint.pylint]
+# main() is a flat sequence of CLI boundary validations (start-oid, host, label,
+# v3 auth), each one `if invalid: print error; return 2` — one more than the
+# defaults allow after adding --label validation (findings.md #7).
+max-branches = 13
+max-returns = 7
+
 [tool.ruff.lint.per-file-ignores]
 "tests/**" = ["PLR2004"]
 # Robot keyword wrappers mirror the CLI flag surface, so wide optional-parameter
