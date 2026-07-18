@@ -191,6 +191,40 @@ def _validate_v3_auth(
 
 
 # ---------------------------------------------------------------------------
+# Boundary validation: --start-oid, host, --label
+# ---------------------------------------------------------------------------
+
+
+def _validate_common_args(args: argparse.Namespace) -> tuple[Oid, str, str | None] | int:
+    """Parse --start-oid, resolve the host, and validate --label.
+
+    Returns:
+        (start_oid, resolved_ip, label) on success, or an exit code (2) on error.
+    """
+    try:
+        start_oid = Oid.from_str(args.start_oid)
+    except ValueError as exc:
+        print(f"error: invalid --start-oid {args.start_oid!r}: {exc}", file=sys.stderr)
+        return 2
+
+    try:
+        results = socket.getaddrinfo(args.host, None, socket.AF_INET)
+        resolved_ip = cast("str", results[0][4][0])
+    except OSError as exc:
+        print(f"error: cannot resolve host {args.host!r}: {exc}", file=sys.stderr)
+        return 2
+
+    label: str | None = args.label
+    if label is not None and ("/" in label or "\\" in label or ".." in label):
+        print(
+            f"error: --label must not contain path separators or '..': {label!r}", file=sys.stderr
+        )
+        return 2
+
+    return start_oid, resolved_ip, label
+
+
+# ---------------------------------------------------------------------------
 # main
 # ---------------------------------------------------------------------------
 
@@ -224,31 +258,16 @@ def main(argv: list[str] | None = None) -> int:
         force=True,
     )
 
-    try:
-        start_oid = Oid.from_str(args.start_oid)
-    except ValueError as exc:
-        print(f"error: invalid --start-oid {args.start_oid!r}: {exc}", file=sys.stderr)
-        return 2
+    common_args = _validate_common_args(args)
+    if isinstance(common_args, int):
+        return common_args
+    start_oid, resolved_ip, label = common_args
 
-    host: str = args.host
-    try:
-        results = socket.getaddrinfo(host, None, socket.AF_INET)
-        resolved_ip = cast("str", results[0][4][0])
-    except OSError as exc:
-        print(f"error: cannot resolve host {host!r}: {exc}", file=sys.stderr)
-        return 2
-
-    log.info("resolved %s -> %s", host, resolved_ip)
+    log.info("resolved %s -> %s", args.host, resolved_ip)
 
     out_dir = Path(args.out)
     out_dir.mkdir(parents=True, exist_ok=True)
 
-    label: str | None = args.label
-    if label is not None and ("/" in label or "\\" in label or ".." in label):
-        print(
-            f"error: --label must not contain path separators or '..': {label!r}", file=sys.stderr
-        )
-        return 2
     prefix = label if label else "walk"
     timestamp = datetime.now(UTC).strftime("%Y%m%dT%H%M%SZ")
     trace_path = out_dir / f"{prefix}-{timestamp}.oidtrace.jsonl.gz"
