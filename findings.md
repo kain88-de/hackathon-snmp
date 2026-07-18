@@ -320,7 +320,7 @@ Additional findings:
 - Status: RESOLVED (fixed 2026-07-18)
 - Files:
   - `oidtrace/src/oidtrace/cli.py:246-250`
-  - `oidtrace/tests/robot/spec_cli.robot:79-98`
+  - `oidtrace/tests/robot/spec_cli.robot:79-111`
   - `oidtrace/tests/robot/OidtraceLibrary.py:475-484`
 
 Impact:
