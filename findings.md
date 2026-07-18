@@ -251,8 +251,10 @@ Recommended follow-up:
 - fail gracefully with a useful error if the trace exceeds supported limits
 
 ### 6. The repo's stated guardrails are stronger than its actual enforcement
+*DONE*
 
 - Severity: High
+- Status: RESOLVED (merged 2026-07-18, PR #2)
 - Files:
   - `.github/workflows/oidviz-ci.yml:1-22`
   - `.github/workflows/deploy-oidviz.yml:1-40`
@@ -278,11 +280,26 @@ Impact:
 - temporary bypasses can become permanent
 - drift accumulates beneath a strict-looking process layer
 
+Resolution:
+
+- added `traceformat-ci.yml` and `oidtrace-ci.yml`, giving both packages the
+  repo-wide lint/type/test coverage that previously only `oidviz` had
+- hardened every workflow (`oidviz-ci.yml`, `deploy-oidviz.yml`, and the new
+  ones): explicit least-privilege `permissions:`, every action pinned to a
+  commit SHA, concurrency groups, `persist-credentials: false`
+- added `actions-security.yml`, a zizmor scan that hard-fails CI on future
+  regressions to any of the above
+- added `.github/dependabot.yml` (7-day cooldown) to keep pinned SHAs current
+- added CI status badges to `oidtrace/README.md`, `oidviz/README.md`,
+  `traceformat/README.md`
+- the committed `types: SKIPPED` bypass in `traceformat/Justfile` was already
+  removed separately (pyrefly re-enabled in CI, commit `f601eb8`), prior to
+  and independent of this PR
+
 Recommended follow-up:
 
-- add repo-wide CI for `oidtrace` and `traceformat`
-- remove committed bypasses immediately
-- enforce runtime validation at all external-data boundaries
+- enforce runtime validation at all external-data boundaries — still open,
+  see finding #16 (oidviz trusts parsed trace records by cast)
 
 ## Component Reviews
 
