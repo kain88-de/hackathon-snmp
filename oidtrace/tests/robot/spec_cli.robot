@@ -76,6 +76,29 @@ Walk With No Version Prints Usage And Exits 2
     Last Exit Code Should Be    2
     Stderr Should Contain    usage
 
+Label With Path Separator Is Rejected
+    [Tags]    cli    security
+    [Documentation]    A `--label` containing a path separator must be rejected at the CLI
+    ...                boundary, not passed through into trace filename construction.
+    Start Emulator
+    Walk V2c    label=sub/evil
+    Last Exit Code Should Be    2
+    Stderr Should Contain    label
+    No Trace File Should Exist
+    [Teardown]    Stop Emulator
+
+Label With Parent Traversal Is Rejected And Does Not Escape Out Dir
+    [Tags]    cli    security
+    [Documentation]    A `--label` containing `..` segments must not let the trace file
+    ...                escape the directory given via --out.
+    Start Emulator
+    Walk V2c    label=../escape-marker
+    Last Exit Code Should Be    2
+    Stderr Should Contain    label
+    No Trace File Should Exist
+    No File Matching Should Exist In Out Dir Parent    escape-marker-*.oidtrace.jsonl.gz
+    [Teardown]    Stop Emulator
+
 V1 Subcommand Rejects The bulk-size Flag
     [Tags]    cli    v1
     [Documentation]    SNMP v1 uses GetNext (one OID per request); `--bulk-size` is a
