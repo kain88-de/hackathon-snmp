@@ -314,21 +314,40 @@ because protocol handling and trace correctness are its core job.
 Additional findings:
 
 #### 7. User-controlled `--label` text is used directly in output paths
+*DONE*
 
 - Severity: High
+- Status: RESOLVED (fixed 2026-07-18)
 - Files:
   - `oidtrace/src/oidtrace/cli.py:246-250`
+  - `oidtrace/tests/robot/spec_cli.robot:79-98`
+  - `oidtrace/tests/robot/OidtraceLibrary.py:475-484`
 
 Impact:
 
 - path traversal or directory escape is possible with separators like `/` or `..`
 - file output can end up outside the intended trace directory
 
+Resolution:
+
+- confirmed the gap was real and worse than "path traversal is possible": a
+  label containing `/` (no `..` needed, e.g. `sub/evil`) crashed the walk with
+  an uncaught `FileNotFoundError` instead of a clean CLI error, and a label
+  like `../escape-marker` silently wrote the trace file outside `--out`
+  entirely (reproduced: the file landed directly in `/tmp` during test
+  development)
+- two new `spec_cli.robot` scenarios reproduced both failure modes pre-fix and
+  pass post-fix; a new `No File Matching Should Exist In Out Dir Parent`
+  keyword proves the trace file no longer escapes `--out`
+- `main()` now rejects any `--label` containing `/`, `\`, or `..` before path
+  construction, exiting 2 with a clear stderr message — same pattern as the
+  existing `--start-oid`/host validation
+- full suite verified green: 33 Robot + 392 pytest
+
 Recommended follow-up:
 
-- sanitize labels before path construction
-- reject path separators and parent traversal segments
-- add CLI tests for hostile label values
+- none — the fix is at the CLI boundary and the negative Robot cases lock in
+  the behavior
 
 #### 8. CLI numeric parameters are weakly validated and can produce nonsense behavior
 
