@@ -1,5 +1,7 @@
 # oidtrace
 
+[![OIDTrace CI](https://github.com/kain88-de/hackathon-snmp/actions/workflows/oidtrace-ci.yml/badge.svg)](https://github.com/kain88-de/hackathon-snmp/actions/workflows/oidtrace-ci.yml)
+
 `oidtrace walk` records an SNMP walk against a single device as a highly detailed,
 portable trace. The trace serves downstream diagnosis (a viewer, an automated
 settings finder) and is the raw material for fitting device emulation profiles. It
