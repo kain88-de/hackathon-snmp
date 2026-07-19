@@ -709,27 +709,73 @@ is harder to validate and keep accessible.
 Additional findings:
 
 #### 14. Minimap interactions appear to rescan the full trace repeatedly during hover and drag
+*DONE*
 
 - Severity: High
+- Status: RESOLVED (fixed 2026-07-19)
 - Files:
-  - `oidviz/src/components/MinimapDetail.vue:139-148`
-  - `oidviz/src/components/MinimapDetail.vue:150-174`
-  - `oidviz/src/components/MinimapDetail.vue:176-197`
-  - `oidviz/src/components/MinimapDetail.vue:199-228`
-  - `oidviz/src/components/MinimapDetail.vue:279-288`
-  - `oidviz/src/lib/minimapDraw.ts:158-177`
-  - `oidviz/src/lib/minimapDraw.ts:179-238`
+  - `oidviz/src/lib/minimapDraw.ts:139-194` (`getTimeRange`, `getColumnBuckets` caches)
+  - `oidviz/src/lib/minimapDraw.ts:221-238,240-280,354-378` (`getWindowExchanges`, `drawMinimap`, `autoFocus` — now reuse the caches)
+  - `oidviz/src/components/MinimapDetail.vue:51` (`currentWindowExchanges`)
+  - `oidviz/src/components/MinimapDetail.vue:152-168` (`onMinimapHover` — now an O(1) bucket lookup)
+  - `oidviz/src/components/MinimapDetail.vue:182,226-231,350` (detail hover/click read the cached window instead of recomputing it)
+  - `oidviz/tests/unit/minimapDraw.test.ts` (`getTimeRange`/`getColumnBuckets` correctness + no-rescan cache tests)
 
-Impact:
+Impact (confirmed):
 
-- interaction cost trends toward O(n) per frame on larger traces
-- hover and drag can become janky well before parsing fails
+- three independent full-trace rescans fired on pointer movement: minimap
+  hover (`onMinimapHover`) ran its own `map`+min/max+`filter` over every
+  exchange on every mouse-move — even with no drag in progress; dragging
+  additionally re-ran `drawMinimap`'s bucket-building loop and
+  `getWindowExchanges`'s `map`+min/max+filter on every mouse-move; detail-view
+  hover (`onDetailHover`) recomputed the same window filter on every mouse-move
+  over the detail canvas, despite the selection not having changed
+  since the last `redraw()`
+- `drawMinimap` and `autoFocus` additionally duplicated an identical
+  column-bucketing loop, rebuilt from scratch on every call
+
+Resolution:
+
+- added two memoized helpers in `minimapDraw.ts`, both keyed by the
+  `exchanges` array's identity via `WeakMap` (a new trace load is a new array
+  reference, so the cache invalidates itself with no manual busting needed):
+  `getTimeRange(exchanges)` (min/max/span, previously recomputed inline in
+  four places) and `getColumnBuckets(exchanges, cols)` (per-pixel-column
+  exchange groups, additionally keyed on column count so a canvas resize
+  still invalidates correctly)
+- `drawMinimap` and `autoFocus`'s duplicated bucket-building loops were
+  replaced with calls to the shared `getColumnBuckets`; `getWindowExchanges`
+  now gets its min/max/span from `getTimeRange` instead of recomputing it
+  every call — all four functions' external behavior is unchanged (same
+  formulas, same return values), this is a pure internal caching refactor
+- `MinimapDetail.vue`'s `onMinimapHover` now does `getColumnBuckets(...)[col]`
+  instead of its own O(n) filter — hover with no drag in progress is now O(1)
+  against the cache instead of a full-trace rescan
+- added `currentWindowExchanges`, populated only inside `redraw()` (i.e. only
+  when the selection or data actually changes); `onDetailHover` and the
+  detail-canvas click handler now read it directly instead of calling
+  `getWindowExchanges` afresh on every pointer movement, since neither
+  changes which exchanges are in view
+- new unit tests (`minimapDraw.test.ts`) cover both helpers' correctness
+  (bucket assignment, divide-by-zero fallback) and, as the "perf checks"
+  this finding asked for, assert cache-hit behavior directly: calling either
+  helper twice with the same array reference (and, for buckets, the same
+  column count) returns the identical cached object, not a fresh
+  recomputation — these fail if a future edit removes the memoization
+- full suite verified green: `just lint`, `just types`, `just fmt-check`,
+  171 vitest (unit + component) tests, 74 Playwright e2e tests, 4 a11y tests
+- manually verified in a browser (dev server + Playwright) against both the
+  canonical fixture and a real 5,000-exchange trace
+  (`traceformat/examples/trace-5k.oidtrace.jsonl.gz`): hovering the minimap,
+  dragging a selection, and hovering/clicking detail rows all behave
+  correctly with zero console errors
 
 Recommended follow-up:
 
-- precompute reusable window/index structures
-- avoid rebuilding derived arrays on every pointer movement
-- add perf checks around large interactive selections
+- none — the redundant per-pointer-movement rescans are gone; the remaining
+  O(n) work (the window filter in `getWindowExchanges`, run once per actual
+  selection change) is necessary recomputation, not rebuilding a derived
+  array that didn't change
 
 #### 15. Empty minimap selections reportedly show the full trace instead of no rows
 
