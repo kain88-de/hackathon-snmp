@@ -456,22 +456,58 @@ Recommended follow-up:
   intended permissive-with-warning behavior
 
 #### 10. The SNMPv3 discovery path appears duplicated and less validated than the main exchange path
+*DONE*
 
 - Severity: Medium
+- Status: RESOLVED (fixed 2026-07-19)
 - Files:
-  - `oidtrace/src/oidtrace/walker.py:314-381`
-  - `oidtrace/src/oidtrace/walker.py:499-510`
-  - `oidtrace/tests/robot/spec_rfc3414.robot:4-7`
+  - `oidtrace/src/oidtrace/walker.py:250-260` (`_build_attempts_and_strays` helper)
+  - `oidtrace/src/oidtrace/walker.py:362-438` (discovery block)
+  - `oidtrace/src/oidtrace/violations.py` (`check_exchange`, now reused by discovery)
+  - `oidtrace/tests/unit/test_walker_logic.py` (discovery malformed / request-id-mismatch tests)
+  - `oidtrace/tests/support/emulator.py` (`Quirks.corrupt_discovery_reply`)
+  - `oidtrace/tests/robot/OidtraceLibrary.py` (`Start Emulator With Corrupted Discovery Reply`)
+  - `oidtrace/tests/robot/spec_rfc3414.robot`
 
 Impact:
 
 - discovery behavior can drift separately from normal request handling
 - wrong-PDU or wrong-request discovery replies may be accepted too easily
 
+Resolution:
+
+- confirmed the gap: the discovery block built its own `attempts`/`strays` models
+  and its own decode/malformed handling instead of sharing the main GetBulk loop's
+  logic, and unconditionally recorded `violations=[]`/`malformed=None` on the
+  discovery exchange no matter what came back — a malformed (BER decode failure)
+  discovery reply was indistinguishable in the trace from no response at all, and
+  a reply whose `request_id` didn't match ours (which the accept-predicate already
+  lets through, by the same design the main loop uses for late/foreign replies)
+  was silently trusted for engine-parameter derivation with no violation recorded
+- de-duplicated the `attempts`/`strays` conversion into a shared
+  `_build_attempts_and_strays` helper used by both the discovery exchange and
+  every main-loop exchange
+- the discovery block now builds a `tf.Malformed` model and appends
+  `MALFORMED_BER` on decode failure, and calls the same `check_exchange` the
+  main loop already uses (with `varbinds=[]`, since a Report PDU carries no
+  OID-walk data) to flag `REQUEST_ID_MISMATCH`/`DUPLICATE_RESPONSE` on a
+  successfully decoded reply — accept-but-flag, matching the main loop's
+  existing, already-battle-tested handling of the identical condition; engine
+  params are still used from a mismatched reply as before, only now visibly
+  flagged instead of silently accepted as clean
+- two new unit tests (`test_walker_logic.py`, via `FakeTransport`) lock in that a
+  malformed discovery reply produces a `malformed` model + `MALFORMED_BER`, and
+  that a foreign-request-id discovery reply produces `REQUEST_ID_MISMATCH`; a new
+  emulator quirk (`corrupt_discovery_reply`) plus Robot scenario in
+  `spec_rfc3414.robot` locks in the same malformed-reply behavior end-to-end
+  (UNRESPONSIVE + `malformed-ber` in the trace) against a real UDP exchange
+- full suite verified green: 38 Robot + 396 pytest
+
 Recommended follow-up:
 
-- reduce duplication between discovery and normal exchange validation
-- add discovery-specific negative tests
+- none — discovery now shares the same violation-checking function as the main
+  loop, and both the malformed and request-id-mismatch gaps are covered by tests
+  at the unit and Robot-spec levels
 
 Strengths:
 
@@ -484,7 +520,6 @@ Main testing gaps:
 - no negative test proving tampered authenticated v3 responses are rejected
 - no test for late-response attribution during the next exchange
 - no CLI tests for hostile labels or invalid numeric bounds
-- no strong coverage for malformed discovery semantics
 
 ### Traceformat
 
