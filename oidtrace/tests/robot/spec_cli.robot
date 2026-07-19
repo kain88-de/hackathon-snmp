@@ -78,13 +78,10 @@ Walk With No Version Prints Usage And Exits 2
 
 Label With Path Separator Is Rejected
     [Tags]    cli    security
-    [Documentation]    findings.md #7: --label is spliced unsanitized into the trace
-    ...                filename (out_dir / f"{prefix}-{timestamp}..."), and Path treats
-    ...                any "/" in that string as a real subdirectory separator. Before
-    ...                the fix, a label like "sub/evil" was accepted as-is and the walk
-    ...                crashed with an uncaught FileNotFoundError (the implied "sub/"
-    ...                directory under --out never exists) instead of a clean CLI error.
-    ...                The CLI must reject the label up front, before path construction.
+    [Documentation]    --label becomes part of the trace filename, so it must
+    ...                not contain a path separator: a label like "sub/evil"
+    ...                would be treated as a subdirectory of --out that does
+    ...                not exist, rather than as a plain filename component.
     Start Emulator
     Walk V2c    label=sub/evil
     Last Exit Code Should Be    2
@@ -94,14 +91,11 @@ Label With Path Separator Is Rejected
 
 Label With Parent Traversal Is Rejected And Does Not Escape Out Dir
     [Tags]    cli    security
-    [Documentation]    findings.md #7: before the fix, a label containing ".." (e.g.
-    ...                "../escape-marker") was not rejected, and Path silently resolved
-    ...                out_dir / "../escape-marker-<ts>.oidtrace.jsonl.gz" to a location
-    ...                outside --out entirely — reproduced during development as a real
-    ...                file landing directly in /tmp. A label that is a full absolute
-    ...                path (e.g. "/etc/cron.d/x") is worse still: Path discards out_dir
-    ...                completely and --out is silently ignored. Both cases go through
-    ...                the same path-separator check as the sibling scenario above.
+    [Documentation]    --label must not contain ".." or be an absolute path
+    ...                either: either could place the trace file somewhere
+    ...                other than --out, or ignore --out entirely. A walk must
+    ...                never write its trace file outside the requested output
+    ...                directory.
     Start Emulator
     Walk V2c    label=../escape-marker
     Last Exit Code Should Be    2
@@ -112,15 +106,12 @@ Label With Parent Traversal Is Rejected And Does Not Escape Out Dir
 
 Give-Up-After Of Zero Is Rejected
     [Tags]    cli    validation
-    [Documentation]    findings.md #8: walker.py declares UNRESPONSIVE once
-    ...                consecutive_no_response >= give_up_after, and that check
-    ...                runs after every exchange, success or not. Before the
-    ...                fix, --give-up-after 0 was accepted as-is, so the check
-    ...                (0 >= 0) fired unconditionally after the very first
-    ...                exchange — the walk exited 0 and reported end_reason
-    ...                "unresponsive" after exactly one exchange, even against
-    ...                a fully healthy, responding device. The CLI must reject
-    ...                a --give-up-after below 1 up front.
+    [Documentation]    --give-up-after sets how many consecutive non-responses
+    ...                the walker tolerates before concluding a target is
+    ...                unresponsive. It must be at least 1: a walk must miss at
+    ...                least one response before it can end with an
+    ...                unresponsive verdict, so even a fully healthy, responding
+    ...                device is never reported unresponsive.
     Walk V2c    host=127.0.0.1    give_up_after=0
     Last Exit Code Should Be    2
     Stderr Should Contain    give-up-after
@@ -128,16 +119,12 @@ Give-Up-After Of Zero Is Rejected
 
 Negative Retries Is Rejected
     [Tags]    cli    validation
-    [Documentation]    findings.md #8: --retries feeds transport.py's
-    ...                total_sends = 1 + retries; before the fix, a negative
-    ...                value like -1 was accepted by argparse and passed all
-    ...                the way through WalkSettings into traceformat's own
-    ...                Settings model, which rejected it deep inside the
-    ...                running walk with an uncaught pydantic ValidationError
-    ...                (a crash, not a clean CLI exit) — and only after a
-    ...                trace file had already been created on disk. The CLI
-    ...                must reject a negative --retries up front, before any
-    ...                file or network I/O.
+    [Documentation]    --retries sets how many retransmissions the walker
+    ...                sends after the first request of an exchange. A
+    ...                negative count has no meaningful interpretation — it
+    ...                cannot mean "fewer than zero retransmissions" — so it is
+    ...                rejected up front, before any request is sent or trace
+    ...                file written.
     Walk V2c    host=127.0.0.1    retries=-1
     Last Exit Code Should Be    2
     Stderr Should Contain    retries
@@ -145,14 +132,10 @@ Negative Retries Is Rejected
 
 Zero Bulk Size Is Rejected
     [Tags]    cli    validation
-    [Documentation]    findings.md #8: --bulk-size becomes GetBulk's
-    ...                max-repetitions. WalkSettings.__post_init__ already
-    ...                rejects bulk_size < 1, but only once WalkSettings() is
-    ...                constructed inside main() — so before the fix, the CLI
-    ...                let argparse accept --bulk-size 0 and then crashed with
-    ...                an uncaught ValueError instead of a clean exit 2. The
-    ...                CLI must reject this at the argument-validation
-    ...                boundary, before WalkSettings is ever constructed.
+    [Documentation]    --bulk-size sets GetBulk's max-repetitions: how many
+    ...                varbinds each v2c exchange requests. It must be at
+    ...                least 1, since a GetBulk requesting zero repetitions
+    ...                per exchange could never advance the walk.
     Walk V2c    host=127.0.0.1    bulk_size=0
     Last Exit Code Should Be    2
     Stderr Should Contain    bulk-size
