@@ -532,53 +532,106 @@ it is currently one of the most important weak points because it is supposed to
 Additional findings:
 
 #### 11. The prose spec and the code/schema disagree on allowed format values
+*DONE*
 
 - Severity: High
+- Status: RESOLVED (verified 2026-07-19) — already fixed before this review, independent of it
 - Files:
-  - `docs/trace-format.md:70-71`
-  - `docs/trace-format.md:161-162`
-  - `docs/trace-format.schema.json:64`
-  - `docs/trace-format.schema.json:118`
+  - `traceformat/trace-format.md:73` (moved from `docs/trace-format.md:70-71`)
+  - `traceformat/trace-format.md:167-170` (moved from `docs/trace-format.md:161-162`)
+  - `traceformat/trace-format.schema.json:64`
+  - `traceformat/trace-format.schema.json:118`
   - `traceformat/src/traceformat/models.py:37-45`
   - `traceformat/src/traceformat/models.py:84-97`
-  - `traceformat/tests/test_smoke.py:11-26`
+  - `traceformat/tests/test_smoke.py:11-14`
+  - `traceformat/tests/test_schema_parity.py:76-86` (`header-snmp-v3-sanctioned`,
+    `exchange-discovery-sanctioned`)
 
-Observed mismatch:
+Observed mismatch (at review time):
 
-- prose says v1 `snmp.version` is only `"1"` or `"2c"`
-- prose says `request.pdu` is only `"get"`, `"getnext"`, or `"getbulk"`
+- prose said v1 `snmp.version` is only `"1"` or `"2c"`
+- prose said `request.pdu` is only `"get"`, `"getnext"`, or `"getbulk"`
 - schema, generated models, and tests also allow `"3"` and `"discovery"`
 
-Impact:
+Why this matters:
 
-- docs and runtime contract are not aligned
-- producers and consumers may implement different assumptions
-- versioning discipline is already eroding
+Docs and runtime contract disagreeing erodes versioning discipline and lets
+producers/consumers implement different assumptions.
+
+Resolution:
+
+- checked history: commit `62827b4` ("docs(trace-format): sanction snmp v3 and
+  discovery pdu in the prose spec", 2026-07-07) already brought the prose in
+  line with the schema/models — three days *before* this finding was written
+  into `findings.md` (2026-07-10) — so the drift this finding describes no
+  longer exists in the reviewed tree; the write-up simply lagged the fix
+- verified directly: `trace-format.md` now states `snmp.version` is `"1"`,
+  `"2c"`, or `"3"`, and `request.pdu` includes `"discovery"`, matching
+  `trace-format.schema.json` and the generated `Version`/`Pdu` enums exactly
+- the file itself also moved from `docs/trace-format.md` to
+  `traceformat/trace-format.md` (finding #3's package-colocation move),
+  explaining the stale paths in the original finding
+- `just ci` (traceformat) re-run clean: 44 tests passed, including
+  `test_schema_parity.py`'s `header-snmp-v3-sanctioned` and
+  `exchange-discovery-sanctioned` cases, which pin `"3"`/`"discovery"` as
+  accepted by both `jsonschema` and `parse_record()`
 
 Recommended follow-up:
 
-- decide which contract is authoritative in practice
-- update either prose or schema/code, but stop leaving both active
-- add a contract-review step for format changes
+- none — prose, schema, and code already agree, and are pinned by
+  `test_schema_parity.py`
 
 #### 12. The anti-drift mechanism checks file freshness, not semantic parity
+*DONE*
 
 - Severity: Medium
+- Status: RESOLVED (verified 2026-07-19) — closed as a side effect of finding #3's fix
 - Files:
-  - `traceformat/Justfile:24-55`
+  - `traceformat/Justfile:24-58` (`types-fresh`, `ci`)
+  - `traceformat/tests/test_schema_parity.py` (added by finding #3)
+  - `traceformat/src/traceformat/_validators.py` (added by finding #3)
   - `traceformat/tests/test_smoke.py`
   - `traceformat/tests/test_roundtrip.py`
   - `traceformat/tests/test_vocab.py`
 
-Impact:
+Impact (at review time):
 
-- generated code can be up to date and still wrong
-- schema-only constraints can disappear without CI noticing
+- generated code could be up to date (per `types-fresh`'s diff check) and
+  still wrong, because `datamodel-code-generator` cannot translate JSON
+  Schema `not`/`if-then-else` keywords into pydantic validators
+- schema-only constraints (the four invariants) could disappear without CI
+  noticing, since nothing compared schema-enforced behavior against
+  runtime-enforced behavior
+
+Resolution:
+
+- this finding's two recommended follow-ups were already delivered by finding
+  #3's fix, filed independently before this finding was picked up:
+  `_validators.py`'s `check_invariants()` hand-implements the four
+  schema-only invariants inside `parse_record()`, and
+  `test_schema_parity.py` is exactly the "schema-vs-model parity test" this
+  finding asked for — 14 fixtures, each validated by both the real
+  `jsonschema` validator and `parse_record()`, asserting they agree, with one
+  negative fixture per invariant (`response`+`malformed`, missing getbulk
+  fields, `attempt.error` with non-null `received_at`, negative
+  `violation_counts`)
+- re-verified directly rather than assumed: `just ci` (traceformat) passes
+  clean today, 44 tests including all 14 `test_schema_parity.py` cases
+- residual, accepted scope limit (same shape as finding #3's): the parity
+  suite only exercises invariants someone has already encoded into
+  `check_invariants()` and a matching fixture — a *new* schema conditional
+  added later without a matching fixture and `check_invariants()` branch
+  would not automatically be caught. This is a structural limit of testing
+  by fixture rather than by schema introspection, not something left undone
+  here
 
 Recommended follow-up:
 
-- add schema-vs-model parity tests
-- add negative fixtures for every conditional and mutual-exclusion rule in the schema
+- when a new conditional/mutual-exclusion rule is added to
+  `trace-format.schema.json`, add both a `check_invariants()` branch and a
+  positive/negative fixture pair to `test_schema_parity.py` in the same
+  change — no automatic enforcement of this exists, so it relies on reviewer
+  discipline
 
 #### 13. Generated names leak into the public API surface
 
@@ -605,9 +658,12 @@ Strengths:
 
 Main testing gaps:
 
-- no direct parity test with the JSON Schema
-- no negative tests for mutual exclusion or conditional field rules
-- no guard against tests accidentally encoding drift as intended behavior
+- `test_schema_parity.py` (added resolving finding #3) closed the direct
+  JSON-Schema parity gap and the missing negative tests for mutual-exclusion
+  and conditional field rules — see findings #11/#12
+- no automatic enforcement that a *future* schema conditional gets a matching
+  `check_invariants()` branch and fixture pair; this still relies on reviewer
+  discipline (see finding #12's resolution)
 
 ### OIDViz
 
