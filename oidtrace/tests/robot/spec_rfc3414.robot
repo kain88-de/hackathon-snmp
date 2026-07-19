@@ -37,6 +37,19 @@ RFC 3414 §4 - V3 Discovery Failure Terminates Walk As UNRESPONSIVE
     Trace Should Have End Reason    unresponsive
     [Teardown]    Stop Emulator
 
+RFC 3414 §4 - Malformed Discovery Reply Terminates Walk As UNRESPONSIVE, With A Violation
+    [Tags]    rfc3414    v3
+    [Documentation]    A discovery reply that fails to BER-decode carries no usable
+    ...                engine parameters, so the walker cannot proceed — but unlike a
+    ...                dropped/no-response discovery, the garbled datagram did arrive.
+    ...                It must be surfaced as a malformed-ber violation on the trace,
+    ...                not silently treated as if nothing had been received.
+    Start Emulator With Corrupted Discovery Reply
+    Walk V3 As User    noAuthUser    give_up_after=2
+    Trace Should Have End Reason    unresponsive
+    Trace Should Have Violation    malformed-ber
+    [Teardown]    Stop Emulator
+
 RFC 3414 §4 - V3 Discovery Report PDU Is Not Flagged As A Violation
     [Tags]    rfc3414    v3
     [Documentation]    The discovery response is a Report PDU (0xA8), a different PDU

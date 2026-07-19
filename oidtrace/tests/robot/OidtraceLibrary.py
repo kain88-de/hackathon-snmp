@@ -73,6 +73,11 @@ class OidtraceLibrary:
         self._emulator = EmulatorThread(quirks=Quirks(drop_all=True))
         self._host, self._port = self._emulator.__enter__()
 
+    @keyword("Start Emulator With Corrupted Discovery Reply")
+    def start_emulator_with_corrupted_discovery_reply(self) -> None:
+        self._emulator = EmulatorThread(quirks=Quirks(corrupt_discovery_reply=True))
+        self._host, self._port = self._emulator.__enter__()
+
     @keyword("Start Emulator With Duplicate Responses")
     def start_emulator_with_duplicate_responses(self) -> None:
         self._emulator = EmulatorThread(quirks=Quirks(duplicate_responses=True))

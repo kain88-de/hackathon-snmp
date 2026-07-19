@@ -61,6 +61,7 @@ class Quirks:
     drop_all: bool = False
     corrupt_auth_responses: bool = False
     delay_first_response_s: float = 0.0
+    corrupt_discovery_reply: bool = False
 
 
 # Varbind tree entry: (oid, tag, value_length)
@@ -260,7 +261,7 @@ class EmuProtocol(asyncio.DatagramProtocol):
         if quirks.duplicate_responses:
             self._transport.sendto(response, addr)
 
-    async def _handle_v3(
+    async def _handle_v3(  # noqa: PLR0911, PLR0912
         self,
         msg: Message,
         params: V3Params,
@@ -285,6 +286,10 @@ class EmuProtocol(asyncio.DatagramProtocol):
 
         # Discovery: GetRequest with empty varbinds → Report PDU (always noAuthNoPriv)
         if msg.pdu_tag == PDU_GET and not msg.varbinds:
+            if self._device.quirks.corrupt_discovery_reply:
+                assert self._transport is not None
+                self._transport.sendto(b"\x00" * 20, addr)
+                return
             # simplified: real agents echo actual boots/time; our walker ignores these fields
             response = encode_v3_response(
                 msg_id=params.msg_id,
