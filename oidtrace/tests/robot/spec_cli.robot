@@ -110,6 +110,54 @@ Label With Parent Traversal Is Rejected And Does Not Escape Out Dir
     No File Matching Should Exist In Out Dir Parent    escape-marker-*.oidtrace.jsonl.gz
     [Teardown]    Stop Emulator
 
+Give-Up-After Of Zero Is Rejected
+    [Tags]    cli    validation
+    [Documentation]    findings.md #8: walker.py declares UNRESPONSIVE once
+    ...                consecutive_no_response >= give_up_after, and that check
+    ...                runs after every exchange, success or not. Before the
+    ...                fix, --give-up-after 0 was accepted as-is, so the check
+    ...                (0 >= 0) fired unconditionally after the very first
+    ...                exchange — the walk exited 0 and reported end_reason
+    ...                "unresponsive" after exactly one exchange, even against
+    ...                a fully healthy, responding device. The CLI must reject
+    ...                a --give-up-after below 1 up front.
+    Walk V2c    host=127.0.0.1    give_up_after=0
+    Last Exit Code Should Be    2
+    Stderr Should Contain    give-up-after
+    No Trace File Should Exist
+
+Negative Retries Is Rejected
+    [Tags]    cli    validation
+    [Documentation]    findings.md #8: --retries feeds transport.py's
+    ...                total_sends = 1 + retries; before the fix, a negative
+    ...                value like -1 was accepted by argparse and passed all
+    ...                the way through WalkSettings into traceformat's own
+    ...                Settings model, which rejected it deep inside the
+    ...                running walk with an uncaught pydantic ValidationError
+    ...                (a crash, not a clean CLI exit) — and only after a
+    ...                trace file had already been created on disk. The CLI
+    ...                must reject a negative --retries up front, before any
+    ...                file or network I/O.
+    Walk V2c    host=127.0.0.1    retries=-1
+    Last Exit Code Should Be    2
+    Stderr Should Contain    retries
+    No Trace File Should Exist
+
+Zero Bulk Size Is Rejected
+    [Tags]    cli    validation
+    [Documentation]    findings.md #8: --bulk-size becomes GetBulk's
+    ...                max-repetitions. WalkSettings.__post_init__ already
+    ...                rejects bulk_size < 1, but only once WalkSettings() is
+    ...                constructed inside main() — so before the fix, the CLI
+    ...                let argparse accept --bulk-size 0 and then crashed with
+    ...                an uncaught ValueError instead of a clean exit 2. The
+    ...                CLI must reject this at the argument-validation
+    ...                boundary, before WalkSettings is ever constructed.
+    Walk V2c    host=127.0.0.1    bulk_size=0
+    Last Exit Code Should Be    2
+    Stderr Should Contain    bulk-size
+    No Trace File Should Exist
+
 V1 Subcommand Rejects The bulk-size Flag
     [Tags]    cli    v1
     [Documentation]    SNMP v1 uses GetNext (one OID per request); `--bulk-size` is a
