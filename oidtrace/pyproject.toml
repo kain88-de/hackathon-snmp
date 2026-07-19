@@ -6,7 +6,10 @@ build-backend = "hatchling.build"
 name = "oidtrace"
 version = "0.1.0"
 requires-python = ">=3.13"
-dependencies = ["traceformat"]
+dependencies = [
+    "click>=8.4.1",
+    "traceformat",
+]
 
 [project.scripts]
 oidtrace = "oidtrace.cli:main"
@@ -43,6 +46,9 @@ select = ["E", "F", "W", "I", "N", "UP", "B", "A", "C4", "SIM", "ARG", "RUF", "A
 # Robot keyword wrappers mirror the CLI flag surface, so wide optional-parameter
 # signatures are idiomatic here.
 "tests/robot/OidtraceLibrary.py" = ["PLR2004", "PLR0913"]
+# Click command callbacks mirror the CLI flag surface, so wide parameter
+# signatures are idiomatic here.
+"src/oidtrace/cli.py" = ["PLR0913"]
 
 [tool.pyrefly]
 project_includes = ["src", "tests"]

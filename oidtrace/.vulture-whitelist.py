@@ -53,6 +53,14 @@ from oidtrace.cli import main
 
 _ = main
 
+# Click command callbacks — dispatched by name at runtime via the walk group,
+# never called directly in Python source.
+from oidtrace.cli import walk_v1, walk_v2c, walk_v3
+
+_ = walk_v1
+_ = walk_v2c
+_ = walk_v3
+
 # auth/codec SNMPv3 symbols — used by emulator (authNoPriv), walker, and CLI;
 # vulture only scans src/ so test/support usages are invisible to it.
 from oidtrace.auth import AuthProto, password_to_key
