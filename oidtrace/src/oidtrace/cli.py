@@ -195,8 +195,31 @@ def _validate_v3_auth(
 # ---------------------------------------------------------------------------
 
 
+def _validate_numeric_bounds(args: argparse.Namespace) -> int | None:
+    """Validate --retries, --give-up-after, and --bulk-size (v2c only).
+
+    Returns:
+        None on success, or an exit code (2) on error.
+    """
+    if args.retries < 0:
+        print(f"error: --retries must be >= 0, got {args.retries}", file=sys.stderr)
+        return 2
+
+    if args.give_up_after < 1:
+        print(f"error: --give-up-after must be >= 1, got {args.give_up_after}", file=sys.stderr)
+        return 2
+
+    bulk_size = getattr(args, "bulk_size", None)
+    if bulk_size is not None and bulk_size < 1:
+        print(f"error: --bulk-size must be >= 1, got {bulk_size}", file=sys.stderr)
+        return 2
+
+    return None
+
+
 def _validate_common_args(args: argparse.Namespace) -> tuple[Oid, str, str | None] | int:
-    """Parse --start-oid, resolve the host, and validate --label.
+    """Parse --start-oid, resolve the host, and validate --label/--retries/
+    --give-up-after/--bulk-size.
 
     Returns:
         (start_oid, resolved_ip, label) on success, or an exit code (2) on error.
@@ -220,6 +243,10 @@ def _validate_common_args(args: argparse.Namespace) -> tuple[Oid, str, str | Non
             f"error: --label must not contain path separators or '..': {label!r}", file=sys.stderr
         )
         return 2
+
+    numeric_error = _validate_numeric_bounds(args)
+    if numeric_error is not None:
+        return numeric_error
 
     return start_oid, resolved_ip, label
 
