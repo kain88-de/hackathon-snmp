@@ -46,6 +46,12 @@ class AuthProto(StrEnum):
 # RFC 3414 A.2: key derivation buffer size (2^20 bytes)
 _KU_BUFFER_SIZE = 1_048_576
 
+# RFC 3414 §11.2 recommends a minimum passphrase length of 8 characters to
+# resist dictionary attacks against the derived key. This is not enforced
+# here — a real device may be configured with a shorter one — but is used
+# by the CLI to warn when --auth-pass falls below it.
+MIN_PASSWORD_LENGTH = 8
+
 
 def password_to_key(
     password: bytes,
