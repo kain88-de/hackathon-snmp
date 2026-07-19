@@ -222,6 +222,7 @@ class OidtraceLibrary:
         time_budget: str | None,
         community: str | None,
         bulk_size: int | None = None,
+        retries: int = 0,
     ) -> list[str]:
         h = host or self._host or "127.0.0.1"
         cmd = ["oidtrace", "walk", *version_args, h]
@@ -233,7 +234,7 @@ class OidtraceLibrary:
             "--timeout",
             timeout,
             "--retries",
-            "0",
+            str(retries),
             "--give-up-after",
             str(give_up_after),
         ]
@@ -260,6 +261,7 @@ class OidtraceLibrary:
         community: str | None = None,
         timeout: str = "1.0",
         bulk_size: int | None = None,
+        retries: int = 0,
     ) -> int:
         self._out_dir = Path(tempfile.mkdtemp())
         cmd = self._build_walk_cmd(
@@ -272,6 +274,7 @@ class OidtraceLibrary:
             time_budget,
             community,
             bulk_size,
+            retries,
         )
         result = subprocess.run(cmd, capture_output=True, text=True, check=False)
         self._rc = result.returncode
@@ -293,6 +296,7 @@ class OidtraceLibrary:
         community: str | None = None,
         timeout: str = "1.0",
         bulk_size: int | None = None,
+        retries: int = 0,
     ) -> int:
         return self._run_walk(
             ["v2c"],
@@ -304,6 +308,7 @@ class OidtraceLibrary:
             community=community,
             timeout=timeout,
             bulk_size=bulk_size,
+            retries=int(retries),
         )
 
     @keyword("Walk V2c And Interrupt After")

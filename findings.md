@@ -350,14 +350,18 @@ Recommended follow-up:
   the behavior
 
 #### 8. CLI numeric parameters are weakly validated and can produce nonsense behavior
+*DONE*
 
 - Severity: Medium
+- Status: RESOLVED (fixed 2026-07-19)
 - Files:
   - `oidtrace/src/oidtrace/cli.py:69-99`
   - `oidtrace/src/oidtrace/cli.py:121-126`
   - `oidtrace/src/oidtrace/walker.py:128-135`
   - `oidtrace/src/oidtrace/transport.py:243-245`
   - `oidtrace/src/oidtrace/walker.py:529-531`
+  - `oidtrace/tests/robot/spec_cli.robot:113-160`
+  - `oidtrace/tests/robot/OidtraceLibrary.py`
 
 Examples:
 
@@ -369,10 +373,31 @@ Impact:
 - simple operator mistakes can create misleading traces
 - the CLI may succeed with invalid intent instead of failing fast
 
+Resolution:
+
+- confirmed all three numeric parameters were worse than "weakly validated" in
+  practice: `--give-up-after 0` exited 0 and reported end_reason
+  `unresponsive` after exactly one exchange — even against a fully healthy,
+  responding device, since walker.py's give-up check (`consecutive_no_response
+  >= give_up_after`) fires unconditionally once `give_up_after` is 0;
+  `--retries -1` was accepted by argparse and crashed deep inside the running
+  walk with an uncaught pydantic `ValidationError` from traceformat's
+  `Settings` model, only after a trace file had already been written to disk;
+  `--bulk-size 0` (v2c) crashed with an uncaught `ValueError` from
+  `WalkSettings.__post_init__`
+- three new `spec_cli.robot` scenarios reproduced all three failure modes
+  pre-fix and pass post-fix
+- `main()` now rejects `--retries < 0`, `--give-up-after < 1`, and
+  `--bulk-size < 1` before any network or file I/O, exiting 2 with a clear
+  stderr message — same boundary-validation pattern as `--start-oid`/host/
+  `--label`, via a small `_validate_numeric_bounds` helper kept separate from
+  `_validate_common_args` to stay under ruff's pylint return-count limit
+- full suite verified green: 36 Robot + 392 pytest
+
 Recommended follow-up:
 
-- validate numeric bounds at the CLI boundary
-- add tests for invalid values and expected exit behavior
+- none — the fix is at the CLI boundary and the negative Robot cases lock in
+  the behavior
 
 #### 9. SNMPv3 auth passphrase minimum length is not enforced
 
