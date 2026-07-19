@@ -59,3 +59,16 @@ RFC 3414 §4 - V3 Walk Requires A Username
     Last Exit Code Should Be    2
     Stderr Should Contain    --user
     No Trace File Should Exist
+
+RFC 3414 §11.2 - Auth Passphrase Shorter Than 8 Characters Still Walks, With A Warning
+    [Tags]    rfc3414    v3    validation
+    [Documentation]    RFC 3414 §11.2 recommends a minimum passphrase length of 8
+    ...                characters to resist dictionary attacks against the derived key,
+    ...                but this is not a wire requirement — a real device may be
+    ...                configured with a shorter one. A shorter --auth-pass prints a
+    ...                warning naming the flag but still completes the walk.
+    Start Emulator With Auth User    someuser    MD5    short1
+    Walk V3 With Auth    someuser    MD5    short1
+    Trace Should Have End Reason    completed
+    Stderr Should Contain    auth-pass
+    [Teardown]    Stop Emulator

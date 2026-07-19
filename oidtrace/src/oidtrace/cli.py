@@ -30,7 +30,7 @@ from typing import Any, cast
 import click
 from traceformat import Summary, TraceRecord
 
-from oidtrace.auth import AuthProto
+from oidtrace.auth import MIN_PASSWORD_LENGTH, AuthProto
 from oidtrace.oid import Oid
 from oidtrace.tracefile import read_trace
 from oidtrace.walker import RecordSink, WalkSettings, run_walk
@@ -183,6 +183,13 @@ def _validate_v3_auth(
                 file=sys.stderr,
             )
             return 2
+
+        if len(auth_pass) < MIN_PASSWORD_LENGTH:
+            print(
+                f"warning: --auth-pass is only {len(auth_pass)} characters; RFC 3414 "
+                f"§11.2 recommends at least {MIN_PASSWORD_LENGTH} for adequate key strength",
+                file=sys.stderr,
+            )
 
         v3_auth_pass = auth_pass
 

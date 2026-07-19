@@ -88,6 +88,12 @@ def test_password_to_key_rejects_empty_password() -> None:
         password_to_key(b"", b"\x00" * 12, AuthProto.MD5)
 
 
+def test_password_to_key_accepts_password_below_rfc_recommended_minimum() -> None:
+    """RFC 3414 §11.2's 8-char minimum is a recommendation, not enforced here."""
+    key = password_to_key(b"short1", b"\x00" * 12, AuthProto.MD5)
+    assert len(key) == 16
+
+
 # ---------------------------------------------------------------------------
 # compute_mac: length
 # ---------------------------------------------------------------------------

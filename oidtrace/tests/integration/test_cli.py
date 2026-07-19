@@ -571,6 +571,50 @@ def test_v3_walk_auth_proto_without_pass_exit_2(
     )
 
 
+def test_v3_walk_auth_pass_below_recommended_minimum_still_proceeds(
+    tmp_path: Path, capsys: pytest.CaptureFixture[str]
+) -> None:
+    """v3 walk with --auth-pass shorter than 8 chars: warns but still walks.
+
+    RFC 3414 §11.2's minimum is a recommendation, not a wire requirement — a
+    real device may be configured with a shorter passphrase, so the CLI must
+    still be able to trace it.
+    """
+    auth_pass = "short1"
+    kul = password_to_key(auth_pass.encode(), EMU_ENGINE_ID, AuthProto.MD5)
+
+    with EmulatorThread(auth_users={b"someuser": (AuthProto.MD5, kul)}) as (host, port):
+        ret = main(
+            [
+                "walk",
+                "v3",
+                host,
+                "--port",
+                str(port),
+                "--out",
+                str(tmp_path),
+                "--user",
+                "someuser",
+                "--auth-proto",
+                "MD5",
+                "--auth-pass",
+                auth_pass,
+                "--timeout",
+                "1.0",
+                "--retries",
+                "1",
+            ]
+        )
+
+    assert ret == 0, f"Expected exit 0, got {ret}"
+    captured = capsys.readouterr()
+    assert "auth-pass" in captured.err.lower(), (
+        f"Expected an --auth-pass warning in stderr, got: {captured.err!r}"
+    )
+    trace_files = list(tmp_path.glob("*.oidtrace.jsonl.gz"))
+    assert len(trace_files) == 1, f"Expected 1 trace file, found {trace_files}"
+
+
 def test_v3_walk_invalid_auth_proto_exit_2(
     tmp_path: Path, capsys: pytest.CaptureFixture[str]
 ) -> None:
