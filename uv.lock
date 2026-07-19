@@ -350,6 +350,7 @@ name = "oidtrace"
 version = "0.1.0"
 source = { editable = "oidtrace" }
 dependencies = [
+    { name = "click" },
     { name = "traceformat" },
 ]
 
@@ -369,7 +370,10 @@ dev = [
 ]
 
 [package.metadata]
-requires-dist = [{ name = "traceformat", editable = "traceformat" }]
+requires-dist = [
+    { name = "click", specifier = ">=8.4.1" },
+    { name = "traceformat", editable = "traceformat" },
+]
 
 [package.metadata.requires-dev]
 dev = [

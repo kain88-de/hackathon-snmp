@@ -145,8 +145,9 @@ V1 Subcommand Rejects The bulk-size Flag
     [Tags]    cli    v1
     [Documentation]    SNMP v1 uses GetNext (one OID per request); `--bulk-size` is a
     ...                GetBulk-only concept and does not exist on the v1 subcommand.
-    ...                Supplying it is an argparse error, not a silently ignored flag.
+    ...                Supplying it is a command-line error (exit 2), not a silently
+    ...                ignored flag.
     Walk V1 With Bulk Size Flag
     Last Exit Code Should Be    2
-    Stderr Should Contain    unrecognized
+    Stderr Should Contain    no such option
     No Trace File Should Exist

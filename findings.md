@@ -355,12 +355,13 @@ Recommended follow-up:
 - Severity: Medium
 - Status: RESOLVED (fixed 2026-07-19)
 - Files:
-  - `oidtrace/src/oidtrace/cli.py:69-99`
-  - `oidtrace/src/oidtrace/cli.py:121-126`
+  - `oidtrace/src/oidtrace/cli.py:68-112` (shared option definitions)
+  - `oidtrace/src/oidtrace/cli.py:120-147` (`--start-oid`/host/`--label`)
+  - `oidtrace/src/oidtrace/cli.py:317-323` (`--bulk-size`)
   - `oidtrace/src/oidtrace/walker.py:128-135`
   - `oidtrace/src/oidtrace/transport.py:243-245`
   - `oidtrace/src/oidtrace/walker.py:529-531`
-  - `oidtrace/tests/robot/spec_cli.robot:113-160`
+  - `oidtrace/tests/robot/spec_cli.robot:107-152`
   - `oidtrace/tests/robot/OidtraceLibrary.py`
 
 Examples:
@@ -387,11 +388,20 @@ Resolution:
   `WalkSettings.__post_init__`
 - three new `spec_cli.robot` scenarios reproduced all three failure modes
   pre-fix and pass post-fix
-- `main()` now rejects `--retries < 0`, `--give-up-after < 1`, and
-  `--bulk-size < 1` before any network or file I/O, exiting 2 with a clear
-  stderr message — same boundary-validation pattern as `--start-oid`/host/
-  `--label`, via a small `_validate_numeric_bounds` helper kept separate from
-  `_validate_common_args` to stay under ruff's pylint return-count limit
+- first pass fixed this with a post-parse `_validate_numeric_bounds` helper;
+  follow-up replaced that with `click.IntRange(min=...)` on `--retries`,
+  `--give-up-after`, and `--bulk-size` directly, migrating the whole CLI
+  parser from argparse to Click so the bound lives at the option definition
+  itself rather than in a separate validation pass — out-of-range values are
+  now rejected by the option's own type before any command code runs, exiting
+  2 with a stderr message naming the offending flag
+  (`Invalid value for '--give-up-after': ...`); non-numeric checks
+  (`--start-oid`, host resolution, `--label`) stayed as explicit post-parse
+  checks since they aren't expressible as a `click.ParamType` bound
+- migrating off argparse also changed how an unrecognized flag is rejected
+  (`--bulk-size` on `v1`): Click reports "No such option" rather than
+  argparse's "unrecognized arguments", so that pre-existing `spec_cli.robot`
+  scenario's assertion and documentation were updated to match
 - full suite verified green: 36 Robot + 392 pytest
 
 Recommended follow-up:

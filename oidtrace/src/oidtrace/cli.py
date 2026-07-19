@@ -6,8 +6,8 @@ Subcommand: walk v1|v2c|v3
     oidtrace walk v1  <host> [options]   # SNMP v1  (implemented)
     oidtrace walk v3  <host> [options]   # SNMP v3  noAuthNoPriv (implemented)
 
-Operator errors (bad DNS, bad --start-oid) exit 2 with a stderr message and
-no trace file written.
+Operator errors (bad DNS, bad --start-oid, out-of-range numeric options) exit
+2 with a stderr message and no trace file written.
 
 Logging is configured only here (libraries never configure handlers):
   default    WARNING  + \\r progress sink on stderr
@@ -17,16 +17,17 @@ Logging is configured only here (libraries never configure handlers):
 
 from __future__ import annotations
 
-import argparse
 import asyncio
 import contextlib
 import logging
 import socket
 import sys
+from collections.abc import Callable
 from datetime import UTC, datetime
 from pathlib import Path
-from typing import cast
+from typing import Any, cast
 
+import click
 from traceformat import Summary, TraceRecord
 
 from oidtrace.auth import AuthProto
@@ -59,87 +60,91 @@ class _ProgressSink:
 
 
 # ---------------------------------------------------------------------------
-# Argument parser
+# Shared options: numeric bounds are validated here, at option definition,
+# via click.IntRange rather than in a separate post-parse validator.
 # ---------------------------------------------------------------------------
 
 
-def _add_shared_args(p: argparse.ArgumentParser) -> None:
-    """Add shared flags common to all version sub-parsers."""
-    p.add_argument("host", help="Target hostname or IP address.")
-    p.add_argument("--port", type=int, default=161, help="UDP port (default: 161).")
-    p.add_argument("--out", default=".", help="Output directory (default: current dir).")
-    p.add_argument("--label", default=None, help="Human label; used in filename and header.")
-    p.add_argument(
-        "--timeout",
-        type=float,
-        default=2.0,
-        metavar="SECS",
-        help="Per-attempt timeout in seconds (default: 2.0).",
-    )
-    p.add_argument(
-        "--retries", type=int, default=2, help="Retransmissions after first send (default: 2)."
-    )
-    p.add_argument(
-        "--start-oid", default="1.3.6.1", metavar="OID", help="Subtree root OID (default: 1.3.6.1)."
-    )
-    p.add_argument(
-        "--time-budget",
-        type=float,
-        default=None,
-        metavar="SECS",
-        help="Wall-time budget in seconds (default: unlimited).",
-    )
-    p.add_argument(
-        "--give-up-after",
-        type=int,
-        default=3,
-        metavar="N",
-        dest="give_up_after",
-        help="Consecutive misses before UNRESPONSIVE (default: 3).",
-    )
-    p.add_argument(
-        "-v", "--verbose", action="count", default=0, help="Increase verbosity: -v INFO, -vv DEBUG."
-    )
+def _walk_options[F: Callable[..., Any]](f: F) -> F:
+    """Add flags common to all version sub-commands."""
+    options = [
+        click.argument("host"),
+        click.option("--port", type=int, default=161, help="UDP port (default: 161)."),
+        click.option("--out", default=".", help="Output directory (default: current dir)."),
+        click.option("--label", default=None, help="Human label; used in filename and header."),
+        click.option(
+            "--timeout",
+            type=float,
+            default=2.0,
+            metavar="SECS",
+            help="Per-attempt timeout in seconds (default: 2.0).",
+        ),
+        click.option(
+            "--retries",
+            type=click.IntRange(min=0),
+            default=2,
+            help="Retransmissions after first send (default: 2).",
+        ),
+        click.option(
+            "--start-oid",
+            default="1.3.6.1",
+            metavar="OID",
+            help="Subtree root OID (default: 1.3.6.1).",
+        ),
+        click.option(
+            "--time-budget",
+            type=float,
+            default=None,
+            metavar="SECS",
+            help="Wall-time budget in seconds (default: unlimited).",
+        ),
+        click.option(
+            "--give-up-after",
+            type=click.IntRange(min=1),
+            default=3,
+            metavar="N",
+            help="Consecutive misses before UNRESPONSIVE (default: 3).",
+        ),
+        click.option("-v", "--verbose", count=True, help="Increase verbosity: -v INFO, -vv DEBUG."),
+    ]
+    for option in reversed(options):
+        f = option(f)
+    return cast("F", f)
 
 
-def _build_parser() -> argparse.ArgumentParser:
-    parser = argparse.ArgumentParser(
-        prog="oidtrace",
-        description="OIDTrace: record SNMP walks to structured trace files.",
-    )
-    sub = parser.add_subparsers(dest="subcommand")
+# ---------------------------------------------------------------------------
+# Boundary validation: --start-oid, host, --label
+# ---------------------------------------------------------------------------
 
-    walk = sub.add_parser("walk", help="Walk an SNMP agent and record to a trace file.")
-    ver = walk.add_subparsers(dest="version")
 
-    v2c = ver.add_parser("v2c", help="SNMP v2c walk.")
-    _add_shared_args(v2c)
-    v2c.add_argument(
-        "--community", default="public", help="SNMP v2c community string (default: public)."
-    )
-    v2c.add_argument(
-        "--bulk-size",
-        type=int,
-        default=10,
-        metavar="N",
-        help="GetBulk max-repetitions (default: 10).",
-    )
+def _resolve_common(
+    host: str, start_oid_raw: str, label: str | None
+) -> tuple[Oid, str, str | None] | int:
+    """Parse --start-oid, resolve the host, and validate --label.
 
-    v1 = ver.add_parser("v1", help="SNMP v1 walk.")
-    _add_shared_args(v1)
-    v1.add_argument(
-        "--community", default="public", help="SNMP v1 community string (default: public)."
-    )
+    Returns:
+        (start_oid, resolved_ip, label) on success, or an exit code (2) on error.
+    """
+    try:
+        start_oid = Oid.from_str(start_oid_raw)
+    except ValueError as exc:
+        print(f"error: invalid --start-oid {start_oid_raw!r}: {exc}", file=sys.stderr)
+        return 2
 
-    v3 = ver.add_parser("v3", help="SNMP v3 walk.")
-    _add_shared_args(v3)
-    v3.add_argument("--user", required=True, help="SNMPv3 username.")
-    v3.add_argument("--auth-proto", default=None, help="Auth protocol (MD5, SHA, or SHA-256).")
-    v3.add_argument("--auth-pass", default=None, help="Auth passphrase.")
-    v3.add_argument("--priv-proto", default=None, help="Privacy protocol (e.g. AES).")
-    v3.add_argument("--priv-pass", default=None, help="Privacy passphrase.")
+    try:
+        results = socket.getaddrinfo(host, None, socket.AF_INET)
+        resolved_ip = cast("str", results[0][4][0])
+    except OSError as exc:
+        print(f"error: cannot resolve host {host!r}: {exc}", file=sys.stderr)
+        return 2
 
-    return parser
+    if label is not None and ("/" in label or "\\" in label or ".." in label):
+        print(
+            f"error: --label must not contain path separators or '..': {label!r}", file=sys.stderr
+        )
+        return 2
+
+    return start_oid, resolved_ip, label
 
 
 # ---------------------------------------------------------------------------
@@ -148,7 +153,10 @@ def _build_parser() -> argparse.ArgumentParser:
 
 
 def _validate_v3_auth(
-    args: argparse.Namespace,
+    auth_proto_raw: str | None,
+    auth_pass: str | None,
+    priv_proto: str | None,
+    priv_pass: str | None,
 ) -> tuple[AuthProto | None, str | None] | int:
     """Validate SNMPv3 auth arguments.
 
@@ -158,30 +166,27 @@ def _validate_v3_auth(
     v3_auth_proto: AuthProto | None = None
     v3_auth_pass: str | None = None
 
-    if args.auth_proto is not None:
-        # Validate auth_proto
+    if auth_proto_raw is not None:
         try:
-            v3_auth_proto = AuthProto(args.auth_proto.upper())
+            v3_auth_proto = AuthProto(auth_proto_raw.upper())
         except ValueError:
             print(
                 f"error: --auth-proto must be one of {[p.value for p in AuthProto]}, "
-                f"got {args.auth_proto!r}",
+                f"got {auth_proto_raw!r}",
                 file=sys.stderr,
             )
             return 2
 
-        # Require auth_pass when auth_proto is set
-        if args.auth_pass is None:
+        if auth_pass is None:
             print(
                 "error: --auth-pass is required when --auth-proto is set",
                 file=sys.stderr,
             )
             return 2
 
-        v3_auth_pass = args.auth_pass
+        v3_auth_pass = auth_pass
 
-    # Warn if privacy fields are set (not supported yet)
-    if args.priv_proto is not None or args.priv_pass is not None:
+    if priv_proto is not None or priv_pass is not None:
         print(
             "warning: privacy (--priv-proto, --priv-pass) is not yet supported and will be ignored",
             file=sys.stderr,
@@ -191,86 +196,11 @@ def _validate_v3_auth(
 
 
 # ---------------------------------------------------------------------------
-# Boundary validation: --start-oid, host, --label
+# Logging + walk execution (shared tail of every version sub-command)
 # ---------------------------------------------------------------------------
 
 
-def _validate_numeric_bounds(args: argparse.Namespace) -> int | None:
-    """Validate --retries, --give-up-after, and --bulk-size (v2c only).
-
-    Returns:
-        None on success, or an exit code (2) on error.
-    """
-    if args.retries < 0:
-        print(f"error: --retries must be >= 0, got {args.retries}", file=sys.stderr)
-        return 2
-
-    if args.give_up_after < 1:
-        print(f"error: --give-up-after must be >= 1, got {args.give_up_after}", file=sys.stderr)
-        return 2
-
-    bulk_size = getattr(args, "bulk_size", None)
-    if bulk_size is not None and bulk_size < 1:
-        print(f"error: --bulk-size must be >= 1, got {bulk_size}", file=sys.stderr)
-        return 2
-
-    return None
-
-
-def _validate_common_args(args: argparse.Namespace) -> tuple[Oid, str, str | None] | int:
-    """Parse --start-oid, resolve the host, and validate --label/--retries/
-    --give-up-after/--bulk-size.
-
-    Returns:
-        (start_oid, resolved_ip, label) on success, or an exit code (2) on error.
-    """
-    try:
-        start_oid = Oid.from_str(args.start_oid)
-    except ValueError as exc:
-        print(f"error: invalid --start-oid {args.start_oid!r}: {exc}", file=sys.stderr)
-        return 2
-
-    try:
-        results = socket.getaddrinfo(args.host, None, socket.AF_INET)
-        resolved_ip = cast("str", results[0][4][0])
-    except OSError as exc:
-        print(f"error: cannot resolve host {args.host!r}: {exc}", file=sys.stderr)
-        return 2
-
-    label: str | None = args.label
-    if label is not None and ("/" in label or "\\" in label or ".." in label):
-        print(
-            f"error: --label must not contain path separators or '..': {label!r}", file=sys.stderr
-        )
-        return 2
-
-    numeric_error = _validate_numeric_bounds(args)
-    if numeric_error is not None:
-        return numeric_error
-
-    return start_oid, resolved_ip, label
-
-
-# ---------------------------------------------------------------------------
-# main
-# ---------------------------------------------------------------------------
-
-
-def main(argv: list[str] | None = None) -> int:
-    """CLI entry point. Returns exit code."""
-    parser = _build_parser()
-    args = parser.parse_args(argv)
-
-    if args.subcommand != "walk":
-        parser.print_help(sys.stderr)
-        return 2
-
-    if args.version is None:
-        # print walk-level help (shows v1/v2c/v3 sub-commands)
-        print("usage: oidtrace walk {v1,v2c,v3} ...", file=sys.stderr)
-        return 2
-
-    verbosity: int = args.verbose
+def _configure_logging(verbosity: int) -> None:
     if verbosity == 0:
         level = logging.WARNING
     elif verbosity == 1:
@@ -285,14 +215,16 @@ def main(argv: list[str] | None = None) -> int:
         force=True,
     )
 
-    common_args = _validate_common_args(args)
-    if isinstance(common_args, int):
-        return common_args
-    start_oid, resolved_ip, label = common_args
 
-    log.info("resolved %s -> %s", args.host, resolved_ip)
-
-    out_dir = Path(args.out)
+def _run_and_summarize(
+    resolved_ip: str,
+    port: int,
+    settings: WalkSettings,
+    out: str,
+    label: str | None,
+    verbosity: int,
+) -> int:
+    out_dir = Path(out)
     out_dir.mkdir(parents=True, exist_ok=True)
 
     prefix = label if label else "walk"
@@ -300,45 +232,6 @@ def main(argv: list[str] | None = None) -> int:
     trace_path = out_dir / f"{prefix}-{timestamp}.oidtrace.jsonl.gz"
 
     log.info("trace path: %s", trace_path)
-
-    if args.version == "v1":
-        settings = WalkSettings(
-            timeout_s=args.timeout,
-            retries=args.retries,
-            start_oid=start_oid,
-            time_budget_s=args.time_budget,
-            give_up_after=args.give_up_after,
-            community=args.community.encode(),
-            snmp_version="1",
-        )
-    elif args.version == "v3":
-        auth_result = _validate_v3_auth(args)
-        if isinstance(auth_result, int):
-            return auth_result
-        v3_auth_proto, v3_auth_pass = auth_result
-
-        settings = WalkSettings(
-            bulk_size=10,
-            timeout_s=args.timeout,
-            retries=args.retries,
-            start_oid=start_oid,
-            time_budget_s=args.time_budget,
-            give_up_after=args.give_up_after,
-            snmp_version="3",
-            v3_user=args.user,
-            v3_auth_proto=v3_auth_proto,
-            v3_auth_pass=v3_auth_pass,
-        )
-    else:  # v2c
-        settings = WalkSettings(
-            bulk_size=args.bulk_size,
-            timeout_s=args.timeout,
-            retries=args.retries,
-            start_oid=start_oid,
-            time_budget_s=args.time_budget,
-            give_up_after=args.give_up_after,
-            community=args.community.encode(),
-        )
 
     extra_sinks: list[RecordSink] = []
     if verbosity == 0:
@@ -350,7 +243,7 @@ def main(argv: list[str] | None = None) -> int:
         asyncio.run(
             run_walk(
                 resolved_ip,
-                args.port,
+                port,
                 settings=settings,
                 path=trace_path,
                 label=label,
@@ -360,6 +253,175 @@ def main(argv: list[str] | None = None) -> int:
 
     _print_summary(trace_path)
     return 0
+
+
+# ---------------------------------------------------------------------------
+# Command tree
+# ---------------------------------------------------------------------------
+
+
+@click.group(invoke_without_command=True, no_args_is_help=False)
+@click.pass_context
+def cli(ctx: click.Context) -> None:
+    """OIDTrace: record SNMP walks to structured trace files."""
+    if ctx.invoked_subcommand is None:
+        click.echo(ctx.get_help(), err=True)
+        ctx.exit(2)
+
+
+@cli.group(invoke_without_command=True, no_args_is_help=False)
+@click.pass_context
+def walk(ctx: click.Context) -> None:
+    """Walk an SNMP agent and record to a trace file."""
+    if ctx.invoked_subcommand is None:
+        click.echo("usage: oidtrace walk {v1,v2c,v3} ...", err=True)
+        ctx.exit(2)
+
+
+@walk.command("v1")
+@_walk_options
+@click.option("--community", default="public", help="SNMP v1 community string (default: public).")
+def walk_v1(
+    host: str,
+    port: int,
+    out: str,
+    label: str | None,
+    timeout: float,
+    retries: int,
+    start_oid: str,
+    time_budget: float | None,
+    give_up_after: int,
+    verbose: int,
+    community: str,
+) -> int:
+    """SNMP v1 walk."""
+    _configure_logging(verbose)
+    common = _resolve_common(host, start_oid, label)
+    if isinstance(common, int):
+        return common
+    parsed_oid, resolved_ip, label = common
+    log.info("resolved %s -> %s", host, resolved_ip)
+
+    settings = WalkSettings(
+        timeout_s=timeout,
+        retries=retries,
+        start_oid=parsed_oid,
+        time_budget_s=time_budget,
+        give_up_after=give_up_after,
+        community=community.encode(),
+        snmp_version="1",
+    )
+    return _run_and_summarize(resolved_ip, port, settings, out, label, verbose)
+
+
+@walk.command("v2c")
+@_walk_options
+@click.option("--community", default="public", help="SNMP v2c community string (default: public).")
+@click.option(
+    "--bulk-size",
+    type=click.IntRange(min=1),
+    default=10,
+    metavar="N",
+    help="GetBulk max-repetitions (default: 10).",
+)
+def walk_v2c(
+    host: str,
+    port: int,
+    out: str,
+    label: str | None,
+    timeout: float,
+    retries: int,
+    start_oid: str,
+    time_budget: float | None,
+    give_up_after: int,
+    verbose: int,
+    community: str,
+    bulk_size: int,
+) -> int:
+    """SNMP v2c walk."""
+    _configure_logging(verbose)
+    common = _resolve_common(host, start_oid, label)
+    if isinstance(common, int):
+        return common
+    parsed_oid, resolved_ip, label = common
+    log.info("resolved %s -> %s", host, resolved_ip)
+
+    settings = WalkSettings(
+        bulk_size=bulk_size,
+        timeout_s=timeout,
+        retries=retries,
+        start_oid=parsed_oid,
+        time_budget_s=time_budget,
+        give_up_after=give_up_after,
+        community=community.encode(),
+    )
+    return _run_and_summarize(resolved_ip, port, settings, out, label, verbose)
+
+
+@walk.command("v3")
+@_walk_options
+@click.option("--user", required=True, help="SNMPv3 username.")
+@click.option("--auth-proto", default=None, help="Auth protocol (MD5, SHA, or SHA-256).")
+@click.option("--auth-pass", default=None, help="Auth passphrase.")
+@click.option("--priv-proto", default=None, help="Privacy protocol (e.g. AES).")
+@click.option("--priv-pass", default=None, help="Privacy passphrase.")
+def walk_v3(
+    host: str,
+    port: int,
+    out: str,
+    label: str | None,
+    timeout: float,
+    retries: int,
+    start_oid: str,
+    time_budget: float | None,
+    give_up_after: int,
+    verbose: int,
+    user: str,
+    auth_proto: str | None,
+    auth_pass: str | None,
+    priv_proto: str | None,
+    priv_pass: str | None,
+) -> int:
+    """SNMP v3 walk."""
+    _configure_logging(verbose)
+    common = _resolve_common(host, start_oid, label)
+    if isinstance(common, int):
+        return common
+    parsed_oid, resolved_ip, label = common
+    log.info("resolved %s -> %s", host, resolved_ip)
+
+    auth_result = _validate_v3_auth(auth_proto, auth_pass, priv_proto, priv_pass)
+    if isinstance(auth_result, int):
+        return auth_result
+    v3_auth_proto, v3_auth_pass = auth_result
+
+    settings = WalkSettings(
+        bulk_size=10,
+        timeout_s=timeout,
+        retries=retries,
+        start_oid=parsed_oid,
+        time_budget_s=time_budget,
+        give_up_after=give_up_after,
+        snmp_version="3",
+        v3_user=user,
+        v3_auth_proto=v3_auth_proto,
+        v3_auth_pass=v3_auth_pass,
+    )
+    return _run_and_summarize(resolved_ip, port, settings, out, label, verbose)
+
+
+# ---------------------------------------------------------------------------
+# main
+# ---------------------------------------------------------------------------
+
+
+def main(argv: list[str] | None = None) -> int:
+    """CLI entry point. Returns exit code."""
+    try:
+        return cli.main(args=argv, prog_name="oidtrace", standalone_mode=False)
+    except click.ClickException as exc:
+        exc.show()
+        return exc.exit_code
 
 
 # ---------------------------------------------------------------------------
