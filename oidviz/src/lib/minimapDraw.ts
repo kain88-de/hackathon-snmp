@@ -136,6 +136,69 @@ export function exchangeStatus(ex: DomainExchange, slowMs: number): string {
 	return "Normal";
 }
 
+interface TimeRange {
+	minT: number;
+	maxT: number;
+	timeRange: number;
+}
+
+// Keyed by array identity: a new trace load (or facet-filtered array) is a new
+// reference, so the cache invalidates itself — no manual busting needed.
+const timeRangeCache = new WeakMap<DomainExchange[], TimeRange>();
+
+// Derived from exchanges alone (never from selection state), yet was being
+// recomputed from scratch on every hover/drag pointer-move event — findings.md
+// #14. Cached per exchanges-array identity so repeated calls during one
+// interaction reuse the same result instead of rescanning the full trace.
+export function getTimeRange(exchanges: DomainExchange[]): TimeRange {
+	const cached = timeRangeCache.get(exchanges);
+	if (cached) {
+		return cached;
+	}
+	const times = exchanges.map((ex): number => ex.sentAtMs);
+	const [minT, maxT] = minMaxValues(times);
+	const result: TimeRange = { maxT, minT, timeRange: maxT - minT || 1 };
+	timeRangeCache.set(exchanges, result);
+	return result;
+}
+
+interface ColumnBuckets {
+	cols: number;
+	buckets: DomainExchange[][];
+}
+
+const columnBucketsCache = new WeakMap<DomainExchange[], ColumnBuckets>();
+
+// Column assignment (which pixel column each exchange's timestamp falls into)
+// only depends on exchanges + column count, yet drawMinimap and autoFocus each
+// rebuilt it independently on every call, and minimap hover ran its own O(n)
+// filter per pointer-move to find one column's bucket — findings.md #14.
+// Cached per (exchanges, cols) so drawing, auto-focus, and hover all share one
+// precomputed index instead of rescanning the full trace each time.
+export function getColumnBuckets(
+	exchanges: DomainExchange[],
+	cols: number,
+): DomainExchange[][] {
+	const cached = columnBucketsCache.get(exchanges);
+	if (cached && cached.cols === cols) {
+		return cached.buckets;
+	}
+	const { minT, timeRange } = getTimeRange(exchanges);
+	const buckets: DomainExchange[][] = Array.from(
+		{ length: cols },
+		(): DomainExchange[] => [],
+	);
+	for (const ex of exchanges) {
+		const col = Math.min(
+			cols - 1,
+			Math.floor(((ex.sentAtMs - minT) / timeRange) * (cols - 1)),
+		);
+		buckets[col]?.push(ex);
+	}
+	columnBucketsCache.set(exchanges, { buckets, cols });
+	return buckets;
+}
+
 export function drawEmpty(canvas: HTMLCanvasElement): void {
 	const ctx = canvas.getContext("2d");
 	if (!ctx) {
@@ -165,9 +228,7 @@ export function getWindowExchanges(
 	if (totalCols === 0 || colEnd <= colStart) {
 		return exchanges;
 	}
-	const times = exchanges.map((ex): number => ex.sentAtMs);
-	const [minT, maxT] = minMaxValues(times);
-	const timeRange = maxT - minT || 1;
+	const { minT, timeRange } = getTimeRange(exchanges);
 	const tStart = minT + (colStart / miniWidth) * timeRange;
 	const tEnd = minT + (colEnd / miniWidth) * timeRange;
 	const filtered = exchanges.filter(
@@ -198,20 +259,7 @@ export function drawMinimap(
 	}
 
 	const cols = w;
-	const times = exchanges.map((ex): number => ex.sentAtMs);
-	const [minT, maxT] = minMaxValues(times);
-	const timeRange = maxT - minT || 1;
-	const buckets: DomainExchange[][] = Array.from(
-		{ length: cols },
-		(): DomainExchange[] => [],
-	);
-	for (const ex of exchanges) {
-		const col = Math.min(
-			cols - 1,
-			Math.floor(((ex.sentAtMs - minT) / timeRange) * (cols - 1)),
-		);
-		buckets[col]?.push(ex);
-	}
+	const buckets = getColumnBuckets(exchanges, cols);
 
 	const barY = Math.floor((MINI_H - BH) / MINIMAP_BAR_Y_DIVISOR);
 	for (const [col, bucket] of buckets.entries()) {
@@ -318,20 +366,7 @@ export function autoFocus(
 		return null;
 	}
 	const cols = w;
-	const times = exchanges.map((ex): number => ex.sentAtMs);
-	const [minT, maxT] = minMaxValues(times);
-	const timeRange = maxT - minT || 1;
-	const buckets: DomainExchange[][] = Array.from(
-		{ length: cols },
-		(): DomainExchange[] => [],
-	);
-	for (const ex of exchanges) {
-		const col = Math.min(
-			cols - 1,
-			Math.floor(((ex.sentAtMs - minT) / timeRange) * (cols - 1)),
-		);
-		buckets[col]?.push(ex);
-	}
+	const buckets = getColumnBuckets(exchanges, cols);
 	let bestScore = -1;
 	let bestCol = 0;
 	for (const [col, bucket] of buckets.entries()) {
