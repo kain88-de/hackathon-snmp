@@ -410,24 +410,50 @@ Recommended follow-up:
   the behavior
 
 #### 9. SNMPv3 auth passphrase minimum length is not enforced
+*DONE*
 
 - Severity: Medium
+- Status: RESOLVED (fixed 2026-07-19)
 - Files:
-  - `oidtrace/src/oidtrace/auth.py:67-79`
-  - `oidtrace/src/oidtrace/cli.py:137-138`
-  - `oidtrace/src/oidtrace/cli.py:181-190`
-  - `oidtrace/tests/unit/test_auth.py:52-60`
-  - `oidtrace/tests/unit/test_auth.py:146-149`
+  - `oidtrace/src/oidtrace/auth.py:49-53` (`MIN_PASSWORD_LENGTH` constant)
+  - `oidtrace/src/oidtrace/cli.py:187-193` (`--auth-pass` warning)
+  - `oidtrace/tests/unit/test_auth.py:91-95`
+  - `oidtrace/tests/integration/test_cli.py:574-611`
+  - `oidtrace/tests/robot/spec_rfc3414.robot:64-73`
 
 Impact:
 
 - the code accepts credentials that are reportedly non-compliant with SNMPv3 USM minimums
 - emulator tests may pass while real devices fail in confusing ways
 
+Resolution:
+
+- confirmed the gap: `password_to_key` only rejected an empty password, never
+  enforcing RFC 3414 §11.2's recommended 8-character minimum
+- initial pass made a too-short `--auth-pass` a hard CLI error (exit 2), matching
+  the enforcement style used for `--retries`/`--give-up-after`/`--bulk-size` in
+  finding #8 — but this was reconsidered: unlike those numeric bounds, RFC 3414's
+  8-character minimum is a security *recommendation* ("SHOULD"), not a wire
+  requirement, and oidtrace is a diagnostic tracer, not a security-policy client
+  (the same distinction already drawn in finding #1's resolution). A real device
+  can be legitimately configured with a shorter passphrase, and the tool must
+  still be able to trace it
+- final behavior: `password_to_key` (`auth.py`) enforces nothing beyond
+  non-empty, as before; `_validate_v3_auth` (`cli.py`) prints a stderr warning
+  naming `--auth-pass` and the RFC 3414 §11.2 minimum when it is under 8
+  characters, but the walk still proceeds — mirroring the existing
+  `--priv-proto`/`--priv-pass` "not yet supported, ignored" warning style already
+  in the same function
+- a new unit test locks in that `password_to_key` accepts short passwords; a new
+  `test_cli.py` integration test and a new `spec_rfc3414.robot` scenario
+  ("RFC 3414 §11.2 - ... Still Walks, With A Warning") lock in that the CLI
+  warns but still completes the walk against a matching emulator user
+- full suite verified green: 37 Robot + 394 pytest
+
 Recommended follow-up:
 
-- enforce passphrase minimums where credentials are accepted
-- update tests to reflect the intended policy explicitly
+- none — the warning is at the CLI boundary and the new tests lock in the
+  intended permissive-with-warning behavior
 
 #### 10. The SNMPv3 discovery path appears duplicated and less validated than the main exchange path
 
