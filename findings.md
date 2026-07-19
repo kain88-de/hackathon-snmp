@@ -634,21 +634,54 @@ Recommended follow-up:
   discipline
 
 #### 13. Generated names leak into the public API surface
+*DONE*
 
 - Severity: Low
+- Status: RESOLVED (verified 2026-07-19) — already addressed by pre-existing design + finding #3's fix
 - Files:
-  - `traceformat/src/traceformat/models.py:37-40`
-  - `traceformat/tests/test_smoke.py:11-20`
+  - `traceformat/src/traceformat/models.py:37-40` (`Version.field_1`/`field_2c`/`field_3`)
+  - `traceformat/src/traceformat/__init__.py:14-24` (`__all__`)
+  - `oidtrace/src/oidtrace/records.py:65,74` (`tf.Version(snmp_version)`)
+  - `oidtrace/src/oidtrace/walker.py:511` (`tf.Pdu("getbulk")`)
+  - `traceformat/tests/test_smoke.py` (naming-pin tests already retired)
 
-Impact:
+Impact (at review time):
 
 - awkward names like `Version.field_1` and `Version.field_2c` become part of the supported API
 - the library exposes codegen artifacts rather than a deliberate domain interface
 
+Resolution:
+
+- checked `__init__.py`'s history from its first commit (`8b6eb04`, 2026-06-12):
+  `__all__` has **never** exported `Version` or `Pdu` — only the record classes
+  (`Header`, `Exchange`, ...) plus `TraceRecord`/`dump_record`/`parse_record`.
+  The "thin human-owned API layer" this finding's first recommended follow-up
+  asked for has existed since the package was scaffolded, predating this
+  finding by almost a month; `traceformat.Version`/`traceformat.Pdu` were
+  never reachable at the top-level package surface
+- checked every production call site (`oidtrace/src`, `traceformat/src`):
+  none use the awkward member-access form (`Version.field_2c`) — both real
+  construction sites use value-based construction (`tf.Version(snmp_version)`,
+  `tf.Pdu("getbulk")`), which never touches the codegen-escaped names at all
+- the second recommended follow-up — "avoid testing generator naming artifacts
+  as if they are product behavior" — was already done independently: commit
+  `275406f` (2026-07-07, part of finding #3's fix) explicitly retired
+  `test_version_3_enum_value`/`test_pdu_discovery_enum_value`, the two
+  `test_smoke.py` cases that pinned `Version.field_3`/`Pdu.discovery` as
+  behavior-under-test, folding the underlying wire-value coverage into
+  `test_schema_parity.py` instead
+- residual, accepted observation (not a gap requiring action): two test
+  fixtures (`oidtrace/tests/unit/test_tracefile.py:38`,
+  `traceformat/tests/test_roundtrip.py:39`) still use `Version.field_2c`
+  member-access to build a `Snmp` object, since a literal enum member reads
+  slightly clearer than `Version("2c")` in a fixture constant — this is
+  fixture-construction convenience, not a naming-artifact test, and never
+  reaches the public surface or production code
+
 Recommended follow-up:
 
-- add a thin human-owned API layer over generated code where necessary
-- avoid testing generator naming artifacts as if they are product behavior
+- none — the API layer already omits these types, no production code touches
+  the awkward names, and the tests that once pinned them as behavior are gone
 
 Strengths:
 
