@@ -968,6 +968,26 @@ def _v3_discovery_exchange() -> Callable[[bytes], ExchangeIO]:
     return factory
 
 
+def _v3_discovery_wrong_request_id_exchange() -> ExchangeIO:
+    """Static discovery Report reply whose request_id never matches ours.
+
+    A foreign/stray discovery reply that the accept-predicate would still let
+    through (it only rejects ids belonging to *our own* past exchanges).
+    """
+    response_raw = encode_v3_response(
+        msg_id=1,
+        request_id=999_999,
+        varbinds=[(_USM_STATS_OID, 0x41, b"\x00\x00\x00\x00")],
+        engine_id=_V3_ENGINE_ID,
+        pdu_tag=PDU_REPORT,
+    )
+    return ExchangeIO(
+        attempts=(Attempt(sent_at=0.001, received_at=0.002),),
+        response=(0.002, response_raw),
+        strays=(),
+    )
+
+
 def _v3_response_exchange(oids: list[Oid]) -> Callable[[bytes], ExchangeIO]:
     """Return a dynamic factory for a GetBulk Response over v3.
 
@@ -1136,6 +1156,65 @@ async def test_v3_discovery_no_response_unresponsive(
     assert len(exchanges) == 1
     assert exchanges[0].seq == 1
     assert exchanges[0].request.pdu == Pdu.discovery
+    _validate_all(records, record_validator)
+
+
+@pytest.mark.asyncio
+async def test_v3_discovery_malformed_response_adds_violation(
+    record_validator: Draft202012Validator,
+) -> None:
+    """Malformed BER discovery reply → MALFORMED_BER violation on the seq=1 exchange.
+
+    Previously the discovery block only bumped the give-up counter on a
+    decode failure, leaving the exchange record indistinguishable from a
+    clean-but-empty response — the malformed model and violation are now
+    surfaced the same way the main GetBulk loop already does.
+    """
+    junk_raw = b"\x00" * 20
+    malformed_exchange = ExchangeIO(
+        attempts=(Attempt(sent_at=0.001, received_at=0.002),),
+        response=(0.002, junk_raw),
+        strays=(),
+    )
+    transport = FakeTransport(responses=[malformed_exchange])
+    records = await _collect(transport, settings=WalkSettings(snmp_version="3", v3_user="probe"))
+
+    exchange_records = [r for r in records if r.type == "exchange"]
+    discovery = exchange_records[0]
+    assert discovery.seq == 1
+    assert discovery.violations is not None
+    assert str(Violation.MALFORMED_BER) in discovery.violations
+    assert discovery.malformed is not None
+
+    assert isinstance(records[-1], Summary)
+    assert records[-1].end_reason == str(EndReason.UNRESPONSIVE)
+    _validate_all(records, record_validator)
+
+
+@pytest.mark.asyncio
+async def test_v3_discovery_request_id_mismatch_adds_violation(
+    record_validator: Draft202012Validator,
+) -> None:
+    """Discovery reply carrying a foreign request_id → REQUEST_ID_MISMATCH violation.
+
+    The accept-predicate still lets it through (same as the main GetBulk
+    loop's existing handling of a foreign id), and its engine params are
+    still used — but the trace must show the mismatch instead of silently
+    recording a clean discovery exchange.
+    """
+    transport = FakeTransport(
+        responses=[
+            _v3_discovery_wrong_request_id_exchange(),
+            _v3_eom_exchange(_START_OID),
+        ]
+    )
+    records = await _collect(transport, settings=WalkSettings(snmp_version="3", v3_user="probe"))
+
+    exchange_records = [r for r in records if r.type == "exchange"]
+    discovery = exchange_records[0]
+    assert discovery.seq == 1
+    assert discovery.violations is not None
+    assert str(Violation.REQUEST_ID_MISMATCH) in discovery.violations
     _validate_all(records, record_validator)
 
 

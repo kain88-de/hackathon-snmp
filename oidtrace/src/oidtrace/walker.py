@@ -247,6 +247,21 @@ def _make_response_accept(
     return accept
 
 
+def _build_attempts_and_strays(
+    exchange_io: ExchangeIO,
+) -> tuple[list[tf.Attempt], list[tf.StrayResponse]]:
+    """Convert transport-level attempts/strays into their trace models.
+
+    Shared by the discovery exchange and every main-loop exchange so the two
+    paths cannot drift apart on this conversion.
+    """
+    attempts = [_transport_attempt_to_model(a) for a in exchange_io.attempts]
+    strays = [
+        tf.StrayResponse(received_at=tf.Reltime(round(ts, 6))) for ts, _ in exchange_io.strays
+    ]
+    return attempts, strays
+
+
 def _transport_attempt_to_model(attempt: TransportAttempt) -> tf.Attempt:
     """Convert transport.Attempt → models.Attempt.
 
@@ -364,10 +379,7 @@ async def walk_records(  # noqa: PLR0912, PLR0913, PLR0915
             "yes" if exchange_io.response is not None else "no",
         )
 
-        discovery_attempts = [_transport_attempt_to_model(a) for a in exchange_io.attempts]
-        discovery_strays = [
-            tf.StrayResponse(received_at=tf.Reltime(round(ts, 6))) for ts, _ in exchange_io.strays
-        ]
+        discovery_attempts, discovery_strays = _build_attempts_and_strays(exchange_io)
         discovery_request = tf.Request.model_validate(
             {"pdu": "discovery", "request_id": request_id, "oids": []}
         )
@@ -376,9 +388,11 @@ async def walk_records(  # noqa: PLR0912, PLR0913, PLR0915
         response_es: int | None = None
         response_ei: int | None = None
         discovery_vbs: list[Varbind] = []
+        discovery_malformed: tf.Malformed | None = None
         if exchange_io.response is not None:
             decoded = decode_v3_message(exchange_io.response[1])
             if isinstance(decoded, Malformed):
+                discovery_malformed = tf.Malformed(error=decoded.error, length=len(decoded.raw))
                 consecutive_no_response += 1
             else:
                 msg, v3_params = decoded
@@ -390,6 +404,26 @@ async def walk_records(  # noqa: PLR0912, PLR0913, PLR0915
         else:
             consecutive_no_response += 1
 
+        discovery_violations: list[Violation] = []
+        if discovery_malformed is not None:
+            discovery_violations.append(Violation.MALFORMED_BER)
+        elif response_rid is not None:
+            # Same validation the main GetBulk loop applies to every exchange
+            # (accept-but-flag, not reject) — varbinds=[] because a discovery
+            # Report PDU carries no OID-walk data, so the OID-not-increasing
+            # check does not apply here.
+            discovery_violations = check_exchange(
+                sent_id=request_id,
+                returned_id=response_rid,
+                prev_oid=settings.start_oid,
+                varbinds=[],
+                response_raw=exchange_io.response[1] if exchange_io.response else b"",
+                strays=[raw for _, raw in exchange_io.strays],
+            )
+
+        for v in discovery_violations:
+            violation_counts[v] = violation_counts.get(v, 0) + 1
+
         yield exchange_record(
             seq=seq,
             request=discovery_request,
@@ -399,8 +433,8 @@ async def walk_records(  # noqa: PLR0912, PLR0913, PLR0915
             response_error_index=response_ei,
             varbinds=discovery_vbs,
             strays=discovery_strays,
-            violations=[],
-            malformed=None,
+            violations=discovery_violations,
+            malformed=discovery_malformed,
         )
 
         # Without engine parameters we cannot encode any GetBulk — discovery
@@ -495,10 +529,7 @@ async def walk_records(  # noqa: PLR0912, PLR0913, PLR0915
             "yes" if exchange_io.response is not None else "no",
         )
 
-        model_attempts = [_transport_attempt_to_model(a) for a in exchange_io.attempts]
-        model_strays = [
-            tf.StrayResponse(received_at=tf.Reltime(round(ts, 6))) for ts, _ in exchange_io.strays
-        ]
+        model_attempts, model_strays = _build_attempts_and_strays(exchange_io)
 
         decoded_msg: Message | None = None
         malformed_model: tf.Malformed | None = None
