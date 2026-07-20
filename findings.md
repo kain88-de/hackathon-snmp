@@ -1010,6 +1010,7 @@ Recommended follow-up:
 - none
 
 #### 19. Accessibility is weaker than the current tooling posture suggests
+*DONE*
 
 - Severity: Low
 - Files:
@@ -1017,16 +1018,30 @@ Recommended follow-up:
   - `oidviz/src/components/MinimapDetail.vue:176-197`
   - `oidviz/src/components/MinimapDetail.vue:398-413`
   - `oidviz/src/components/FindingsByCategory.vue:155-160`
+  - `oidviz/src/lib/minimapDraw.ts` (`drawDetail`)
+  - `oidviz/tests/component/FindingsByCategory.test.ts`
+  - `oidviz/tests/component/MinimapDetail.test.ts`
+  - `oidviz/tests/e2e/findings.spec.ts`
+  - `oidviz/tests/e2e/minimap-detail.spec.ts`
 
-Impact:
+Status: RESOLVED (fixed 2026-07-20)
 
-- canvas-based interactions are difficult or impossible for keyboard and screen-reader users
-- clickable `div` patterns weaken keyboard accessibility
+Impact (confirmed):
 
-Recommended follow-up:
+- `FindingsByCategory.vue`'s exchange rows were clickable `div`s with no `tabindex` and no keyboard handler — a keyboard-only or screen-reader user could not reach or activate a row at all, only a mouse user could.
+- `MinimapDetail.vue`'s detail canvas (the per-exchange row list) had no `tabindex` and no keyboard listener of any kind — every row was reachable only by hovering or clicking with a mouse, with zero keyboard path and zero screen-reader-visible content beyond a generic canvas label. The minimap canvas alongside it already had `tabindex` + arrow-key panning, showing the detail canvas was the more complete gap.
+- Axe (WCAG 2.1 AA) coverage in `a11y.spec.ts` passes on both files today and would still pass on the pre-fix code — automated accessibility tooling does not flag "clickable element with no keyboard path", which is exactly the tooling-posture gap this finding named.
 
-- provide keyboard-reachable and screen-reader-visible alternatives for canvas interactions
-- replace clickable `div` rows with accessible controls or add the correct semantics
+Resolution:
+
+- `FindingsByCategory.vue`: converted each `.exchange-row` from a `<div @click>` to a real `<button type="button">` with equivalent CSS resets (matching the existing `.section-header` button pattern already used for header rows). This makes rows reachable by Tab and activatable with Enter/Space for free, and screen readers now announce them as buttons with the row's own text as the accessible name (confirmed via a Playwright accessibility snapshot: `button "1.3.6.1.2.1.2.2.1.16 1500.0ms"`).
+- `MinimapDetail.vue` + `minimapDraw.ts`: the detail canvas now gets `tabindex="0"` and a keydown handler — ArrowUp/ArrowDown move a keyboard-selected row (clamped to the current window), Enter/Space emits `focus-exchange` for it (the keyboard equivalent of a mouse click). `drawDetail()` takes an optional `selectedIndex` and draws a highlight outline around that row (confirmed by reading back the canvas's pixel data at the row's top edge in a real browser: the pixel matched the alpha-blended highlight colour). A screen-reader-only `role="status" aria-live="polite"` region announces the selected row's OID, RTT, and status text, so non-sighted keyboard users get the same information sighted mouse users get from the hover tooltip.
+- Followed TDD: wrote failing component tests first for each behavior (row renders as `<button>`; canvas has `tabindex="0"`; ArrowDown/ArrowUp move and clamp the selection with the live region updating; Enter emits `focus-exchange`), watched them fail for the right reason (feature missing), then implemented the minimal code to pass. Refactored `redraw()` and the new keydown handler into smaller named functions to satisfy the repo's cognitive-complexity lint budget.
+- Full verification: `just lint`, `just types`, `just fmt-check`, 184 vitest tests (up from 179), 80 Playwright e2e tests including both axe a11y specs (up from 74), all green. Manually verified in a real browser: exchange rows appear as named buttons in the accessibility tree, ArrowDown on the detail canvas both draws a visible highlight and updates the live-region text, Enter fires with no console errors.
+
+Remaining lower-priority gap (not fixed here, tracked for future follow-up):
+
+- the minimap canvas's existing arrow-key panning (added previously) still has no screen-reader-visible announcement of the resulting selection window — a keyboard user can move it, but a non-sighted user gets no textual feedback on the new window's contents. The mouse-hover tooltip has no keyboard/AT equivalent either. This is the same class of gap as the detail canvas had, just not addressed in this pass to keep the fix scoped to the two clearest, previously-zero-support cases.
 
 Strengths:
 
