@@ -118,16 +118,12 @@ test("dragging on the minimap canvas produces no console errors", async ({
 // findings.spec.ts). Selecting the minimap's full width puts every one of
 // those exchanges in the detail window — far more than the ~2726 rows that
 // fit under drawDetail's MAX_H canvas-height cap (minimapDraw.ts:256-261).
-//
-// findings.md #4: this is a "silently clips" bug, not a "must render via
-// canvas" bug — the fix strategy (compress row spacing to fit, virtualize,
-// or truncate-with-a-visible-warning) isn't chosen yet, so this asserts the
-// fix-agnostic contract instead of a specific rendering approach: every
+// Rows beyond that cap must not silently disappear off-canvas: this asserts
+// a fix-agnostic contract rather than a specific rendering approach — every
 // exchange in the window is reachable by scrolling, OR the UI says some
 // were dropped. Sidebar.vue already has a warning for the (unrelated)
 // file-truncation case ("Warning: trace was truncated") — reuse that
 // wording convention as the detector for "the app told the user".
-// Currently neither holds, so this test fails until a fix lands.
 test("a very large selected window shows every exchange or warns some are hidden", async ({
 	page,
 }) => {
