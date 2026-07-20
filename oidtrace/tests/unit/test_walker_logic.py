@@ -139,6 +139,29 @@ def _response_exchange(oids: list[Oid]) -> Callable[[bytes], ExchangeIO]:
     return factory
 
 
+def _nosuchobject_exchange(oids: list[Oid]) -> Callable[[bytes], ExchangeIO]:
+    """Return a dynamic factory answering every requested OID with NoSuchObject.
+
+    Models "device exposes none of these OIDs" for the system-info placeholders
+    below — semantically inert regardless of what decode_values' vocabulary
+    covers, unlike an Integer-tagged varbind that happens to be inert only
+    because Integer isn't in that vocabulary today.
+    """
+
+    def factory(raw: bytes) -> ExchangeIO:
+        decoded = decode_message(raw)
+        request_id = 42 if isinstance(decoded, Malformed) else decoded.request_id
+        varbinds = [(oid, 0x80, b"") for oid in oids]
+        response_raw = encode_response(request_id, varbinds)
+        return ExchangeIO(
+            attempts=(Attempt(sent_at=0.001, received_at=0.002),),
+            response=(0.002, response_raw),
+            strays=(),
+        )
+
+    return factory
+
+
 def _eom_exchange(after_oid: Oid) -> Callable[[bytes], ExchangeIO]:
     """Return a dynamic EOM factory that echoes the request_id."""
 
@@ -188,14 +211,25 @@ def _no_response_exchange() -> ExchangeIO:
 def _system_info_placeholder() -> Callable[[bytes], ExchangeIO]:
     """Neutral response for walker.py's unconditional system-info Get.
 
-    Every v1/v2c walk now sends one of these at start and again at end
+    Every v2c walk now sends one of these at start and again at end
     (trace-format.md § 4.2), so every FakeTransport script needs one scripted
     response per point even when the test itself has nothing to do with system
-    info. Tag 0x02 (Integer) isn't in system_info's decode vocabulary, so this
-    never produces a SystemInfo record — a clean no-op for tests that don't
-    care about it.
+    info. NoSuchObject never produces a SystemInfo record regardless of what
+    decode_values' type vocabulary covers — a clean no-op for tests that don't
+    care about it. v1 needs four of these per point instead of one — see
+    _v1_system_info_placeholders.
     """
-    return _response_exchange([_OID_A])
+    return _nosuchobject_exchange([_OID_A])
+
+
+def _v1_system_info_placeholders() -> list[Callable[[bytes], ExchangeIO]]:
+    """Four neutral responses: v1's system-info capture is one Get per OID.
+
+    Unlike v2c/v3 (one Get, four varbinds), v1 has no per-varbind exceptions
+    (RFC 1157), so walker.py sends one single-OID Get per allowlisted OID —
+    four scripted responses are needed per point, not one.
+    """
+    return [_system_info_placeholder() for _ in range(4)]
 
 
 def _validate_all(records: list[TraceRecord], validator: Draft202012Validator) -> None:
@@ -938,10 +972,10 @@ async def test_v1_walk_header_version_is_1(
     """SNMP v1 walk: one data reply then noSuchName → Header.snmp.version == '1'."""
     transport = FakeTransport(
         responses=[
-            _system_info_placeholder(),
+            *_v1_system_info_placeholders(),
             _response_exchange([_OID_A]),
             _nosuchname_exchange(_OID_A),
-            _system_info_placeholder(),
+            *_v1_system_info_placeholders(),
         ]
     )
     records = await _collect(transport, settings=WalkSettings(snmp_version="1"))
@@ -959,10 +993,10 @@ async def test_v1_walk_nosuchname_completed(
     """SNMP v1 walk: one data reply then noSuchName → Summary.end_reason == 'completed'."""
     transport = FakeTransport(
         responses=[
-            _system_info_placeholder(),
+            *_v1_system_info_placeholders(),
             _response_exchange([_OID_A]),
             _nosuchname_exchange(_OID_A),
-            _system_info_placeholder(),
+            *_v1_system_info_placeholders(),
         ]
     )
     records = await _collect(transport, settings=WalkSettings(snmp_version="1"))
@@ -979,21 +1013,22 @@ async def test_v1_walk_exchange_pdu_is_getnext(
 ) -> None:
     """SNMP v1 walk: main-loop exchanges use Request.pdu == 'getnext'.
 
-    The two system-info Gets (start/end) are 'get', not 'getnext' — this
-    checks only the exchanges the main loop itself sends.
+    The eight system-info Gets (four at start, four at end — one per
+    allowlisted OID on v1) are 'get', not 'getnext' — this checks only the
+    exchanges the main loop itself sends.
     """
     transport = FakeTransport(
         responses=[
-            _system_info_placeholder(),
+            *_v1_system_info_placeholders(),
             _response_exchange([_OID_A]),
             _nosuchname_exchange(_OID_A),
-            _system_info_placeholder(),
+            *_v1_system_info_placeholders(),
         ]
     )
     records = await _collect(transport, settings=WalkSettings(snmp_version="1"))
 
     exchange_records = [r for r in records if r.type == "exchange"]
-    main_loop_exchanges = exchange_records[1:-1]  # exclude the two system-info Gets
+    main_loop_exchanges = exchange_records[4:-4]  # exclude the eight system-info Gets
     assert main_loop_exchanges
     for exch in main_loop_exchanges:
         assert exch.request.pdu == Pdu.getnext
@@ -1079,6 +1114,28 @@ def _v3_response_exchange(oids: list[Oid]) -> Callable[[bytes], ExchangeIO]:
     return factory
 
 
+def _v3_nosuchobject_exchange(oids: list[Oid]) -> Callable[[bytes], ExchangeIO]:
+    """v3 counterpart of _nosuchobject_exchange — see its docstring."""
+
+    def factory(raw: bytes) -> ExchangeIO:
+        decoded = decode_v3_message(raw)
+        request_id = 42 if isinstance(decoded, Malformed) else decoded[0].request_id
+        varbinds = [(oid, 0x80, b"") for oid in oids]
+        response_raw = encode_v3_response(
+            msg_id=1,
+            request_id=request_id,
+            varbinds=varbinds,
+            engine_id=_V3_ENGINE_ID,
+        )
+        return ExchangeIO(
+            attempts=(Attempt(sent_at=0.001, received_at=0.002),),
+            response=(0.002, response_raw),
+            strays=(),
+        )
+
+    return factory
+
+
 def _v3_eom_exchange(after_oid: Oid) -> Callable[[bytes], ExchangeIO]:
     """Return a dynamic factory for an EndOfMibView response over v3.
 
@@ -1111,7 +1168,7 @@ def _v3_system_info_placeholder() -> Callable[[bytes], ExchangeIO]:
     fine without verifying the MAC (the walker never verifies response MACs
     either — see walker.py's comment on that).
     """
-    return _v3_response_exchange([_OID_A])
+    return _v3_nosuchobject_exchange([_OID_A])
 
 
 def test_walk_settings_v3_requires_user() -> None:

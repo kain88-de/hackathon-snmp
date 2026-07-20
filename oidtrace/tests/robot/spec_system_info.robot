@@ -70,3 +70,27 @@ System Info Omits SysName When The Device Does Not Expose It
     Walk V2c
     Trace System Info At Should Have No    start    sysName
     [Teardown]    Stop Emulator
+
+System Info Captures SysName Over SNMPv3
+    [Tags]    system-info    v3
+    [Documentation]    The system-info Get is version-agnostic: v3 (one Get, four
+    ...                varbinds, same as v2c) captures sysName at both walk start
+    ...                and walk end, same as v2c.
+    Start Emulator With System Info    sys_name=switch-floor3
+    Walk V3 As User    probe
+    Trace System Info At Should Have    start    sysName    switch-floor3
+    Trace System Info At Should Have    end    sysName    switch-floor3
+    [Teardown]    Stop Emulator
+
+System Info Omits SysName Over SNMPv1 Without Affecting Other OIDs
+    [Tags]    system-info    v1
+    [Documentation]    SNMPv1 has no per-varbind exceptions (RFC 1157): the walker
+    ...                sends one Get per allowlisted OID instead of one Get for all
+    ...                four, so a device missing only sysName still gets the other
+    ...                three captured -- per-OID omission holds on v1 too, not just
+    ...                v2c/v3.
+    Start Emulator With System Info    sys_descr=Generic Router
+    Walk V1
+    Trace System Info At Should Have    start    sysDescr    Generic Router
+    Trace System Info At Should Have No    start    sysName
+    [Teardown]    Stop Emulator

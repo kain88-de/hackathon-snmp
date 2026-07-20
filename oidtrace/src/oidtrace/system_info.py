@@ -33,16 +33,25 @@ SYSTEM_INFO_ALLOWLIST: tuple[Oid, ...] = (
     Oid.from_str("1.3.6.1.2.1.1.5.0"),
 )
 
+_ALLOWLIST_SET = frozenset(SYSTEM_INFO_ALLOWLIST)
+
 
 def decode_values(varbinds: Sequence[Varbind]) -> dict[str, str | int]:
     """Decode allowlisted varbinds into a SystemInfo.values mapping.
 
     A varbind the device doesn't have (NoSuchObject/NoSuchInstance) or whose
     tag isn't one the allowlist actually uses is skipped, not fabricated —
-    "only allowlisted OIDs appear" applies per-OID.
+    "only allowlisted OIDs appear" applies per-OID. The OID itself is checked
+    against the allowlist too: response varbinds are untrusted device input,
+    so a misbehaving or malicious agent answering with an extra, non-requested
+    OID (e.g. sysContact) must not have its value written into the trace —
+    that would violate the format's "only allowlisted OIDs appear" guarantee
+    regardless of what BER type it happens to use.
     """
     values: dict[str, str | int] = {}
     for vb in varbinds:
+        if vb.oid not in _ALLOWLIST_SET:
+            continue
         decoded = _decode_allowlist_value(vb.tag, vb.value)
         if decoded is not None:
             values[str(vb.oid)] = decoded

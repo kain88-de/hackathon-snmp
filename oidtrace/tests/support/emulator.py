@@ -172,6 +172,22 @@ class EmuProtocol(asyncio.DatagramProtocol):
     def connection_lost(self, exc: Exception | None) -> None:  # pragma: no cover
         pass
 
+    @staticmethod
+    def _get_varbinds(
+        varbinds_in: tuple[Varbind, ...],
+        system_info: Mapping[Oid, tuple[int, bytes]],
+    ) -> list[tuple[Oid, int, bytes]]:
+        """Map requested OIDs to exact-match values, or NoSuchObject if unknown.
+
+        Shared by the v1/v2c and v3 Get handlers so both stay wire-consistent.
+        """
+        return [
+            (vb.oid, *system_info[vb.oid])
+            if vb.oid in system_info
+            else (vb.oid, _TAG_NO_SUCH_OBJECT, b"")
+            for vb in varbinds_in
+        ]
+
     def _get_response(
         self,
         varbinds_in: tuple[Varbind, ...],
@@ -180,12 +196,7 @@ class EmuProtocol(asyncio.DatagramProtocol):
         version: int = 0,
     ) -> bytes:
         """Build a Get response: exact-match value if the device has it, else NoSuchObject."""
-        varbinds = [
-            (vb.oid, *system_info[vb.oid])
-            if vb.oid in system_info
-            else (vb.oid, _TAG_NO_SUCH_OBJECT, b"")
-            for vb in varbinds_in
-        ]
+        varbinds = self._get_varbinds(varbinds_in, system_info)
         return encode_response(rid, varbinds, version=version)
 
     def _getnext_response(
@@ -292,7 +303,7 @@ class EmuProtocol(asyncio.DatagramProtocol):
         if quirks.duplicate_responses:
             self._transport.sendto(response, addr)
 
-    async def _handle_v3(  # noqa: PLR0911, PLR0912
+    async def _handle_v3(  # noqa: PLR0911, PLR0912, PLR0915
         self,
         msg: Message,
         params: V3Params,
@@ -330,6 +341,30 @@ class EmuProtocol(asyncio.DatagramProtocol):
                 username=params.username,
                 pdu_tag=PDU_REPORT,
             )
+            assert self._transport is not None
+            self._transport.sendto(response, addr)
+            return
+
+        # Get with varbinds (e.g. the walker's system-info allowlist probe):
+        # reuse the same exact-match/NoSuchObject mapping as the v1/v2c handler.
+        if msg.pdu_tag == PDU_GET and msg.varbinds:
+            varbinds = self._get_varbinds(msg.varbinds, self._device.system_info)
+            response = encode_v3_response(
+                msg_id=params.msg_id,
+                request_id=msg.request_id,
+                varbinds=varbinds,
+                engine_id=EMU_ENGINE_ID,
+                username=params.username,
+                proto=auth_proto,
+            )
+            if needs_auth:
+                assert auth_kul is not None and auth_proto is not None
+                sign_kul = (
+                    auth_kul[:-1] + bytes([auth_kul[-1] ^ 0xFF])
+                    if self._device.quirks.corrupt_auth_responses
+                    else auth_kul
+                )
+                response = authenticate_msg(response, sign_kul, auth_proto)
             assert self._transport is not None
             self._transport.sendto(response, addr)
             return

@@ -29,7 +29,11 @@ WalkStats.observe counts OIDs from Exchange records (response.varbinds); this
 may exceed the generator's own in-subtree oids_seen by up to bulk_size on the
 terminal exchange, because the generator stops advancing the cursor as soon as it
 detects termination but has already decoded the full varbind list. This is
-acceptable for interrupted summaries (slightly over-counts vs. exact).
+acceptable for interrupted summaries (slightly over-counts vs. exact). The
+system-info Gets (start/end) add further over-count: their OIDs are outside
+the walk's own subtree and never touch the generator's oids_seen_set, but
+WalkStats.observe has no subtree filter, so it counts them too whenever the
+device answers with real values.
 """
 
 from __future__ import annotations
@@ -286,24 +290,21 @@ def _transport_attempt_to_model(attempt: TransportAttempt) -> tf.Attempt:
     return tf.Attempt.model_validate(fields)
 
 
-async def _capture_system_info(  # noqa: PLR0913
+async def _system_info_get(  # noqa: PLR0913
     transport: Transport,
     *,
-    rel: Callable[[], float],
     seq: int,
-    point: Literal["start", "end"],
+    oids: Sequence[Oid],
     settings: WalkSettings,
     sent_request_ids: set[int],
     v3_params: V3Params | None,
     v3_kul: bytes | None,
-) -> tuple[tf.Exchange, tf.SystemInfo | None]:
-    """Capture the system-info allowlist via a dedicated Get (trace-format.md § 4.2).
+) -> tuple[tf.Exchange, list[Varbind]]:
+    """Send one Get for the given OIDs; return its Exchange record and response varbinds.
 
-    Unconditional and version-agnostic: always returns an Exchange record (real
-    wire traffic, participates in seq, its own violations are evidence) and
-    additionally a SystemInfo record when at least one allowlisted OID decoded
-    to a value. This exchange never advances the walk's OID cursor or counts
-    against give_up_after — it is a side capture, not part of the walk proper.
+    varbinds is empty when the response was absent or malformed. This exchange
+    never advances the walk's OID cursor or counts against give_up_after — it
+    is a side capture, not part of the walk proper.
     """
     request_id = random.randint(1, 2**31 - 1)
     sent_request_ids.add(request_id)
@@ -314,7 +315,7 @@ async def _capture_system_info(  # noqa: PLR0913
         raw_request = encode_v3_get(
             msg_id=random.randint(1, 2**31 - 1),
             request_id=request_id,
-            oids=system_info.SYSTEM_INFO_ALLOWLIST,
+            oids=oids,
             engine_id=v3_params.engine_id,
             engine_boots=v3_params.engine_boots,
             engine_time=v3_params.engine_time,
@@ -327,7 +328,7 @@ async def _capture_system_info(  # noqa: PLR0913
     else:
         raw_request = encode_get(
             request_id,
-            system_info.SYSTEM_INFO_ALLOWLIST,
+            oids,
             community=settings.community,
             version=0 if settings.snmp_version == "1" else 1,
         )
@@ -336,7 +337,7 @@ async def _capture_system_info(  # noqa: PLR0913
         {
             "pdu": "get",
             "request_id": request_id,
-            "oids": [tf.Oid(str(oid)) for oid in system_info.SYSTEM_INFO_ALLOWLIST],
+            "oids": [tf.Oid(str(oid)) for oid in oids],
         }
     )
 
@@ -366,10 +367,14 @@ async def _capture_system_info(  # noqa: PLR0913
             malformed_model = tf.Malformed(error=msg.error, length=len(msg.raw))
         else:
             decoded_msg = msg
-            varbinds = list(msg.varbinds)
             response_request_id = msg.request_id
             response_error_status = msg.f1
             response_error_index = msg.f2
+            # v1 has no per-varbind exceptions (RFC 1157): if any requested OID
+            # is missing, error_status=noSuchName(2) and every varbind is Null —
+            # decode_values already skips non-decodable tags, so this correctly
+            # yields nothing for this Get rather than a fabricated value.
+            varbinds = list(msg.varbinds)
 
     violations: list[Violation] = []
     if malformed_model is not None:
@@ -398,14 +403,61 @@ async def _capture_system_info(  # noqa: PLR0913
         violations=violations,
         malformed=malformed_model,
     )
+    return exch, varbinds
+
+
+async def _capture_system_info(  # noqa: PLR0913
+    transport: Transport,
+    *,
+    rel: Callable[[], float],
+    seq: int,
+    point: Literal["start", "end"],
+    settings: WalkSettings,
+    sent_request_ids: set[int],
+    v3_params: V3Params | None,
+    v3_kul: bytes | None,
+) -> tuple[int, list[tf.Exchange], tf.SystemInfo | None]:
+    """Capture the system-info allowlist via dedicated Get(s) (trace-format.md § 4.2).
+
+    v2c/v3 send one Get carrying all four allowlisted OIDs (they support
+    per-varbind exceptions, so a missing OID just comes back NoSuchObject).
+    v1 has no per-varbind exceptions (RFC 1157) — one missing OID fails the
+    whole PDU — so it sends one Get per OID instead, giving genuine per-OID
+    omission on v1 too.
+
+    Always returns one Exchange record per Get sent (real wire traffic, each
+    participates in seq, violations are evidence) and, only when at least one
+    allowlisted OID decoded to a value across all of them, one combined
+    SystemInfo record. Returns the updated seq counter alongside.
+    """
+    oid_groups: list[Sequence[Oid]] = (
+        [(oid,) for oid in system_info.SYSTEM_INFO_ALLOWLIST]
+        if settings.snmp_version == "1"
+        else [system_info.SYSTEM_INFO_ALLOWLIST]
+    )
+
+    exchanges: list[tf.Exchange] = []
+    all_varbinds: list[Varbind] = []
+    for oids in oid_groups:
+        seq += 1
+        exch, varbinds = await _system_info_get(
+            transport,
+            seq=seq,
+            oids=oids,
+            settings=settings,
+            sent_request_ids=sent_request_ids,
+            v3_params=v3_params,
+            v3_kul=v3_kul,
+        )
+        exchanges.append(exch)
+        all_varbinds.extend(varbinds)
 
     sysinfo: tf.SystemInfo | None = None
-    if decoded_msg is not None:
-        values = system_info.decode_values(varbinds)
-        if values:
-            sysinfo = system_info_record(at=_now(rel), point=point, values=values)
+    values = system_info.decode_values(all_varbinds)
+    if values:
+        sysinfo = system_info_record(at=_now(rel), point=point, values=values)
 
-    return exch, sysinfo
+    return seq, exchanges, sysinfo
 
 
 # ---------------------------------------------------------------------------
@@ -578,8 +630,7 @@ async def walk_records(  # noqa: PLR0912, PLR0913, PLR0915
     # Skipped only when v3 discovery already failed (end_reason set above) —
     # without engine params no v3 message, this one included, can be encoded.
     if end_reason is None:
-        seq += 1
-        start_exchange, start_sysinfo = await _capture_system_info(
+        seq, start_exchanges, start_sysinfo = await _capture_system_info(
             transport,
             rel=rel,
             seq=seq,
@@ -589,7 +640,11 @@ async def walk_records(  # noqa: PLR0912, PLR0913, PLR0915
             v3_params=v3_params,
             v3_kul=v3_kul,
         )
-        yield start_exchange
+        for exch in start_exchanges:
+            yield exch
+            for v_str in exch.violations or []:
+                v = Violation(v_str)
+                violation_counts[v] = violation_counts.get(v, 0) + 1
         if start_sysinfo is not None:
             yield start_sysinfo
 
@@ -807,8 +862,7 @@ async def walk_records(  # noqa: PLR0912, PLR0913, PLR0915
     # --- System info at walk end (trace-format.md § 4.2; unconditional) ---
     # Skipped only when v3 discovery failed — same reasoning as at walk start.
     if not (settings.snmp_version == "3" and v3_params is None):
-        seq += 1
-        end_exchange, end_sysinfo = await _capture_system_info(
+        seq, end_exchanges, end_sysinfo = await _capture_system_info(
             transport,
             rel=rel,
             seq=seq,
@@ -818,7 +872,11 @@ async def walk_records(  # noqa: PLR0912, PLR0913, PLR0915
             v3_params=v3_params,
             v3_kul=v3_kul,
         )
-        yield end_exchange
+        for exch in end_exchanges:
+            yield exch
+            for v_str in exch.violations or []:
+                v = Violation(v_str)
+                violation_counts[v] = violation_counts.get(v, 0) + 1
         if end_sysinfo is not None:
             yield end_sysinfo
 
