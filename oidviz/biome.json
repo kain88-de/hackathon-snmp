@@ -32,7 +32,7 @@
   },
   "overrides": [
     {
-      "include": ["src/lib/types.gen.ts"],
+      "include": ["src/lib/types.gen.ts", "src/lib/traceValidator.gen.js"],
       "linter": {
         "enabled": false
       },

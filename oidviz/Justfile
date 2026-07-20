@@ -15,7 +15,7 @@ fmt-check:
     bunx biome check --linter-enabled=false src/
 
 lint:
-    bunx oxlint -D all -c .oxlintrc.json --ignore-pattern "src/lib/types.gen.ts" src/
+    bunx oxlint -D all -c .oxlintrc.json --ignore-pattern "src/lib/types.gen.ts" --ignore-pattern "src/lib/traceValidator.gen.js" src/
     bunx biome check --formatter-enabled=false --error-on-warnings src/
     bunx eslint --max-warnings 0 --no-error-on-unmatched-pattern src/ tests/e2e/ tests/component/
 
@@ -38,6 +38,9 @@ a11y:
 
 gen-types:
     bunx json-schema-to-typescript ../traceformat/trace-format.schema.json -o src/lib/types.gen.ts
+
+gen-validator:
+    bun scripts/gen-trace-validator.mjs
 
 gen-test-data:
     bun tests/e2e/test-data/generate.mjs

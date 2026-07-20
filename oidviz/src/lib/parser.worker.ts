@@ -5,6 +5,12 @@ import {
 	type WorkerResponse,
 	asOid,
 } from "./model.ts";
+import {
+	validateExchange,
+	validateHeader,
+	validateSummary,
+	validateSystemInfo,
+} from "./traceValidator.gen.js";
 import type { Exchange, Header, Summary, SystemInfo } from "./types.gen.ts";
 
 const MS_PER_SECOND = 1000;
@@ -65,7 +71,11 @@ function mapExchange(exchange: Exchange): DomainExchange {
 	};
 }
 
-function parseTrace(buffer: ArrayBuffer): Promise<ParseResult> {
+function isRecordObject(value: unknown): value is Record<string, unknown> {
+	return typeof value === "object" && value !== null && !Array.isArray(value);
+}
+
+export function parseTrace(buffer: ArrayBuffer): Promise<ParseResult> {
 	const t0 = performance.now();
 
 	let header: Header | null = null;
@@ -74,38 +84,67 @@ function parseTrace(buffer: ArrayBuffer): Promise<ParseResult> {
 	const exchanges: DomainExchange[] = [];
 	let truncated = false;
 
-	// Parses one JSON line and dispatches it into the locals above via the
-	// per-record-type switch. Returns false when the line fails to parse
-	// (and sets truncated = true), true otherwise.
+	// Validates one already-parsed record against its declared type and, if
+	// valid, assigns it into the locals above. Returns false (record shape
+	// does not match its type) or true (assigned, or an unhandled type that
+	// is silently ignored per spec).
+	function applyRecord(record: Record<string, unknown>): boolean {
+		switch (record.type) {
+			case "header": {
+				if (!validateHeader(record)) {
+					return false;
+				}
+				header = record;
+				return true;
+			}
+			case "system_info": {
+				if (!validateSystemInfo(record)) {
+					return false;
+				}
+				systemInfo = record;
+				return true;
+			}
+			case "exchange": {
+				if (!validateExchange(record)) {
+					return false;
+				}
+				exchanges.push(mapExchange(record));
+				return true;
+			}
+			case "summary": {
+				if (!validateSummary(record)) {
+					return false;
+				}
+				summary = record;
+				return true;
+			}
+			default: {
+				return true;
+			}
+		}
+	}
+
+	// Parses one JSON line and dispatches it via applyRecord. Returns false
+	// when the line fails to parse or fails shape validation (and sets
+	// truncated = true), true otherwise.
 	function handleLine(line: string): boolean {
 		if (line.trim().length === 0) {
 			return true;
 		}
-		let record: { type: string; [k: string]: unknown };
+		let parsed: unknown;
 		try {
-			record = JSON.parse(line) as { type: string; [k: string]: unknown };
+			parsed = JSON.parse(line);
 		} catch {
 			truncated = true;
 			return false;
 		}
-		switch (record.type) {
-			case "header": {
-				header = record as unknown as Header;
-				break;
-			}
-			case "system_info": {
-				systemInfo = record as unknown as SystemInfo;
-				break;
-			}
-			case "exchange": {
-				exchanges.push(mapExchange(record as unknown as Exchange));
-				break;
-			}
-			case "summary": {
-				summary = record as unknown as Summary;
-				break;
-			}
-			default:
+		if (!isRecordObject(parsed) || typeof parsed.type !== "string") {
+			truncated = true;
+			return false;
+		}
+		if (!applyRecord(parsed)) {
+			truncated = true;
+			return false;
 		}
 		return true;
 	}
