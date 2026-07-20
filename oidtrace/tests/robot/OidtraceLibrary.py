@@ -23,15 +23,44 @@ import time
 from pathlib import Path
 
 from robot.api.deco import keyword
-from traceformat.models import Exchange, Header, Summary
+from traceformat.models import Exchange, Header, Summary, SystemInfo
 
 from oidtrace.auth import AuthProto, password_to_key
+from oidtrace.ber import encode_int, encode_oid, read_tlv
 from oidtrace.oid import Oid
 from oidtrace.tracefile import read_trace
 from tests.support.emulator import EMU_ENGINE_ID, EmulatorThread, EndOfMib, Quirks
 
 # All emulator OIDs live under this ifTable-like prefix (see EmuDevice.simple).
 _EMU_TREE_PREFIX = "1.3.6.1.2.1.2.2.1"
+
+# System-group allowlist (trace-format.md §4.2): name -> OID, keyed the same way
+# "Trace System Info At Should Have"/"...Should Have No" take their `name` argument.
+_SYSTEM_INFO_OIDS = {
+    "sysDescr": "1.3.6.1.2.1.1.1.0",
+    "sysObjectID": "1.3.6.1.2.1.1.2.0",
+    "sysUpTime": "1.3.6.1.2.1.1.3.0",
+    "sysName": "1.3.6.1.2.1.1.5.0",
+}
+_OCTET_STRING_TAG = 0x04
+_OBJECT_IDENTIFIER_TAG = 0x06
+_TIME_TICKS_TAG = 0x43
+
+
+def _octet_string_value(s: str) -> tuple[int, bytes]:
+    return (_OCTET_STRING_TAG, s.encode())
+
+
+def _object_identifier_value(oid_str: str) -> tuple[int, bytes]:
+    """Raw BER payload for an ObjectIdentifier-typed value (e.g. sysObjectID.0)."""
+    _tag, payload, _next = read_tlv(encode_oid(Oid.from_str(oid_str)), 0)
+    return (_OBJECT_IDENTIFIER_TAG, payload)
+
+
+def _time_ticks_value(ticks: int) -> tuple[int, bytes]:
+    """Raw BER payload for a TimeTicks-typed value (e.g. sysUpTime.0)."""
+    _tag, payload, _next = read_tlv(encode_int(ticks, tag=_TIME_TICKS_TAG), 0)
+    return (_TIME_TICKS_TAG, payload)
 
 
 class OidtraceLibrary:
@@ -138,6 +167,40 @@ class OidtraceLibrary:
         self._emulator = EmulatorThread(
             quirks=Quirks(corrupt_auth_responses=True), auth_users=auth_users
         )
+        self._host, self._port = self._emulator.__enter__()
+
+    @keyword("Start Emulator With System Info")
+    def start_emulator_with_system_info(
+        self,
+        sys_descr: str | None = None,
+        sys_object_id: str | None = None,
+        sys_uptime: int | None = None,
+        sys_name: str | None = None,
+    ) -> None:
+        """Emulator whose system group answers Get only for the given OIDs.
+
+        An allowlisted OID left as None is absent from the device: a plain Get for
+        it comes back NoSuchObject, modeling a device that does not expose that
+        field (e.g. sysName unconfigured). sys_object_id is a dotted OID string
+        (ObjectIdentifier); sys_uptime is an integer tick count (TimeTicks); the
+        other two are OctetString.
+        """
+        system_info: dict[Oid, tuple[int, bytes]] = {}
+        if sys_descr is not None:
+            system_info[Oid.from_str(_SYSTEM_INFO_OIDS["sysDescr"])] = _octet_string_value(
+                sys_descr
+            )
+        if sys_object_id is not None:
+            system_info[Oid.from_str(_SYSTEM_INFO_OIDS["sysObjectID"])] = _object_identifier_value(
+                sys_object_id
+            )
+        if sys_uptime is not None:
+            system_info[Oid.from_str(_SYSTEM_INFO_OIDS["sysUpTime"])] = _time_ticks_value(
+                int(sys_uptime)
+            )
+        if sys_name is not None:
+            system_info[Oid.from_str(_SYSTEM_INFO_OIDS["sysName"])] = _octet_string_value(sys_name)
+        self._emulator = EmulatorThread(system_info=system_info)
         self._host, self._port = self._emulator.__enter__()
 
     @keyword("Stop Emulator")
@@ -524,6 +587,35 @@ class OidtraceLibrary:
                 )
                 return
         raise AssertionError("No Summary record in trace")
+
+    @keyword("Trace System Info At Should Have")
+    def trace_system_info_at_should_have(self, point: str, name: str, expected: str) -> None:
+        """Assert the system_info record at `point` (start/end) has `name`
+        (sysDescr/sysObjectID/sysUpTime/sysName) equal to `expected`.
+        """
+        oid = _SYSTEM_INFO_OIDS[name]
+        assert self._trace_path, "No trace file found"
+        for record in read_trace(self._trace_path):
+            if isinstance(record, SystemInfo) and record.point.value == point:
+                actual = record.values.get(oid)
+                assert str(actual) == expected, (
+                    f"Expected {name} {expected!r} at point={point!r}, got {actual!r}"
+                )
+                return
+        raise AssertionError(f"No system_info record at point={point!r} in trace")
+
+    @keyword("Trace System Info At Should Have No")
+    def trace_system_info_at_should_have_no(self, point: str, name: str) -> None:
+        """Assert the system_info record at `point` omits `name` entirely."""
+        oid = _SYSTEM_INFO_OIDS[name]
+        assert self._trace_path, "No trace file found"
+        for record in read_trace(self._trace_path):
+            if isinstance(record, SystemInfo) and record.point.value == point:
+                assert oid not in record.values, (
+                    f"Expected no {name} in system_info at point={point!r}, got {record.values}"
+                )
+                return
+        raise AssertionError(f"No system_info record at point={point!r} in trace")
 
     @keyword("Trace Should Have Violation")
     def trace_should_have_violation(self, violation: str) -> None:
