@@ -1517,6 +1517,16 @@ Resolution:
   switched from `bun test` to Vitest in `2aab170`. Rewrote that section to
   point at the Justfile as the source of truth instead of restating commands
   that will drift again, and corrected the Justfile-targets table.
+- Follow-up (same day, prompted by a question about whether the doc's own
+  title still fit): split the file. `web-guardrails.md` now holds only the
+  CI-enforced material (CI pipeline, Justfile targets, What not to do, type
+  generation); Plan review cadence and Type-driven development moved to a new
+  `docs/dev-guidelines/web-conventions.md`, explicitly framed as review
+  discipline that nothing gates on. Also dropped the "Logic in `.vue`" row
+  from the guardrails file's "What not to do" table — it duplicated the
+  (correctly labeled, unenforced) claim already in the conventions doc, and
+  its old spot implied it was as lint-checked as the rows around it. Updated
+  `oidviz/README.md`'s link accordingly.
 
 ## Guardrails Before More AI Development
 
