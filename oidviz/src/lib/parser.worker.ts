@@ -5,13 +5,13 @@ import {
 	type WorkerResponse,
 	asOid,
 } from "./model.ts";
-import type {
-	Exchange,
-	Header,
-	Summary,
-	SystemInfo,
-	Varbind,
-} from "./types.gen.ts";
+import {
+	validateExchange,
+	validateHeader,
+	validateSummary,
+	validateSystemInfo,
+} from "./traceValidator.gen.js";
+import type { Exchange, Header, Summary, SystemInfo } from "./types.gen.ts";
 
 const MS_PER_SECOND = 1000;
 const OID_TRUNCATE_ARCS = 7;
@@ -75,112 +75,6 @@ function isRecordObject(value: unknown): value is Record<string, unknown> {
 	return typeof value === "object" && value !== null && !Array.isArray(value);
 }
 
-export function isValidHeader(
-	record: Record<string, unknown>,
-): record is Header {
-	const session = record.session;
-	const snmp = record.snmp;
-	const settings = record.settings;
-	return (
-		record.format_version === 1 &&
-		typeof record.tool === "string" &&
-		typeof record.started_at === "string" &&
-		isRecordObject(session) &&
-		typeof session.id === "string" &&
-		typeof session.run === "number" &&
-		typeof session.runs_total === "number" &&
-		isRecordObject(snmp) &&
-		typeof snmp.version === "string" &&
-		isRecordObject(settings) &&
-		typeof settings.bulk_size === "number" &&
-		typeof settings.timeout_s === "number" &&
-		typeof settings.retries === "number" &&
-		typeof settings.start_oid === "string"
-	);
-}
-
-export function isValidSystemInfo(
-	record: Record<string, unknown>,
-): record is SystemInfo {
-	return (
-		typeof record.at === "number" &&
-		(record.point === "start" || record.point === "end") &&
-		isRecordObject(record.values)
-	);
-}
-
-function isValidExchangeRequest(
-	request: unknown,
-): request is Exchange["request"] {
-	return (
-		isRecordObject(request) &&
-		typeof request.pdu === "string" &&
-		typeof request.request_id === "number" &&
-		Array.isArray(request.oids)
-	);
-}
-
-function isValidAttempt(attempt: unknown): boolean {
-	return (
-		isRecordObject(attempt) &&
-		typeof attempt.sent_at === "number" &&
-		(attempt.received_at === null || typeof attempt.received_at === "number")
-	);
-}
-
-function isValidVarbind(varbind: unknown): varbind is Varbind {
-	return isRecordObject(varbind) && typeof varbind.oid === "string";
-}
-
-function isValidResponse(
-	response: unknown,
-): response is NonNullable<Exchange["response"]> {
-	return (
-		isRecordObject(response) &&
-		typeof response.request_id === "number" &&
-		typeof response.error_status === "number" &&
-		typeof response.error_index === "number" &&
-		Array.isArray(response.varbinds) &&
-		response.varbinds.every(isValidVarbind)
-	);
-}
-
-export function isValidExchange(
-	record: Record<string, unknown>,
-): record is Exchange {
-	const attempts = record.attempts;
-	if (
-		typeof record.seq !== "number" ||
-		!isValidExchangeRequest(record.request) ||
-		!Array.isArray(attempts) ||
-		attempts.length === 0 ||
-		!attempts.every(isValidAttempt)
-	) {
-		return false;
-	}
-	const response = record.response;
-	if (response !== undefined && !isValidResponse(response)) {
-		return false;
-	}
-	const violations = record.violations;
-	if (violations !== undefined && !Array.isArray(violations)) {
-		return false;
-	}
-	return true;
-}
-
-export function isValidSummary(
-	record: Record<string, unknown>,
-): record is Summary {
-	return (
-		typeof record.at === "number" &&
-		typeof record.exchanges === "number" &&
-		typeof record.oids_seen === "number" &&
-		typeof record.end_reason === "string" &&
-		isRecordObject(record.violation_counts)
-	);
-}
-
 export function parseTrace(buffer: ArrayBuffer): Promise<ParseResult> {
 	const t0 = performance.now();
 
@@ -197,28 +91,28 @@ export function parseTrace(buffer: ArrayBuffer): Promise<ParseResult> {
 	function applyRecord(record: Record<string, unknown>): boolean {
 		switch (record.type) {
 			case "header": {
-				if (!isValidHeader(record)) {
+				if (!validateHeader(record)) {
 					return false;
 				}
 				header = record;
 				return true;
 			}
 			case "system_info": {
-				if (!isValidSystemInfo(record)) {
+				if (!validateSystemInfo(record)) {
 					return false;
 				}
 				systemInfo = record;
 				return true;
 			}
 			case "exchange": {
-				if (!isValidExchange(record)) {
+				if (!validateExchange(record)) {
 					return false;
 				}
 				exchanges.push(mapExchange(record));
 				return true;
 			}
 			case "summary": {
-				if (!isValidSummary(record)) {
+				if (!validateSummary(record)) {
 					return false;
 				}
 				summary = record;
