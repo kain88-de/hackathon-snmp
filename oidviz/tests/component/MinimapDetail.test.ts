@@ -460,9 +460,8 @@ describe("MinimapDetail", () => {
 
 		// 3000 exchanges all sharing makeExchange()'s default sentAtMs: 0 — they
 		// collapse into a single minimap bucket, so auto-focus's window around
-		// that bucket still contains the entire list (findings.md #4's repro
-		// needs every row in the detail window, not just a narrow slice of it).
-		// drawDetail's real row-counting logic runs here (the fake 2D context
+		// that bucket still contains the entire list, not just a narrow slice of
+		// it. drawDetail's real row-counting logic runs here (the fake 2D context
 		// is a no-op spy, not a stub that short-circuits the loop), so the
 		// hidden count below is the actual MAX_H-vs-row-pitch arithmetic, not a
 		// guess: only floor((MAX_H - MT - RH) / (RH + RG)) + 1 rows fit before

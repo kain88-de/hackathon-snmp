@@ -54,9 +54,8 @@ describe("App worker completion handling", () => {
 	// makeParseResult({ exchanges: [makeExchange(), makeExchange()] }) for the
 	// second (current) load vs. a single-exchange result for the first
 	// (superseded) load — the first worker's result arrives *after* the
-	// second's, simulating the exact race in finding #18: an older worker
-	// result must not overwrite the newer parse state once a load has been
-	// superseded.
+	// second's. An older worker's result must not overwrite the newer parse
+	// state once a load has been superseded.
 	test("a stale result from a superseded worker does not overwrite the newer parse state", async () => {
 		vi.stubGlobal("Worker", MockWorker);
 		MockWorker.instances = [];
