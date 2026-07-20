@@ -16,6 +16,7 @@ concurrency:
 
 jobs:
   ci:
+    name: Traceformat CI
     runs-on: ubuntu-latest
     defaults:
       run:

@@ -16,6 +16,7 @@ concurrency:
 
 jobs:
   ci:
+    name: OIDTrace CI
     runs-on: ubuntu-latest
     defaults:
       run:
