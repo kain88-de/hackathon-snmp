@@ -1428,21 +1428,43 @@ Resolution:
     something buried in history
 - fixed `README.md:8-29`: marked `doctor` "(not yet implemented)" and pointed
   it at its design doc instead of describing invented output; rewrote OIDViz's
-  description to name its actual three views and its actual delivery model
-  (client-side web app, no server round-trip); pointed the adaptive-settings-
-  finder mention at the live design doc instead of "git history"
+  description to name its actual delivery model (client-side web app, no
+  server round-trip); pointed the adaptive-settings-finder mention at the
+  live design doc instead of "git history"
 - fixed the identical stale claim in `oidviz/README.md`, which duplicated the
   same invented feature list independently of the root README
-- lines 78-84 (`## Where things stand`) needed no further change — already
-  accurate
+- follow-up durability pass (same day, prompted by "make sure this doesn't
+  drift again"): the first-pass fix above still left three facts asserted in
+  two places at once, each a future drift risk of exactly this finding's
+  kind, so removed the duplication instead of just correcting the wording:
+  - `README.md:8-29`'s doctor blurb stated the settings-ladder rungs as
+    `bulk 10 → 8 → 5 → 1` — checked against the design doc it cites and found
+    that's explicitly still an "Open question" there
+    (`2026-06-11-doctor-mvp-design.md:64`); asserting it as decided in the
+    README was overconfident about an unbuilt feature and would silently go
+    wrong the moment the real ladder is designed. Reworded to describe the
+    behavior without the specific numbers, deferring to the design doc.
+  - `README.md:8-29`'s OIDViz blurb enumerated the three current view names —
+    the same fact `oidviz/README.md` also states. Two copies of a UI detail
+    that changes as the app grows is exactly the disagreement risk this
+    finding is about, so root `README.md` no longer restates the list; it
+    points to `oidviz/README.md` as the one place that names current views.
+  - `README.md:78-84`'s "Where things stand" stated `oidtrace`'s supported
+    SNMP versions (`v1/v2c and v3 authNoPriv`) inline — the same fact
+    `oidtrace/README.md`'s own "What is implemented, and what is not" section
+    already tracks authoritatively. Removed the inline list; the root README
+    now only points there, so there is exactly one place to update when
+    `oidtrace` gains a new capability (e.g. authPriv) instead of two that can
+    fall out of sync
 
 Recommended follow-up:
 
-- none for the specific drift found — `README.md` now matches the current
-  repo throughout, not just at the originally-quoted lines
-- general practice going forward: when a component's status changes
-  (implemented, removed, rescoped), update every README that describes it in
-  the same commit, not just the most detailed one
+- none — the remaining specifics in `README.md` are either stable
+  architecture facts (unlikely to change without a format/version bump) or
+  single-sourced pointers to the one doc responsible for that detail
+- general practice going forward: when a component's status or feature list
+  changes, prefer updating its one authoritative doc and pointing to it,
+  over restating the detail in multiple READMEs that can drift apart
 
 ### 21. The repo shows a pattern of process language outpacing enforceable controls
 

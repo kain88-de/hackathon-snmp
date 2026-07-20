@@ -6,9 +6,10 @@ RFC-violating, and the silently broken.
 ## The tools
 
 **doctor** — the planned MVP entry point (not yet implemented). Design: one command
-that automates the support settings ladder (bulk 10 → 8 → 5 → 1, then timeouts),
+that walks the support settings ladder down until the device responds cleanly,
 subtree-scoped and time-budgeted, answering: _which settings make this device work?_
-Design sketch: `docs/superpowers/specs/2026-06-11-doctor-mvp-design.md`.
+The exact ladder rungs are still an open question — see the design sketch:
+`docs/superpowers/specs/2026-06-11-doctor-mvp-design.md`.
 
 **OIDTrace** — the capture layer and CLI underneath everything, implemented and
 validated end-to-end (see "Where things stand" below). Walks a device and records
@@ -19,9 +20,9 @@ before sharing it. Format spec:
 `traceformat/trace-format.md` (+ JSON Schema).
 
 **OIDViz** — a Vue web app that loads an `oidtrace` trace file in the browser and
-renders it client-side, no server round-trip. Three views today: Findings by Category,
-Minimap + Detail, and OID Tree. Live at the GitHub Pages link below, or build and
-self-host.
+renders it client-side, no server round-trip. Current views are documented in
+[`oidviz/README.md`](oidviz/README.md), not restated here. Live at the GitHub Pages
+link below, or build and self-host.
 
 Under the hood, a **quirk emulator** (fixed request-ids, bulk-size crashes, slow
 subtrees, end-of-MIB silence) lives in the test suite — every pathology the tools must
@@ -76,9 +77,10 @@ Then serve `dist/` with any static file server or open `dist/index.html` directl
 
 ## Where things stand
 
-**Status**: the capture layer (`oidtrace`) is implemented end-to-end — SNMP v1/v2c
-and v3 authNoPriv, validated against a real snmpd and net-snmp cross-walks. Its
-architecture and current limitations are documented in
-[`oidtrace/README.md`](oidtrace/README.md); the trace format
-(`traceformat/trace-format.md` + `traceformat/trace-format.schema.json`) is
-authoritative. Next: the doctor, then further OIDViz work.
+**Status**: the capture layer (`oidtrace`) is implemented end-to-end and validated
+against a real snmpd and net-snmp cross-walks. Exactly what's supported (and what
+isn't yet) is tracked in [`oidtrace/README.md`](oidtrace/README.md)'s own
+"What is implemented, and what is not" section — not restated here, so the two
+can't silently disagree. The trace format (`traceformat/trace-format.md` +
+`traceformat/trace-format.schema.json`) is authoritative. Next: the doctor, then
+further OIDViz work.
