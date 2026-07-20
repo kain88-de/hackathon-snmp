@@ -5,7 +5,13 @@ import {
 	type WorkerResponse,
 	asOid,
 } from "./model.ts";
-import type { Exchange, Header, Summary, SystemInfo } from "./types.gen.ts";
+import type {
+	Exchange,
+	Header,
+	Summary,
+	SystemInfo,
+	Varbind,
+} from "./types.gen.ts";
 
 const MS_PER_SECOND = 1000;
 const OID_TRUNCATE_ARCS = 7;
@@ -65,7 +71,117 @@ function mapExchange(exchange: Exchange): DomainExchange {
 	};
 }
 
-function parseTrace(buffer: ArrayBuffer): Promise<ParseResult> {
+function isRecordObject(value: unknown): value is Record<string, unknown> {
+	return typeof value === "object" && value !== null && !Array.isArray(value);
+}
+
+export function isValidHeader(
+	record: Record<string, unknown>,
+): record is Header {
+	const session = record.session;
+	const snmp = record.snmp;
+	const settings = record.settings;
+	return (
+		record.format_version === 1 &&
+		typeof record.tool === "string" &&
+		typeof record.started_at === "string" &&
+		isRecordObject(session) &&
+		typeof session.id === "string" &&
+		typeof session.run === "number" &&
+		typeof session.runs_total === "number" &&
+		isRecordObject(snmp) &&
+		typeof snmp.version === "string" &&
+		isRecordObject(settings) &&
+		typeof settings.bulk_size === "number" &&
+		typeof settings.timeout_s === "number" &&
+		typeof settings.retries === "number" &&
+		typeof settings.start_oid === "string"
+	);
+}
+
+export function isValidSystemInfo(
+	record: Record<string, unknown>,
+): record is SystemInfo {
+	return (
+		typeof record.at === "number" &&
+		(record.point === "start" || record.point === "end") &&
+		isRecordObject(record.values)
+	);
+}
+
+function isValidExchangeRequest(
+	request: unknown,
+): request is Exchange["request"] {
+	return (
+		isRecordObject(request) &&
+		typeof request.pdu === "string" &&
+		typeof request.request_id === "number" &&
+		Array.isArray(request.oids)
+	);
+}
+
+function isValidAttempt(attempt: unknown): boolean {
+	return (
+		isRecordObject(attempt) &&
+		typeof attempt.sent_at === "number" &&
+		(attempt.received_at === null || typeof attempt.received_at === "number")
+	);
+}
+
+function isValidVarbind(varbind: unknown): varbind is Varbind {
+	return isRecordObject(varbind) && typeof varbind.oid === "string";
+}
+
+function isValidResponse(
+	response: unknown,
+): response is NonNullable<Exchange["response"]> {
+	return (
+		isRecordObject(response) &&
+		typeof response.request_id === "number" &&
+		typeof response.error_status === "number" &&
+		typeof response.error_index === "number" &&
+		Array.isArray(response.varbinds) &&
+		response.varbinds.every(isValidVarbind)
+	);
+}
+
+export function isValidExchange(
+	record: Record<string, unknown>,
+): record is Exchange {
+	const attempts = record.attempts;
+	if (
+		typeof record.seq !== "number" ||
+		!isValidExchangeRequest(record.request) ||
+		!Array.isArray(attempts) ||
+		attempts.length === 0 ||
+		!attempts.every(isValidAttempt)
+	) {
+		return false;
+	}
+	const response = record.response;
+	if (response !== undefined && !isValidResponse(response)) {
+		return false;
+	}
+	const violations = record.violations;
+	if (violations !== undefined && !Array.isArray(violations)) {
+		return false;
+	}
+	return true;
+}
+
+export function isValidSummary(
+	record: Record<string, unknown>,
+): record is Summary {
+	return (
+		typeof record.at === "number" &&
+		typeof record.exchanges === "number" &&
+		typeof record.oids_seen === "number" &&
+		typeof record.end_reason === "string" &&
+		isRecordObject(record.violation_counts)
+	);
+}
+
+export function parseTrace(buffer: ArrayBuffer): Promise<ParseResult> {
 	const t0 = performance.now();
 
 	let header: Header | null = null;
@@ -74,38 +190,67 @@ function parseTrace(buffer: ArrayBuffer): Promise<ParseResult> {
 	const exchanges: DomainExchange[] = [];
 	let truncated = false;
 
-	// Parses one JSON line and dispatches it into the locals above via the
-	// per-record-type switch. Returns false when the line fails to parse
-	// (and sets truncated = true), true otherwise.
+	// Validates one already-parsed record against its declared type and, if
+	// valid, assigns it into the locals above. Returns false (record shape
+	// does not match its type) or true (assigned, or an unhandled type that
+	// is silently ignored per spec).
+	function applyRecord(record: Record<string, unknown>): boolean {
+		switch (record.type) {
+			case "header": {
+				if (!isValidHeader(record)) {
+					return false;
+				}
+				header = record;
+				return true;
+			}
+			case "system_info": {
+				if (!isValidSystemInfo(record)) {
+					return false;
+				}
+				systemInfo = record;
+				return true;
+			}
+			case "exchange": {
+				if (!isValidExchange(record)) {
+					return false;
+				}
+				exchanges.push(mapExchange(record));
+				return true;
+			}
+			case "summary": {
+				if (!isValidSummary(record)) {
+					return false;
+				}
+				summary = record;
+				return true;
+			}
+			default: {
+				return true;
+			}
+		}
+	}
+
+	// Parses one JSON line and dispatches it via applyRecord. Returns false
+	// when the line fails to parse or fails shape validation (and sets
+	// truncated = true), true otherwise.
 	function handleLine(line: string): boolean {
 		if (line.trim().length === 0) {
 			return true;
 		}
-		let record: { type: string; [k: string]: unknown };
+		let parsed: unknown;
 		try {
-			record = JSON.parse(line) as { type: string; [k: string]: unknown };
+			parsed = JSON.parse(line);
 		} catch {
 			truncated = true;
 			return false;
 		}
-		switch (record.type) {
-			case "header": {
-				header = record as unknown as Header;
-				break;
-			}
-			case "system_info": {
-				systemInfo = record as unknown as SystemInfo;
-				break;
-			}
-			case "exchange": {
-				exchanges.push(mapExchange(record as unknown as Exchange));
-				break;
-			}
-			case "summary": {
-				summary = record as unknown as Summary;
-				break;
-			}
-			default:
+		if (!isRecordObject(parsed) || typeof parsed.type !== "string") {
+			truncated = true;
+			return false;
+		}
+		if (!applyRecord(parsed)) {
+			truncated = true;
+			return false;
 		}
 		return true;
 	}
