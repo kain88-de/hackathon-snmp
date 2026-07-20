@@ -181,6 +181,21 @@ describe("FindingsByCategory", () => {
 		expect(badge.text()).toBe("×3");
 	});
 
+	// Any exchange row. The row must render as a real <button> element so it
+	// is reachable by Tab and announced as interactive by screen readers,
+	// rather than an inert <div> that only responds to a mouse click.
+	test("an exchange row renders as a real button for keyboard and screen-reader access", () => {
+		const exchanges = [makeExchange({ seq: 1, rtt: 300 })];
+		const facetState = makeFacetState({ slowMs: 500 });
+
+		const wrapper = mount(FindingsByCategory, {
+			props: { exchanges, facetState },
+		});
+
+		const row = wrapper.find(".exchange-row");
+		expect(row.element.tagName).toBe("BUTTON");
+	});
+
 	// Any exchange row. When the user clicks the row, the component must emit
 	// focus-exchange with that exchange's seq number. Use a fast exchange
 	// (rtt: 300, slowMs: 500) to avoid special formatting, focusing the test

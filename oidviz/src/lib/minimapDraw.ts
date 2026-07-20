@@ -288,6 +288,7 @@ export function drawDetail(
 	canvas: HTMLCanvasElement,
 	windowExchanges: DomainExchange[],
 	slowMs: number,
+	selectedIndex: number | null = null,
 ): { hiddenCount: number } {
 	const ctx = canvas.getContext("2d");
 	if (!ctx) {
@@ -337,6 +338,12 @@ export function drawDetail(
 			// row after it.
 			hiddenCount = rows - i;
 			break;
+		}
+
+		if (i === selectedIndex) {
+			ctx.strokeStyle = "rgba(59,130,246,0.7)";
+			ctx.lineWidth = 1;
+			ctx.strokeRect(PIXEL_OFFSET, y + PIXEL_OFFSET, w - 1, RH - 1);
 		}
 
 		const relMs = ex.sentAtMs - wMinT;

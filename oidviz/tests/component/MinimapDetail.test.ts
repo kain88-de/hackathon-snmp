@@ -340,6 +340,113 @@ describe("MinimapDetail", () => {
 		});
 	});
 
+	describe("detail keyboard accessibility", () => {
+		// The detail canvas currently has no tabindex at all, so it cannot be
+		// reached by Tab; keyboard users have no way to trigger focus-exchange
+		// without a mouse. Fixing this means the canvas must be a focus stop.
+		test("the detail canvas is keyboard-focusable", () => {
+			const wrapper = mountMinimap(makeHoverSet());
+			const detail = wrapper.find(".detail-canvas");
+
+			expect(detail.attributes("tabindex")).toBe("0");
+		});
+
+		// Two exchanges (seq 7, seq 8) at the same sentAtMs, both inside the
+		// auto-focused window, rendering as detail rows 0 and 1 in array order
+		// (same setup as "clicking a detail row focuses that row's exchange").
+		// ArrowDown must select row 0 and announce its OID, RTT, and status
+		// through a screen-reader-visible live region — the only way a
+		// non-sighted keyboard user can learn what a canvas-drawn row contains.
+		test("ArrowDown on the detail canvas selects the first row and announces its content", async () => {
+			const wrapper = mountMinimap([
+				makeExchange({
+					seq: 7,
+					sentAtMs: 0,
+					requestOid: asOid("1.3.6.1.2.1.1.1.0"),
+					rtt: 50,
+				}),
+				makeExchange({
+					seq: 8,
+					sentAtMs: 0,
+					requestOid: asOid("1.3.6.1.2.1.1.2.0"),
+					rtt: 1500,
+				}),
+			]);
+			const detail = wrapper.find(".detail-canvas");
+
+			detail.element.dispatchEvent(
+				new KeyboardEvent("keydown", { key: "ArrowDown", cancelable: true }),
+			);
+			await nextTick();
+
+			const status = wrapper.find(".detail-row-status");
+			expect(status.text()).toContain("Row 1 of 2");
+			expect(status.text()).toContain("1.3.6.1.2.1.1.1.0");
+			expect(status.text()).toContain("RTT 50.0ms");
+			expect(status.text()).toContain("Normal");
+		});
+
+		// Same two-row setup. Two ArrowDown presses move from row 0 to row 1
+		// (the slow exchange, rtt 1500 > the default slowMs 1000); a further
+		// ArrowDown must clamp at the last row instead of running past the end
+		// of currentWindowExchanges. ArrowUp then must move back to row 0.
+		test("ArrowDown/ArrowUp move between rows and clamp at the last row", async () => {
+			const wrapper = mountMinimap([
+				makeExchange({ seq: 7, sentAtMs: 0, rtt: 50 }),
+				makeExchange({ seq: 8, sentAtMs: 0, rtt: 1500 }),
+			]);
+			const detail = wrapper.find(".detail-canvas");
+			const status = wrapper.find(".detail-row-status");
+
+			const arrowDown = async (): Promise<void> => {
+				detail.element.dispatchEvent(
+					new KeyboardEvent("keydown", { key: "ArrowDown", cancelable: true }),
+				);
+				await nextTick();
+			};
+			const arrowUp = async (): Promise<void> => {
+				detail.element.dispatchEvent(
+					new KeyboardEvent("keydown", { key: "ArrowUp", cancelable: true }),
+				);
+				await nextTick();
+			};
+
+			await arrowDown();
+			expect(status.text()).toContain("Row 1 of 2");
+
+			await arrowDown();
+			expect(status.text()).toContain("Row 2 of 2");
+			expect(status.text()).toContain("Slow");
+
+			await arrowDown();
+			expect(status.text()).toContain("Row 2 of 2");
+
+			await arrowUp();
+			expect(status.text()).toContain("Row 1 of 2");
+		});
+
+		// Same two-row setup. After ArrowDown selects row 0 (seq 7), pressing
+		// Enter must emit focus-exchange for seq 7 — the keyboard equivalent of
+		// clicking that detail row, proving keyboard users can reach the same
+		// outcome as a mouse click without one.
+		test("Enter on a selected detail row emits focus-exchange for that row", () => {
+			const wrapper = mountMinimap([
+				makeExchange({ seq: 7, sentAtMs: 0 }),
+				makeExchange({ seq: 8, sentAtMs: 0 }),
+			]);
+			const detail = wrapper.find(".detail-canvas");
+
+			detail.element.dispatchEvent(
+				new KeyboardEvent("keydown", { key: "ArrowDown", cancelable: true }),
+			);
+			detail.element.dispatchEvent(
+				new KeyboardEvent("keydown", { key: "Enter", cancelable: true }),
+			);
+
+			expect(wrapper.emitted("focus-exchange")).toEqual([[7]]);
+		});
+	});
+
 	describe("truncation warning", () => {
 		// makeHoverSet(): 4 rows, far under drawDetail's MAX_H row cap — the
 		// truncation warning must stay hidden so ordinary traces never show it.
