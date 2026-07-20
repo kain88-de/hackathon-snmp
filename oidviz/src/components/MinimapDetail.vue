@@ -47,7 +47,7 @@ let dragPanStartR = 0;
 // Recomputed only inside redraw() (i.e. when the selection or data actually
 // changes), then reused by detail hover/click — those fire on every pointer
 // move but never change which exchanges are in view, so recomputing the
-// window filter there was a pure rescan (findings.md #14).
+// window filter there was a pure rescan.
 let currentWindowExchanges: DomainExchange[] = [];
 
 const EDGE_GRAB_PX = 6;

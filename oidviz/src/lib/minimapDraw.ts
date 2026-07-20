@@ -147,9 +147,9 @@ interface TimeRange {
 const timeRangeCache = new WeakMap<DomainExchange[], TimeRange>();
 
 // Derived from exchanges alone (never from selection state), yet was being
-// recomputed from scratch on every hover/drag pointer-move event — findings.md
-// #14. Cached per exchanges-array identity so repeated calls during one
-// interaction reuse the same result instead of rescanning the full trace.
+// recomputed from scratch on every hover/drag pointer-move event. Cached per
+// exchanges-array identity so repeated calls during one interaction reuse the
+// same result instead of rescanning the full trace.
 export function getTimeRange(exchanges: DomainExchange[]): TimeRange {
 	const cached = timeRangeCache.get(exchanges);
 	if (cached) {
@@ -172,8 +172,8 @@ const columnBucketsCache = new WeakMap<DomainExchange[], ColumnBuckets>();
 // Column assignment (which pixel column each exchange's timestamp falls into)
 // only depends on exchanges + column count, yet drawMinimap and autoFocus each
 // rebuilt it independently on every call, and minimap hover ran its own O(n)
-// filter per pointer-move to find one column's bucket — findings.md #14.
-// Cached per (exchanges, cols) so drawing, auto-focus, and hover all share one
+// filter per pointer-move to find one column's bucket. Cached per
+// (exchanges, cols) so drawing, auto-focus, and hover all share one
 // precomputed index instead of rescanning the full trace each time.
 export function getColumnBuckets(
 	exchanges: DomainExchange[],

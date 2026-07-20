@@ -166,12 +166,12 @@ describe("getWindowExchanges", () => {
 	});
 });
 
-	// findings.md #14: hover and drag were rescanning the full exchange list on
-	// every pointer-move event. getTimeRange/getColumnBuckets cache their
-	// derived structures per exchanges-array identity so repeated calls during
-	// one interaction (same array reference) reuse the cached result instead
-	// of rescanning — these are the "perf checks" the finding asked for: they
-	// fail if a future edit removes the memoization.
+	// Hover and drag were rescanning the full exchange list on every
+	// pointer-move event. getTimeRange/getColumnBuckets cache their derived
+	// structures per exchanges-array identity so repeated calls during one
+	// interaction (same array reference) reuse the cached result instead of
+	// rescanning. These tests double as a perf regression guard: they fail if
+	// a future edit removes the memoization.
 	describe("getTimeRange", () => {
 		test("computes min, max, and the span between them", () => {
 			const exchanges = [
