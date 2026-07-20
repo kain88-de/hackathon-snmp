@@ -1379,12 +1379,18 @@ supposed to guarantee.
 ## Documentation and Process Findings
 
 ### 20. The README appears to contradict the current state of the repo
+*DONE*
 
 - Severity: Medium
+- Status: RESOLVED (fixed 2026-07-20)
 - Files:
-  - `README.md:78-84`
+  - `README.md:78-84` (originally-quoted section)
+  - `README.md:8-29` (`## The tools` — the actual current drift, found while
+    verifying this finding)
+  - `oidviz/README.md` (same stale "self-contained HTML report" claim,
+    duplicated at the package level)
 
-Observed mismatch:
+Observed mismatch (at review time):
 
 The README says the capture layer was implemented and then deliberately deleted,
 while the repo currently contains a substantial `oidtrace/` implementation.
@@ -1394,10 +1400,71 @@ Impact:
 - readers cannot tell which docs are historical and which are current
 - this lowers trust in all product and architecture documentation
 
+Resolution:
+
+- checked history: commit `8013255` ("docs(oidtrace): add README, retire the
+  architecture design + plan docs", 2026-07-07) already rewrote lines 78-84 to
+  describe `oidtrace` as implemented, not deleted — before this finding was
+  written into `findings.md`, so the exact quoted contradiction no longer
+  existed in the reviewed tree
+- verifying the rest of the README against the current repo (per this
+  finding's own recommended follow-up) turned up a live version of the same
+  problem in `## The tools`, confirmed against the actual code:
+  - `doctor` was described in full present-tense functional detail (settings
+    ladder, verdict output, live progress) with no implementation anywhere in
+    the repo — only a design spec exists
+    (`docs/superpowers/specs/2026-06-11-doctor-mvp-design.md`)
+  - OIDViz was described as rendering "a self-contained HTML report" (verdict
+    panel, latency waterfall, subtree heat, run comparison) that "opens by
+    double-click, attaches to a ticket" and "shares its rendering with the
+    doctor's report" — none of that exists; `oidviz/src/App.vue` and
+    `Sidebar.vue` show the real product is a Vue web app with three views
+    (`findings`/`minimap`/`oidtree` → Findings by Category, Minimap + Detail,
+    OID Tree), loaded by picking a trace file in the browser, not a generated
+    per-trace report file
+  - "its design sketches live in git history" (for the adaptive settings
+    finder) undersold reality: that sketch is still a tracked, readable file
+    (`docs/superpowers/specs/2026-06-11-doctor-mvp-design.md:58`), not just
+    something buried in history
+- fixed `README.md:8-29`: marked `doctor` "(not yet implemented)" and pointed
+  it at its design doc instead of describing invented output; rewrote OIDViz's
+  description to name its actual delivery model (client-side web app, no
+  server round-trip); pointed the adaptive-settings-finder mention at the
+  live design doc instead of "git history"
+- fixed the identical stale claim in `oidviz/README.md`, which duplicated the
+  same invented feature list independently of the root README
+- follow-up durability pass (same day, prompted by "make sure this doesn't
+  drift again"): the first-pass fix above still left three facts asserted in
+  two places at once, each a future drift risk of exactly this finding's
+  kind, so removed the duplication instead of just correcting the wording:
+  - `README.md:8-29`'s doctor blurb stated the settings-ladder rungs as
+    `bulk 10 → 8 → 5 → 1` — checked against the design doc it cites and found
+    that's explicitly still an "Open question" there
+    (`2026-06-11-doctor-mvp-design.md:64`); asserting it as decided in the
+    README was overconfident about an unbuilt feature and would silently go
+    wrong the moment the real ladder is designed. Reworded to describe the
+    behavior without the specific numbers, deferring to the design doc.
+  - `README.md:8-29`'s OIDViz blurb enumerated the three current view names —
+    the same fact `oidviz/README.md` also states. Two copies of a UI detail
+    that changes as the app grows is exactly the disagreement risk this
+    finding is about, so root `README.md` no longer restates the list; it
+    points to `oidviz/README.md` as the one place that names current views.
+  - `README.md:78-84`'s "Where things stand" stated `oidtrace`'s supported
+    SNMP versions (`v1/v2c and v3 authNoPriv`) inline — the same fact
+    `oidtrace/README.md`'s own "What is implemented, and what is not" section
+    already tracks authoritatively. Removed the inline list; the root README
+    now only points there, so there is exactly one place to update when
+    `oidtrace` gains a new capability (e.g. authPriv) instead of two that can
+    fall out of sync
+
 Recommended follow-up:
 
-- separate historical notes from current-state documentation
-- make the README describe the current repository, not prior iteration history
+- none — the remaining specifics in `README.md` are either stable
+  architecture facts (unlikely to change without a format/version bump) or
+  single-sourced pointers to the one doc responsible for that detail
+- general practice going forward: when a component's status or feature list
+  changes, prefer updating its one authoritative doc and pointing to it,
+  over restating the detail in multiple READMEs that can drift apart
 
 ### 21. The repo shows a pattern of process language outpacing enforceable controls
 
