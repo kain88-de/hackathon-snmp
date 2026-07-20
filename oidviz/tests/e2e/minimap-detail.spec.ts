@@ -80,6 +80,32 @@ test("minimap canvas is keyboard-focusable", async ({ page }) => {
 	await expect(miniCanvas).toBeFocused();
 });
 
+// The detail canvas gets tabindex="0" in onMounted so keyboard users can
+// reach it and navigate rows with arrow keys — not fixture-dependent.
+test("detail canvas is keyboard-focusable", async ({ page }) => {
+	await openMinimapDetail(page);
+
+	const detailCanvas = page.locator(".detail-canvas");
+	await detailCanvas.focus();
+	await expect(detailCanvas).toBeFocused();
+});
+
+// canonical has 5 exchanges; auto-focus on mount puts at least one in the
+// detail window. ArrowDown after focusing the detail canvas must announce a
+// row's content via the screen-reader-visible live region, proving keyboard
+// users get the same row information mouse users get from hovering.
+test("ArrowDown on the detail canvas announces a row for screen readers", async ({
+	page,
+}) => {
+	await openMinimapDetail(page);
+
+	const detailCanvas = page.locator(".detail-canvas");
+	await detailCanvas.focus();
+	await page.keyboard.press("ArrowDown");
+
+	await expect(page.locator(".detail-row-status")).toContainText(/Row 1 of/);
+});
+
 // Canvas pixel/selection state isn't introspectable from Playwright without
 // adding test-only instrumentation (out of scope); this only checks that a
 // drag doesn't throw or log an error, not the resulting selection/window.

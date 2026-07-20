@@ -152,8 +152,9 @@ const visibleItems = computed((): VisibleSlice => {
 					<span class="chevron">{{ item.expanded ? "▼" : "▶" }}</span>
 					{{ item.label }}
 				</button>
-				<div
+				<button
 					v-else
+					type="button"
 					class="exchange-row"
 					:data-seq="item.exchange.seq"
 					@click="emit('focus-exchange', item.exchange.seq)"
@@ -174,7 +175,7 @@ const visibleItems = computed((): VisibleSlice => {
 						class="badge badge-retry"
 						>×{{ item.exchange.attemptCount }}</span
 					>
-				</div>
+				</button>
 			</template>
 
 			<div :style="{ height: visibleItems.bottomSpacerHeight + 'px' }" />
@@ -224,8 +225,14 @@ const visibleItems = computed((): VisibleSlice => {
 	align-items: center;
 	gap: 8px;
 	padding: 0 12px;
+	width: 100%;
+	box-sizing: border-box;
+	border: none;
 	border-bottom: 1px solid var(--color-border);
 	background: var(--color-surface);
+	font: inherit;
+	text-align: left;
+	cursor: pointer;
 }
 
 .exchange-row:hover {

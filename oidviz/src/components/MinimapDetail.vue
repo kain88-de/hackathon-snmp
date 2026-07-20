@@ -30,6 +30,8 @@ const miniCanvas = ref<HTMLCanvasElement | null>(null);
 const detailCanvas = ref<HTMLCanvasElement | null>(null);
 const tooltipEl = ref<HTMLDivElement | null>(null);
 const hiddenCount = ref(0);
+const selectedDetailRow = ref<number | null>(null);
+const detailRowAnnouncement = ref("");
 
 // Mutable selection state — plain vars for perf (no reactive overhead per frame)
 let selectedColStart = 0;
@@ -196,6 +198,28 @@ function onDetailHover(e: MouseEvent): void {
 	showTooltip(html, e.clientX, e.clientY);
 }
 
+function announceSelectedDetailRow(): void {
+	if (selectedDetailRow.value === null) {
+		detailRowAnnouncement.value = "";
+		return;
+	}
+	const ex = currentWindowExchanges[selectedDetailRow.value];
+	if (ex === undefined) {
+		detailRowAnnouncement.value = "";
+		return;
+	}
+	const status = exchangeStatus(ex, props.facetState.slowMs);
+	detailRowAnnouncement.value =
+		`Row ${selectedDetailRow.value + 1} of ${currentWindowExchanges.length}: ` +
+		`${ex.requestOid}, RTT ${ex.rtt.toFixed(1)}ms, ${status}`;
+}
+
+function clampSelectedDetailRow(rowCount: number): void {
+	if (selectedDetailRow.value !== null && selectedDetailRow.value >= rowCount) {
+		selectedDetailRow.value = rowCount > 0 ? rowCount - 1 : null;
+	}
+}
+
 function redraw(): void {
 	const mini = miniCanvas.value;
 	const detail = detailCanvas.value;
@@ -224,11 +248,46 @@ function redraw(): void {
 	}
 	if (detail) {
 		currentWindowExchanges = windowExchanges();
+		clampSelectedDetailRow(currentWindowExchanges.length);
 		hiddenCount.value = drawDetail(
 			detail,
 			currentWindowExchanges,
 			props.facetState.slowMs,
+			selectedDetailRow.value,
 		).hiddenCount;
+	}
+}
+
+function moveDetailSelection(delta: number): void {
+	const current = selectedDetailRow.value ?? -1;
+	selectedDetailRow.value = Math.max(
+		0,
+		Math.min(currentWindowExchanges.length - 1, current + delta),
+	);
+	announceSelectedDetailRow();
+	redraw();
+}
+
+function activateSelectedDetailRow(): void {
+	if (selectedDetailRow.value === null) {
+		return;
+	}
+	const target = currentWindowExchanges[selectedDetailRow.value];
+	if (target !== undefined) {
+		emit("focus-exchange", target.seq);
+	}
+}
+
+function onDetailKeydown(e: KeyboardEvent): void {
+	if (currentWindowExchanges.length === 0) {
+		return;
+	}
+	if (e.key === "ArrowDown" || e.key === "ArrowUp") {
+		e.preventDefault();
+		moveDetailSelection(e.key === "ArrowDown" ? 1 : -1);
+	} else if (e.key === "Enter" || e.key === " ") {
+		e.preventDefault();
+		activateSelectedDetailRow();
 	}
 }
 
@@ -342,6 +401,9 @@ onMounted((): void => {
 
 	const detail = detailCanvas.value;
 	if (detail) {
+		detail.setAttribute("tabindex", "0");
+		detail.addEventListener("keydown", onDetailKeydown);
+
 		detail.addEventListener("click", (e: MouseEvent): void => {
 			const rowIdx = detailRowFromMouseY(e.clientY);
 			if (rowIdx === null || props.exchanges.length === 0) {
@@ -424,8 +486,15 @@ watch(
 				ref="detailCanvas"
 				class="detail-canvas"
 				:height="MAX_H"
-				aria-label="Exchange detail view"
+				aria-label="Exchange detail view. Use arrow keys to move between exchanges, Enter to select one."
 			/>
+		</div>
+		<div
+			role="status"
+			aria-live="polite"
+			class="detail-row-status sr-only"
+		>
+			{{ detailRowAnnouncement }}
 		</div>
 		<div ref="tooltipEl" class="canvas-tooltip" />
 	</div>
@@ -502,6 +571,18 @@ watch(
 	height: 10px;
 	border-radius: 2px;
 	flex-shrink: 0;
+}
+
+.sr-only {
+	position: absolute;
+	width: 1px;
+	height: 1px;
+	padding: 0;
+	margin: -1px;
+	overflow: hidden;
+	clip: rect(0, 0, 0, 0);
+	white-space: nowrap;
+	border: 0;
 }
 
 .canvas-tooltip {

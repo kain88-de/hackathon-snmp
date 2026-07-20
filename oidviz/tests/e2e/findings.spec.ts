@@ -68,6 +68,18 @@ test("sections expanded by default", async ({ page }) => {
 	}
 });
 
+// canonical seq 1 is a Fast-section row. Exchange rows must be real buttons,
+// not clickable divs, so keyboard and screen-reader users can reach and
+// activate them without a mouse.
+test("an exchange row is keyboard-focusable", async ({ page }) => {
+	await loadCanonical(page);
+
+	const seq1Row = page.locator('.exchange-row[data-seq="1"]');
+	await seq1Row.focus();
+	await expect(seq1Row).toBeFocused();
+	await expect(seq1Row).toHaveJSProperty("tagName", "BUTTON");
+});
+
 // canonical seq 2 is the only exchange in the Slow section; collapsing that
 // section must remove its row from the DOM entirely, not just hide it.
 test("collapsing a header hides its rows", async ({ page }) => {
