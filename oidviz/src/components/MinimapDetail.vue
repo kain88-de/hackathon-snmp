@@ -11,11 +11,12 @@ import {
 	drawDetail,
 	drawMinimap,
 	exchangeStatus,
+	getColumnBuckets,
+	getTimeRange,
 	getWindowExchanges,
 	worstBucketStatus,
 } from "../lib/minimapDraw.ts";
 import type { DomainExchange, FacetState } from "../lib/model.ts";
-import { minMaxValues } from "../lib/utils.ts";
 
 const props = defineProps<{
 	exchanges: DomainExchange[];
@@ -42,6 +43,12 @@ let dragMode: DragMode = "create";
 let dragPanAnchorCol = 0;
 let dragPanStartL = 0;
 let dragPanStartR = 0;
+
+// Recomputed only inside redraw() (i.e. when the selection or data actually
+// changes), then reused by detail hover/click — those fire on every pointer
+// move but never change which exchanges are in view, so recomputing the
+// window filter there was a pure rescan.
+let currentWindowExchanges: DomainExchange[] = [];
 
 const EDGE_GRAB_PX = 6;
 const TOOLTIP_X_OFFSET = 12;
@@ -153,16 +160,8 @@ function onMinimapHover(e: MouseEvent, col: number): void {
 	if (exchanges.length === 0 || totalCols === 0) {
 		return;
 	}
-	const times = exchanges.map((ex): number => ex.sentAtMs);
-	const [minT, maxT] = minMaxValues(times);
-	const timeRange = maxT - minT || 1;
-	const bucket = exchanges.filter((ex): boolean => {
-		const c = Math.min(
-			totalCols - 1,
-			Math.floor(((ex.sentAtMs - minT) / timeRange) * (totalCols - 1)),
-		);
-		return c === col;
-	});
+	const { minT, timeRange } = getTimeRange(exchanges);
+	const bucket = getColumnBuckets(exchanges, totalCols)[col] ?? [];
 	const count = bucket.length;
 	const status = worstBucketStatus(bucket, props.facetState.slowMs);
 	const relMs = minT + (col / totalCols) * timeRange - minT;
@@ -180,7 +179,7 @@ function onDetailHover(e: MouseEvent): void {
 		hideTooltip();
 		return;
 	}
-	const ex = windowExchanges()[rowIdx];
+	const ex = currentWindowExchanges[rowIdx];
 	if (ex === undefined) {
 		hideTooltip();
 		return;
@@ -224,9 +223,10 @@ function redraw(): void {
 		);
 	}
 	if (detail) {
+		currentWindowExchanges = windowExchanges();
 		hiddenCount.value = drawDetail(
 			detail,
-			windowExchanges(),
+			currentWindowExchanges,
 			props.facetState.slowMs,
 		).hiddenCount;
 	}
@@ -347,7 +347,7 @@ onMounted((): void => {
 			if (rowIdx === null || props.exchanges.length === 0) {
 				return;
 			}
-			const target = windowExchanges()[rowIdx];
+			const target = currentWindowExchanges[rowIdx];
 			if (target !== undefined) {
 				emit("focus-exchange", target.seq);
 			}

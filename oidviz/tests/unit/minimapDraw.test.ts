@@ -4,6 +4,8 @@ import type { DomainExchange } from "../../src/lib/model.ts";
 import {
 	bucketScore,
 	exchangeStatus,
+	getColumnBuckets,
+	getTimeRange,
 	getWindowExchanges,
 	worstBucketStatus,
 } from "../../src/lib/minimapDraw.ts";
@@ -163,3 +165,63 @@ describe("getWindowExchanges", () => {
 		expect(result).toBe(exchanges);
 	});
 });
+
+	// Hover and drag were rescanning the full exchange list on every
+	// pointer-move event. getTimeRange/getColumnBuckets cache their derived
+	// structures per exchanges-array identity so repeated calls during one
+	// interaction (same array reference) reuse the cached result instead of
+	// rescanning. These tests double as a perf regression guard: they fail if
+	// a future edit removes the memoization.
+	describe("getTimeRange", () => {
+		test("computes min, max, and the span between them", () => {
+			const exchanges = [
+				makeExchange({ sentAtMs: 100 }),
+				makeExchange({ sentAtMs: 400 }),
+			];
+			expect(getTimeRange(exchanges)).toEqual({ minT: 100, maxT: 400, timeRange: 300 });
+		});
+
+		test("a single distinct timestamp falls back to timeRange 1 to avoid divide-by-zero", () => {
+			const exchanges = [makeExchange({ sentAtMs: 50 }), makeExchange({ sentAtMs: 50 })];
+			expect(getTimeRange(exchanges).timeRange).toBe(1);
+		});
+
+		test("repeated calls with the same array reference return the cached object, not a rescan", () => {
+			const exchanges = [makeExchange({ sentAtMs: 0 }), makeExchange({ sentAtMs: 500 })];
+			const first = getTimeRange(exchanges);
+			const second = getTimeRange(exchanges);
+			expect(second).toBe(first);
+		});
+
+		test("a different array reference is computed independently of a cached one", () => {
+			const a = [makeExchange({ sentAtMs: 0 })];
+			const b = [makeExchange({ sentAtMs: 900 })];
+			expect(getTimeRange(a)).not.toBe(getTimeRange(b));
+			expect(getTimeRange(b).minT).toBe(900);
+		});
+	});
+
+	describe("getColumnBuckets", () => {
+		test("assigns each exchange to the column matching its time offset", () => {
+			const early = makeExchange({ seq: 1, sentAtMs: 0 });
+			const late = makeExchange({ seq: 2, sentAtMs: 1000 });
+			const buckets = getColumnBuckets([early, late], 10);
+			expect(buckets[0]).toContain(early);
+			expect(buckets[9]).toContain(late);
+		});
+
+		test("repeated calls with the same array reference and column count return the cached buckets, not a rescan", () => {
+			const exchanges = [makeExchange({ sentAtMs: 0 }), makeExchange({ sentAtMs: 500 })];
+			const first = getColumnBuckets(exchanges, 50);
+			const second = getColumnBuckets(exchanges, 50);
+			expect(second).toBe(first);
+		});
+
+		test("a column-count change (e.g. canvas resize) invalidates the cached buckets", () => {
+			const exchanges = [makeExchange({ sentAtMs: 0 }), makeExchange({ sentAtMs: 500 })];
+			const wide = getColumnBuckets(exchanges, 100);
+			const narrow = getColumnBuckets(exchanges, 10);
+			expect(narrow).not.toBe(wide);
+			expect(narrow).toHaveLength(10);
+		});
+	});
