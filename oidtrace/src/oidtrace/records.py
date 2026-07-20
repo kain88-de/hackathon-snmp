@@ -224,8 +224,8 @@ def system_info_record(
 ) -> tf.SystemInfo:
     """Build a SystemInfo record.
 
-    This builder exists for format completeness.  The v1 walker never calls it,
-    but consumers may use it when system OID values are available.
+    Called by walker._capture_system_info at walk start and walk end, once per
+    point where at least one allowlisted OID decoded to a value.
 
     Args:
         at: Relative time in seconds since walk start.

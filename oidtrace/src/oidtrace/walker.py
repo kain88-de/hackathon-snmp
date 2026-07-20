@@ -49,6 +49,7 @@ import traceformat.models as tf
 from traceformat import TraceRecord
 from traceformat.vocab import EndReason, EventKind, Violation
 
+from oidtrace import system_info
 from oidtrace.auth import AuthProto, password_to_key
 from oidtrace.codec import (
     EXCEPTION_TAGS,
@@ -59,9 +60,11 @@ from oidtrace.codec import (
     authenticate_msg,
     decode_message,
     decode_v3_message,
+    encode_get,
     encode_getbulk,
     encode_getnext,
     encode_v3_discovery,
+    encode_v3_get,
     encode_v3_getbulk,
 )
 from oidtrace.oid import Oid
@@ -70,6 +73,7 @@ from oidtrace.records import (
     exchange_record,
     header_record,
     summary_record,
+    system_info_record,
 )
 from oidtrace.tracefile import TraceWriter
 from oidtrace.transport import Attempt as TransportAttempt
@@ -282,6 +286,128 @@ def _transport_attempt_to_model(attempt: TransportAttempt) -> tf.Attempt:
     return tf.Attempt.model_validate(fields)
 
 
+async def _capture_system_info(  # noqa: PLR0913
+    transport: Transport,
+    *,
+    rel: Callable[[], float],
+    seq: int,
+    point: Literal["start", "end"],
+    settings: WalkSettings,
+    sent_request_ids: set[int],
+    v3_params: V3Params | None,
+    v3_kul: bytes | None,
+) -> tuple[tf.Exchange, tf.SystemInfo | None]:
+    """Capture the system-info allowlist via a dedicated Get (trace-format.md § 4.2).
+
+    Unconditional and version-agnostic: always returns an Exchange record (real
+    wire traffic, participates in seq, its own violations are evidence) and
+    additionally a SystemInfo record when at least one allowlisted OID decoded
+    to a value. This exchange never advances the walk's OID cursor or counts
+    against give_up_after — it is a side capture, not part of the walk proper.
+    """
+    request_id = random.randint(1, 2**31 - 1)
+    sent_request_ids.add(request_id)
+
+    if settings.snmp_version == "3":
+        assert v3_params is not None  # guarded by callers: skipped when discovery failed
+        assert settings.v3_user is not None  # enforced by WalkSettings.__post_init__
+        raw_request = encode_v3_get(
+            msg_id=random.randint(1, 2**31 - 1),
+            request_id=request_id,
+            oids=system_info.SYSTEM_INFO_ALLOWLIST,
+            engine_id=v3_params.engine_id,
+            engine_boots=v3_params.engine_boots,
+            engine_time=v3_params.engine_time,
+            username=settings.v3_user.encode(),
+            proto=settings.v3_auth_proto,
+        )
+        if v3_kul is not None:
+            assert settings.v3_auth_proto is not None
+            raw_request = authenticate_msg(raw_request, v3_kul, settings.v3_auth_proto)
+    else:
+        raw_request = encode_get(
+            request_id,
+            system_info.SYSTEM_INFO_ALLOWLIST,
+            community=settings.community,
+            version=0 if settings.snmp_version == "1" else 1,
+        )
+
+    request_model = tf.Request.model_validate(
+        {
+            "pdu": "get",
+            "request_id": request_id,
+            "oids": [tf.Oid(str(oid)) for oid in system_info.SYSTEM_INFO_ALLOWLIST],
+        }
+    )
+
+    exchange_io = await transport.exchange(
+        raw_request,
+        timeout_s=settings.timeout_s,
+        retries=settings.retries,
+        accept=_make_response_accept(settings.snmp_version, sent_request_ids, request_id),
+    )
+    attempts, strays = _build_attempts_and_strays(exchange_io)
+
+    decoded_msg: Message | None = None
+    malformed_model: tf.Malformed | None = None
+    varbinds: list[Varbind] = []
+    response_request_id: int | None = None
+    response_error_status: int | None = None
+    response_error_index: int | None = None
+
+    if exchange_io.response is not None:
+        _received_at, raw_response = exchange_io.response
+        if settings.snmp_version == "3":
+            decoded = decode_v3_message(raw_response)
+            msg = decoded if isinstance(decoded, Malformed) else decoded[0]
+        else:
+            msg = decode_message(raw_response)
+        if isinstance(msg, Malformed):
+            malformed_model = tf.Malformed(error=msg.error, length=len(msg.raw))
+        else:
+            decoded_msg = msg
+            varbinds = list(msg.varbinds)
+            response_request_id = msg.request_id
+            response_error_status = msg.f1
+            response_error_index = msg.f2
+
+    violations: list[Violation] = []
+    if malformed_model is not None:
+        violations.append(Violation.MALFORMED_BER)
+    elif decoded_msg is not None and response_request_id is not None:
+        # varbinds=[]: these Gets don't walk a subtree, so the OID-not-increasing
+        # check does not apply — same reasoning as the v3 discovery exchange.
+        violations = check_exchange(
+            sent_id=request_id,
+            returned_id=response_request_id,
+            prev_oid=settings.start_oid,
+            varbinds=[],
+            response_raw=exchange_io.response[1] if exchange_io.response else b"",
+            strays=[raw for _, raw in exchange_io.strays],
+        )
+
+    exch = exchange_record(
+        seq=seq,
+        request=request_model,
+        attempts=attempts,
+        response_request_id=response_request_id,
+        response_error_status=response_error_status,
+        response_error_index=response_error_index,
+        varbinds=varbinds,
+        strays=strays,
+        violations=violations,
+        malformed=malformed_model,
+    )
+
+    sysinfo: tf.SystemInfo | None = None
+    if decoded_msg is not None:
+        values = system_info.decode_values(varbinds)
+        if values:
+            sysinfo = system_info_record(at=_now(rel), point=point, values=values)
+
+    return exch, sysinfo
+
+
 # ---------------------------------------------------------------------------
 # walk_records — async generator core
 # ---------------------------------------------------------------------------
@@ -447,6 +573,25 @@ async def walk_records(  # noqa: PLR0912, PLR0913, PLR0915
             v3_kul = password_to_key(
                 settings.v3_auth_pass.encode(), v3_params.engine_id, settings.v3_auth_proto
             )
+
+    # --- System info at walk start (trace-format.md § 4.2; unconditional) ---
+    # Skipped only when v3 discovery already failed (end_reason set above) —
+    # without engine params no v3 message, this one included, can be encoded.
+    if end_reason is None:
+        seq += 1
+        start_exchange, start_sysinfo = await _capture_system_info(
+            transport,
+            rel=rel,
+            seq=seq,
+            point="start",
+            settings=settings,
+            sent_request_ids=sent_request_ids,
+            v3_params=v3_params,
+            v3_kul=v3_kul,
+        )
+        yield start_exchange
+        if start_sysinfo is not None:
+            yield start_sysinfo
 
     while end_reason is None:
         # --- Time budget check (at loop top — zero-exchange trace intentional) ---
@@ -658,6 +803,25 @@ async def walk_records(  # noqa: PLR0912, PLR0913, PLR0915
         cursor = new_cursor
 
     assert end_reason is not None
+
+    # --- System info at walk end (trace-format.md § 4.2; unconditional) ---
+    # Skipped only when v3 discovery failed — same reasoning as at walk start.
+    if not (settings.snmp_version == "3" and v3_params is None):
+        seq += 1
+        end_exchange, end_sysinfo = await _capture_system_info(
+            transport,
+            rel=rel,
+            seq=seq,
+            point="end",
+            settings=settings,
+            sent_request_ids=sent_request_ids,
+            v3_params=v3_params,
+            v3_kul=v3_kul,
+        )
+        yield end_exchange
+        if end_sysinfo is not None:
+            yield end_sysinfo
+
     at = _now(rel)
     oids_seen = len(oids_seen_set)
     log.info("walk end reason=%s at=%.6f exchanges=%d oids_seen=%d", end_reason, at, seq, oids_seen)

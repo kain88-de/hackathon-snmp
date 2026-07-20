@@ -65,10 +65,11 @@ async def test_clean_50_oid_walk(
     assert summary.oids_seen == 50
     assert summary.end_reason == str(EndReason.COMPLETED)
 
-    # Distinct OIDs from exchange varbinds
+    # Distinct OIDs from exchange varbinds — excludes the two system-info Gets
+    # (pdu="get"), which probe an unrelated, disjoint OID range.
     seen_oids: set[str] = set()
     for r in records:
-        if isinstance(r, Exchange) and r.response is not None:
+        if isinstance(r, Exchange) and r.response is not None and r.request.pdu.value != "get":
             for vb in r.response.varbinds:
                 seen_oids.add(vb.oid.root)
     assert len(seen_oids) == 50
@@ -116,7 +117,9 @@ async def test_v3_clean_20_oid_walk(
 ) -> None:
     """SNMPv3 noAuthNoPriv walk over a 20-OID emulator → COMPLETED, oids_seen==20.
 
-    The first exchange must be the discovery probe (pdu=discovery, seq=1).
+    The first exchange must be the discovery probe (pdu=discovery, seq=1); the
+    second is the system-info-at-start Get (pdu=get, seq=2); the GetBulk loop
+    starts at seq=3.
     """
 
     device = EmuDevice.simple(n_oids=20)
@@ -146,9 +149,12 @@ async def test_v3_clean_20_oid_walk(
     assert exchange_records[0].seq == 1
     assert exchange_records[0].request.pdu.value == "discovery"
     assert exchange_records[0].request.oids == []
-    # The GetBulk loop starts at seq=2.
+    # Second exchange is the system-info-at-start Get.
     assert exchange_records[1].seq == 2
-    assert exchange_records[1].request.pdu.value == "getbulk"
+    assert exchange_records[1].request.pdu.value == "get"
+    # The GetBulk loop starts at seq=3.
+    assert exchange_records[2].seq == 3
+    assert exchange_records[2].request.pdu.value == "getbulk"
 
     _validate_all(records, record_validator)
 
@@ -224,7 +230,12 @@ async def test_drop_all_unresponsive(
     record_validator: Draft202012Validator,
     tmp_path: Path,
 ) -> None:
-    """drop_all emulator → UNRESPONSIVE after give_up_after exchanges."""
+    """drop_all emulator → UNRESPONSIVE after give_up_after exchanges.
+
+    4 exchanges total: system-info-at-start Get, the 2 give-up-triggering
+    main-loop attempts, and system-info-at-end Get -- drop_all drops all four
+    identically, and give_up_after only counts the main-loop ones.
+    """
 
     quirks = Quirks(drop_all=True)
     device = EmuDevice.simple(quirks=quirks)
@@ -243,7 +254,7 @@ async def test_drop_all_unresponsive(
     records = list(read_trace(trace_path))
     exchange_records = [r for r in records if isinstance(r, Exchange)]
 
-    assert len(exchange_records) == 2
+    assert len(exchange_records) == 4
 
     # Each exchange has retries+1=2 attempts, no response keys
     for exch in exchange_records:

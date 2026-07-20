@@ -113,8 +113,8 @@ with `request.pdu: "discovery"` (§ 4.3), same as every other request.
 
 ### 4.2 `system_info`
 
-Admin-approved values for the system-OID allowlist, captured by a dedicated Get at walk
-start and again at walk end. Absent entirely when the admin hides system info.
+Values for the system-OID allowlist, captured unconditionally by a dedicated Get at walk
+start and again at walk end — every walk, no flag to disable it.
 
 | Field    | Type   | Req. | Meaning                                   |
 | -------- | ------ | ---- | ----------------------------------------- |
@@ -128,10 +128,9 @@ Allowlist in format version 1: sysDescr.0 (`1.3.6.1.2.1.1.1.0`, string), sysObje
 sysName.0 (`1.3.6.1.2.1.1.5.0`, string).
 A sysUpTime at `end` lower than at `start` proves a mid-walk device reboot.
 
-The underlying Get requests are real wire traffic and are **also recorded as ordinary
-`exchange` records** (participating in `seq`) — their timing and any violations are
-evidence too. The `system_info` record carries only the admin-approved values; hiding
-system info removes the `system_info` records but the (value-free) exchanges remain.
+The underlying Get requests are real wire traffic like any other exchange in the walk:
+they are **also recorded as ordinary `exchange` records** (participating in `seq`), with
+their own timing and violations as evidence.
 
 ```json
 {
@@ -311,8 +310,8 @@ A format-version-1 trace never contains:
 - the target host name, IP address, or port;
 - the SNMP community string;
 - packet bytes;
-- SNMP values — with one exception: the admin-approved `system_info` allowlist shown to
-  the admin at capture time.
+- SNMP values — with one exception: the `system_info` allowlist (§ 4.2), captured on
+  every walk.
 
 It does contain: OID names and tree structure (reveals device vendor/MIBs and table
 cardinalities), value types and lengths, timing, and the optional admin-chosen `label`.
