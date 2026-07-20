@@ -231,10 +231,9 @@ export function getWindowExchanges(
 	const { minT, timeRange } = getTimeRange(exchanges);
 	const tStart = minT + (colStart / miniWidth) * timeRange;
 	const tEnd = minT + (colEnd / miniWidth) * timeRange;
-	const filtered = exchanges.filter(
+	return exchanges.filter(
 		(ex): boolean => ex.sentAtMs >= tStart && ex.sentAtMs <= tEnd,
 	);
-	return filtered.length > 0 ? filtered : exchanges;
 }
 
 export function drawMinimap(

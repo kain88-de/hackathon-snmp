@@ -154,15 +154,15 @@ describe("getWindowExchanges", () => {
 		expect(result).not.toContain(late);
 	});
 
-	test("filter matching no exchanges falls back to returning original array", () => {
+	test("a selected window covering a genuine gap returns no exchanges, not the full trace", () => {
 		const exchanges = [
 			makeExchange({ seq: 1, sentAtMs: 0 }),
 			makeExchange({ seq: 2, sentAtMs: 1000 }),
 		];
 		// timeRange=1000ms over 100 cols; colStart=20, colEnd=80 → tStart=200, tEnd=800
-		// sentAtMs=0 < 200 and sentAtMs=1000 > 800, so neither exchange matches → fallback
+		// sentAtMs=0 < 200 and sentAtMs=1000 > 800, so neither exchange matches
 		const result = getWindowExchanges(exchanges, 100, 20, 80, 100);
-		expect(result).toBe(exchanges);
+		expect(result).toEqual([]);
 	});
 });
 
