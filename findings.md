@@ -907,24 +907,57 @@ Recommended follow-up:
 - none
 
 #### 17. Virtual scroll sizing does not appear to react to resize/layout changes
+*DONE*
 
 - Severity: Medium
+- Status: RESOLVED (fixed 2026-07-20)
 - Files:
-  - `oidviz/src/composables/useVirtualScroll.ts:18-29`
-  - `oidviz/src/components/FindingsByCategory.vue:26-29`
-  - `oidviz/src/components/FindingsByCategory.vue:108-129`
-  - `oidviz/src/components/OidTree.vue:23-26`
-  - `oidviz/src/components/OidTree.vue:35-56`
+  - `oidviz/src/composables/useVirtualScroll.ts`
+  - `oidviz/tests/component/useVirtualScroll.test.ts` (new)
 
-Impact:
+Impact (confirmed):
 
-- resize events can leave virtualized lists under-rendered or misaligned
-- users may see blanks or truncated content after layout changes
+- `containerHeight` was measured once in `onMounted` and never updated
+  afterward, even though it directly drives the virtualization math
+  (`viewEnd = scrollTop + containerHeight`) in both consumers
+  (`FindingsByCategory.vue`, `OidTree.vue`)
+- reproduced with a real 5000-exchange trace in a real browser: loading the
+  OID Tree view at a short window height, then growing the window/panel
+  taller, left the list frozen at the row count computed from the original
+  (smaller) height — a large blank area appeared below the last rendered
+  row instead of more rows filling the extra space
+
+Resolution:
+
+- `useVirtualScroll` now creates a `ResizeObserver` on `containerEl` in
+  `onMounted` (disconnected in `onUnmounted`), mirroring the pattern
+  `MinimapDetail.vue` already uses for its own canvas resize handling; the
+  observer's callback re-runs the same height measurement used at mount
+  (extracted into a shared `measure()` function), so `containerHeight`
+  stays current for the composable's two consumers with no changes needed
+  to either component
+- TDD: happy-dom's `ResizeObserver` is an inert no-op (`observe()` never
+  calls back, `clientHeight` is always 0), so the new test stubs the global
+  `ResizeObserver` with a mock that records `observe()` calls and exposes
+  the stored callback; the first version of the test (asserting a
+  `ResizeObserver` instance is created and observes the container) failed
+  correctly against the unmodified composable, confirmed RED, then passed
+  once the observer was wired in
+- added a second test confirming the observer disconnects on unmount, to
+  guard against a leak in the new lifecycle wiring
+- verified full suite green: `just lint`, `just types`, `just fmt-check`,
+  177 vitest (unit + component) tests, 74 Playwright e2e tests, 4 a11y tests
+- manually verified in a real browser (not just happy-dom, which cannot
+  simulate real layout/resize): loaded the 5000-exchange
+  `traceformat/examples/trace-5k.oidtrace.jsonl.gz` fixture in the OID Tree
+  view, resized the browser window from 500px to 1400px tall, and confirmed
+  the rendered row count grew from 17 to 45 to match — before the fix
+  (verified by temporarily reverting it), the same resize left the row
+  count frozen at 17 with a large empty area below the list
 
 Recommended follow-up:
 
-- observe container size changes and recalculate the viewport
-- add a resize-driven test path
+- none
 
 #### 18. Worker completion handling may allow stale results to overwrite newer state
 
