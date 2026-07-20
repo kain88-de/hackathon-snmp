@@ -778,20 +778,47 @@ Recommended follow-up:
   array that didn't change
 
 #### 15. Empty minimap selections reportedly show the full trace instead of no rows
+*DONE*
 
 - Severity: Medium
+- Status: RESOLVED (fixed 2026-07-20)
 - Files:
-  - `oidviz/src/lib/minimapDraw.ts:165-177`
+  - `oidviz/src/lib/minimapDraw.ts:221-238` (`getWindowExchanges`)
+  - `oidviz/tests/unit/minimapDraw.test.ts` (empty-window regression test)
 
-Impact:
+Impact (confirmed):
 
-- a user can select a quiet gap and be shown the entire trace
-- the UI becomes actively misleading
+- `getWindowExchanges` filtered exchanges down to the selected time window,
+  then fell back to returning the *entire* `exchanges` array whenever that
+  filter matched nothing — so dragging a selection over a genuine quiet gap
+  in the trace showed every exchange in the detail pane instead of none,
+  making it look like the selection had no effect
+
+Resolution:
+
+- removed the `filtered.length > 0 ? filtered : exchanges` fallback; the
+  function now always returns the filtered result, including an empty array
+  when the selected window truly contains nothing
+- the pre-existing `totalCols === 0 || colEnd <= colStart` early return
+  (the "nothing selected yet" default view) is unchanged and still returns
+  the full trace, since that is a distinct case from an explicit empty
+  selection
+- `drawDetail` already handled an empty `windowExchanges` array by rendering
+  "No data" (used for empty traces), so no drawing-code change was needed
+- rewrote the one existing unit test that had locked in the old fallback
+  behavior (`getWindowExchanges > filter matching no exchanges falls back to
+  returning original array`) to instead assert the window returns `[]`
+- verified full suite green: `just lint`, `just types`, `just fmt-check`,
+  171 vitest (unit + component) tests, 74 Playwright e2e tests, 4 a11y tests
+- manually verified in a browser: built a synthetic trace with two exchange
+  clusters separated by a 90s quiet gap, confirmed dragging a selection over
+  the gap now shows "No data" (previously showed all 10 exchanges), while
+  selecting an actual cluster still shows just that cluster's exchanges,
+  with zero console errors
 
 Recommended follow-up:
 
-- return an empty detail view for empty windows
-- add tests for sparse traces and empty selected regions
+- none
 
 #### 16. Parsed trace records are trusted by cast instead of validated at the boundary
 
