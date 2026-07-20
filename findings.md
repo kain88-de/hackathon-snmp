@@ -960,20 +960,54 @@ Recommended follow-up:
 - none
 
 #### 18. Worker completion handling may allow stale results to overwrite newer state
+*DONE*
 
 - Severity: Medium
+- Status: RESOLVED (fixed 2026-07-20)
 - Files:
   - `oidviz/src/App.vue:36-67`
+  - `oidviz/tests/component/App.test.ts` (new)
 
-Impact:
+Impact (confirmed):
 
-- quick repeated file loads can potentially race
-- an older worker result may overwrite a newer parse state
+- `onFileSelected` terminated the previous worker but its `message`/`error`
+  listeners stayed unconditionally live — if a superseded worker's result
+  arrived after a newer load had already started (or finished), it would
+  overwrite `state.value` with stale data, since nothing checked which
+  worker a given message actually came from
+- reproduced directly: mounted `App.vue` with a mock `Worker`, fired two
+  file loads back to back, then had the first (superseded) worker deliver
+  its result *after* the second (current) worker's own result — the stale
+  message overwrote the correct one, dropping the exchange count from the
+  current load's value back to the first load's
+
+Resolution:
+
+- each `message`/`error` listener now closes over its own `Worker` instance
+  (`w`) and compares it against the module-level `worker` reference before
+  applying anything; once a load is superseded, `worker` no longer points
+  at the older instance, so its late-arriving listener is a no-op instead
+  of clobbering state — implements the "bind handlers to a specific worker
+  instance" option from the original recommended follow-up
+- TDD: `tests/component/App.test.ts` stubs the global `Worker` with a
+  minimal `EventTarget`-based mock exposing `terminate()`/`postMessage()`
+  and a manual `emitResult()`; the stale-result test failed correctly
+  against the unmodified code (exchange count regressed from the second
+  load's value to the first's), confirmed RED, then passed once the
+  instance check was added; a second test confirms a second load
+  terminates the first worker
+- verified full suite green: `just lint`, `just types`, `just fmt-check`,
+  179 vitest (unit + component) tests, 74 Playwright e2e tests, 4 a11y
+  tests
+- manually verified in a real browser: loaded the canonical fixture
+  through the drop zone and confirmed the golden path is unaffected
+  (sidebar populates correctly, no console errors) — the instance check is
+  a no-op for the normal single-load case, so this only guards the race,
+  it doesn't change ordinary behavior
 
 Recommended follow-up:
 
-- bind handlers to a specific worker instance or request token
-- ignore late results from superseded loads
+- none
 
 #### 19. Accessibility is weaker than the current tooling posture suggests
 
