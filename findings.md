@@ -826,8 +826,11 @@ Recommended follow-up:
 - Severity: Medium
 - Status: RESOLVED (fixed 2026-07-20)
 - Files:
-  - `oidviz/src/lib/parser.worker.ts` (`isValidHeader`, `isValidSystemInfo`,
-    `isValidExchange`, `isValidSummary`, `applyRecord`, `handleLine`)
+  - `oidviz/scripts/gen-trace-validator.mjs` (new)
+  - `oidviz/src/lib/traceValidator.gen.js` (new, generated — do not edit)
+  - `oidviz/src/lib/traceValidator.gen.d.ts` (new, hand-written sidecar)
+  - `oidviz/src/lib/parser.worker.ts` (`applyRecord`, `handleLine`)
+  - `oidviz/Justfile` (`gen-validator` recipe)
   - `oidviz/tests/unit/parser.worker.test.ts` (new)
 
 Impact (confirmed):
@@ -846,37 +849,58 @@ Impact (confirmed):
 
 Resolution:
 
-- added minimal hand-written type-guard validators (`isValidHeader`,
-  `isValidSystemInfo`, `isValidExchange`, `isValidSummary`, plus small
-  private helpers for nested shapes) checking exactly the fields each
-  record's TS interface (generated from `traceformat/trace-format.schema.json`)
-  requires and the app dereferences — not the deeper cross-field invariants
-  already tracked separately under finding #3
-- `handleLine` no longer casts; it now checks the parsed JSON is an object
-  with a string `type`, then dispatches to `applyRecord`, which validates
-  before assigning into `header`/`systemInfo`/`summary`/`exchanges`
-- an invalid record is now treated exactly like an unparseable JSON line:
+- first pass hand-wrote type-guard validators mirroring each record's
+  required fields; on review this duplicated `traceformat/trace-format.schema.json`
+  by hand with no way to detect drift, so it was replaced with a generated
+  validator compiled from that same schema — the same source `gen-types`
+  already reads for compile-time types, now read a second time for a runtime
+  check, via `ajv`'s standalone codegen (`oidviz/scripts/gen-trace-validator.mjs`,
+  `just gen-validator`)
+- the generator compiles one validator per record type oidviz actually
+  dispatches on (`validateHeader`, `validateSystemInfo`, `validateExchange`,
+  `validateSummary`) into `traceValidator.gen.js`, a dependency-free ESM
+  module (no `ajv` import at runtime — `ajv` is a devDependency used only by
+  the generator); `traceValidator.gen.d.ts` is a small hand-written sidecar
+  giving each function a `data is Header/SystemInfo/Exchange/Summary` type
+  predicate, so a passing check narrows the value for the rest of the app
+  the same way the old hand-written guards did
+- `record.type` is still checked as a plain string *before* picking which
+  validator to call — the schema's top-level shape is a 5-way discriminated
+  `oneOf`, which would reject any record whose `type` isn't one of its known
+  branches, but the prose spec requires readers to silently ignore
+  unrecognized record types (forward compatibility); dispatching by type
+  first, then validating only the matching branch, preserves that
+  requirement while still validating known types against the full schema
+- this is strictly more validation than the hand-written first pass: it now
+  also enforces schema invariants the hand-written version didn't attempt
+  (e.g. a `getbulk` request missing `non_repeaters`/`max_repetitions`, per
+  the schema's `if`/`then`), closing part of finding #3 for this one
+  boundary, for free, because the schema is now executable instead of just
+  read by eye
+- an invalid record is still treated exactly like an unparseable JSON line:
   `truncated = true`, stop consuming further lines, keep what parsed so far
-  — reusing the existing truncation UX instead of inventing a new one
 - a malformed `header` record still surfaces through the pre-existing
-  "Trace file missing header record" error (since `header` stays `null`),
-  rather than crashing later inside `Sidebar.vue`'s computed properties
-- split the old single `handleLine` switch into `applyRecord` (per-type
-  validate + assign) and `handleLine` (parse + dispatch) to keep cognitive
-  complexity under the repo's Biome limit
-- TDD: wrote 13 tests first (unit tests per validator, plus two
-  `parseTrace` integration tests using real gzip via `CompressionStream`)
-  against the not-yet-exported functions, confirmed all 13 failed for the
-  right reason, then implemented until green
+  "Trace file missing header record" error, rather than crashing later
+  inside `Sidebar.vue`'s computed properties
+- TDD: the original hand-written-validator pass was built test-first (13
+  tests, watched RED, then GREEN); the swap to generated validators kept the
+  two behavioral `parseTrace` integration tests as a regression guard
+  throughout the refactor (both stayed green), dropped the now-obsolete
+  per-function unit tests for the deleted hand-written guards, and added two
+  new tests characterizing behavior the old version didn't have: the
+  unrecognized-type-is-skipped guarantee, and the getbulk invariant now
+  being enforced
 - verified full suite green: `just lint`, `just types`, `just fmt-check`,
-  184 vitest (unit + component) tests, 74 Playwright e2e tests, 4 a11y tests
-- manually verified in a browser: built a synthetic trace with 3 valid
-  exchanges, one malformed exchange (`attempts: []`), then 2 more valid
-  exchanges; confirmed the fixed code shows "Warning: trace was truncated"
-  with the 3 valid exchanges and no console errors, while the pre-fix code
-  (verified by temporarily reverting the fix) crashed with "Error: can't
-  access property \"received_at\", lastAttempt is undefined" and showed
-  nothing at all
+  175 vitest (unit + component) tests, 74 Playwright e2e tests (including
+  the existing real-fixture coverage for unrecognized record types), 4 a11y
+  tests
+- manually verified in a browser, both before and after the generator swap:
+  built a synthetic trace with 3 valid exchanges, one malformed exchange
+  (`attempts: []`), then 2 more valid exchanges; the fixed code shows
+  "Warning: trace was truncated" with the 3 valid exchanges and no console
+  errors, while the pre-fix code (confirmed by temporarily reverting)
+  crashed with "Error: can't access property \"received_at\", lastAttempt is
+  undefined" and showed nothing at all
 
 Recommended follow-up:
 
