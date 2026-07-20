@@ -5,28 +5,29 @@ RFC-violating, and the silently broken.
 
 ## The tools
 
-**doctor** — the MVP. One command that automates the support settings ladder
-(bulk 10 → 8 → 5 → 1, then timeouts), subtree-scoped and time-budgeted, and answers:
-_which settings make this device work?_ Output: a paste-ready Checkmk settings verdict,
-a self-contained HTML report, and a trace bundle as the escalation artifact. Progress
-streams live while it runs.
+**doctor** — the planned MVP entry point (not yet implemented). Design: one command
+that automates the support settings ladder (bulk 10 → 8 → 5 → 1, then timeouts),
+subtree-scoped and time-budgeted, answering: _which settings make this device work?_
+Design sketch: `docs/superpowers/specs/2026-06-11-doctor-mvp-design.md`.
 
-**OIDTrace** — the capture layer and CLI underneath everything. Walks a device and
-records parsed wire evidence — per-attempt timing, the request-id the device actually
+**OIDTrace** — the capture layer and CLI underneath everything, implemented and
+validated end-to-end (see "Where things stand" below). Walks a device and records
+parsed wire evidence — per-attempt timing, the request-id the device actually
 returned, protocol violations — into a portable gzipped-JSONL trace. Traces contain no
 values, no packet bytes, and no device identity; an admin can read one with `zcat`
 before sharing it. Format spec:
 `traceformat/trace-format.md` (+ JSON Schema).
 
-**OIDViz** — renders a trace or session bundle as a self-contained HTML report:
-verdict panel, latency waterfall, subtree heat, run comparison. Opens by double-click,
-attaches to a ticket, works offline. Shares its rendering with the doctor's report.
+**OIDViz** — a Vue web app that loads an `oidtrace` trace file in the browser and
+renders it client-side, no server round-trip. Three views today: Findings by Category,
+Minimap + Detail, and OID Tree. Live at the GitHub Pages link below, or build and
+self-host.
 
 Under the hood, a **quirk emulator** (fixed request-ids, bulk-size crashes, slow
 subtrees, end-of-MIB silence) lives in the test suite — every pathology the tools must
 handle is reproducible over loopback UDP. An **adaptive settings finder** (survey →
-pinpoint slow OIDs → derive settings) is the doctor's planned successor; its design
-sketches live in git history.
+pinpoint slow OIDs → derive settings) is doctor's planned successor; both are sketched
+in the design doc linked above.
 
 ## Quick start
 
