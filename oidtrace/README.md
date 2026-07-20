@@ -111,7 +111,7 @@ Not implemented (the format leaves room; the tooling does not emit or accept the
 - **SNMPv3 privacy (authPriv)** — `--priv-proto`/`--priv-pass` are parsed but warn and
   are ignored. Full priv requires storing decrypted PDU bytes and is format-v2/reuse
   territory.
-- **System-OID allowlist** (`system_info` records for sysDescr/sysObjectID/sysUpTime).
+- **System-OID allowlist** (`system_info` records for sysDescr/sysObjectID/sysUpTime/sysName).
   The format and the record builder support it; the walk tool does not emit it and has
   no `--hide-system-info` approval flow. (A consumer may still display `system_info`
   records from traces produced by other means.)

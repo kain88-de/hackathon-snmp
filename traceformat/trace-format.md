@@ -124,7 +124,8 @@ start and again at walk end. Absent entirely when the admin hides system info.
 | `values` | object | yes  | OID → value; only allowlisted OIDs appear |
 
 Allowlist in format version 1: sysDescr.0 (`1.3.6.1.2.1.1.1.0`, string), sysObjectID.0
-(`1.3.6.1.2.1.1.2.0`, OID string), sysUpTime.0 (`1.3.6.1.2.1.1.3.0`, integer ticks).
+(`1.3.6.1.2.1.1.2.0`, OID string), sysUpTime.0 (`1.3.6.1.2.1.1.3.0`, integer ticks),
+sysName.0 (`1.3.6.1.2.1.1.5.0`, string).
 A sysUpTime at `end` lower than at `start` proves a mid-walk device reboot.
 
 The underlying Get requests are real wire traffic and are **also recorded as ordinary
@@ -140,7 +141,8 @@ system info removes the `system_info` records but the (value-free) exchanges rem
   "values": {
     "1.3.6.1.2.1.1.1.0": "Cisco IOS 15.2",
     "1.3.6.1.2.1.1.2.0": "1.3.6.1.4.1.9.1.516",
-    "1.3.6.1.2.1.1.3.0": 492711442
+    "1.3.6.1.2.1.1.3.0": 492711442,
+    "1.3.6.1.2.1.1.5.0": "switch-floor3"
   }
 }
 ```
