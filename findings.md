@@ -1467,8 +1467,10 @@ Recommended follow-up:
   over restating the detail in multiple READMEs that can drift apart
 
 ### 21. The repo shows a pattern of process language outpacing enforceable controls
+*DONE*
 
 - Severity: Medium
+- Status: RESOLVED (fixed 2026-07-20)
 - Files:
   - `docs/dev-guidelines/web-guardrails.md:53-82`
   - `traceformat/Justfile:12-14`
@@ -1488,6 +1490,33 @@ Recommended follow-up:
 
 - treat every stated guardrail as a testable control
 - if a rule cannot be enforced automatically, make that explicit
+
+Resolution:
+
+- `traceformat/Justfile:12-14` and `.github/workflows/oidviz-ci.yml` were
+  already fixed by finding #6 (the `types: SKIPPED` bypass was removed in
+  `f601eb8`, and the workflow was hardened in PR #2) — verified still clean,
+  no further change needed.
+- `docs/dev-guidelines/web-guardrails.md:53-82` (Plan review cadence,
+  Type-driven development) stated two guardrails with no automated check
+  behind them: dispatching an Opus agent to review a plan every 6 tasks, and
+  four type-system principles (exhaustiveness checks, branded types, boundary
+  validation, logic confined to `.ts`). Checked each against the actual
+  toolchain: no lint rule enforces exhaustiveness, `.vue`-file logic
+  confinement, or branded types (convention only, e.g. `OidString` in
+  `model.ts`); boundary validation is real but only for the trace parser
+  (`traceValidator.gen.js`), not enforced generally. Added an explicit
+  "Enforced by" table and a one-line note on the plan-review section so
+  neither guardrail is mistaken for something CI checks.
+- Also found and fixed adjacent stale content in the same file, outside the
+  cited range: the "CI pipeline" section (`web-guardrails.md:7-20`) claimed
+  `a11y` runs separately via a production build + `vite preview :4173`, and
+  never mentioned `e2e` at all — but `oidviz/Justfile`'s `ci` target has
+  folded both `e2e` and `a11y` in since commit `ae821c9`, `a11y` actually runs
+  Playwright against the dev server (`playwright.config.ts`), and `test`
+  switched from `bun test` to Vitest in `2aab170`. Rewrote that section to
+  point at the Justfile as the source of truth instead of restating commands
+  that will drift again, and corrected the Justfile-targets table.
 
 ## Guardrails Before More AI Development
 
