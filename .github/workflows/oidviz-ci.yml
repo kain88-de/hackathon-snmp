@@ -2,7 +2,6 @@ name: OIDViz CI
 
 on:
   pull_request:
-    paths: [oidviz/**, traceformat/**]
   push:
     branches: [main]
     paths: [oidviz/**, traceformat/**]
