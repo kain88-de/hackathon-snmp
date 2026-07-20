@@ -298,8 +298,8 @@ Resolution:
 
 Recommended follow-up:
 
-- enforce runtime validation at all external-data boundaries — still open,
-  see finding #16 (oidviz trusts parsed trace records by cast)
+- enforce runtime validation at all external-data boundaries — done for
+  oidviz's trace parser, see finding #16 (resolved)
 
 ## Component Reviews
 
@@ -821,21 +821,66 @@ Recommended follow-up:
 - none
 
 #### 16. Parsed trace records are trusted by cast instead of validated at the boundary
+*DONE*
 
 - Severity: Medium
+- Status: RESOLVED (fixed 2026-07-20)
 - Files:
-  - `oidviz/src/lib/parser.worker.ts:66-114`
-  - `oidviz/src/lib/parser.worker.ts:130-153`
+  - `oidviz/src/lib/parser.worker.ts` (`isValidHeader`, `isValidSystemInfo`,
+    `isValidExchange`, `isValidSummary`, `applyRecord`, `handleLine`)
+  - `oidviz/tests/unit/parser.worker.test.ts` (new)
 
-Impact:
+Impact (confirmed):
 
-- malformed records can fail deep inside mapping logic instead of at parse time
-- error behavior becomes brittle and hard to reason about
+- every JSON-parsed record was assigned into application state via
+  `record as unknown as Header/SystemInfo/Exchange/Summary` with no shape
+  check, so a record whose declared `type` matched but whose fields didn't
+  (e.g. an `exchange` with an empty `attempts` array) crashed deep inside
+  `mapExchange` (`Cannot read properties of undefined (reading
+  'received_at')`) instead of failing at the parse boundary
+- that crash propagated out of the whole `parseTrace` promise, so a single
+  malformed record anywhere in the file discarded the *entire* trace behind
+  a bare error banner — worse than the existing truncation path, which
+  already handled unparseable JSON lines gracefully by keeping everything
+  parsed so far
+
+Resolution:
+
+- added minimal hand-written type-guard validators (`isValidHeader`,
+  `isValidSystemInfo`, `isValidExchange`, `isValidSummary`, plus small
+  private helpers for nested shapes) checking exactly the fields each
+  record's TS interface (generated from `traceformat/trace-format.schema.json`)
+  requires and the app dereferences — not the deeper cross-field invariants
+  already tracked separately under finding #3
+- `handleLine` no longer casts; it now checks the parsed JSON is an object
+  with a string `type`, then dispatches to `applyRecord`, which validates
+  before assigning into `header`/`systemInfo`/`summary`/`exchanges`
+- an invalid record is now treated exactly like an unparseable JSON line:
+  `truncated = true`, stop consuming further lines, keep what parsed so far
+  — reusing the existing truncation UX instead of inventing a new one
+- a malformed `header` record still surfaces through the pre-existing
+  "Trace file missing header record" error (since `header` stays `null`),
+  rather than crashing later inside `Sidebar.vue`'s computed properties
+- split the old single `handleLine` switch into `applyRecord` (per-type
+  validate + assign) and `handleLine` (parse + dispatch) to keep cognitive
+  complexity under the repo's Biome limit
+- TDD: wrote 13 tests first (unit tests per validator, plus two
+  `parseTrace` integration tests using real gzip via `CompressionStream`)
+  against the not-yet-exported functions, confirmed all 13 failed for the
+  right reason, then implemented until green
+- verified full suite green: `just lint`, `just types`, `just fmt-check`,
+  184 vitest (unit + component) tests, 74 Playwright e2e tests, 4 a11y tests
+- manually verified in a browser: built a synthetic trace with 3 valid
+  exchanges, one malformed exchange (`attempts: []`), then 2 more valid
+  exchanges; confirmed the fixed code shows "Warning: trace was truncated"
+  with the 3 valid exchanges and no console errors, while the pre-fix code
+  (verified by temporarily reverting the fix) crashed with "Error: can't
+  access property \"received_at\", lastAttempt is undefined" and showed
+  nothing at all
 
 Recommended follow-up:
 
-- validate record shapes before converting into application state
-- use a schema-driven runtime validator or a minimal hand-written validator
+- none
 
 #### 17. Virtual scroll sizing does not appear to react to resize/layout changes
 
