@@ -48,6 +48,9 @@ function onFileSelected(buffer: ArrayBuffer): void {
 	});
 
 	w.addEventListener("message", (event: MessageEvent<WorkerResponse>): void => {
+		if (worker !== w) {
+			return;
+		}
 		const msg = event.data;
 		if (msg.type === "result") {
 			state.value = { phase: "viewer", result: msg.data };
@@ -58,6 +61,9 @@ function onFileSelected(buffer: ArrayBuffer): void {
 	});
 
 	w.addEventListener("error", (err: ErrorEvent): void => {
+		if (worker !== w) {
+			return;
+		}
 		state.value = { message: err.message, phase: "error" };
 		worker = null;
 	});
