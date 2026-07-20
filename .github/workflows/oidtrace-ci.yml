@@ -2,7 +2,6 @@ name: OIDTrace CI
 
 on:
   pull_request:
-    paths: [oidtrace/**, traceformat/**]
   push:
     branches: [main]
     paths: [oidtrace/**, traceformat/**]
@@ -16,6 +15,7 @@ concurrency:
 
 jobs:
   ci:
+    name: OIDTrace CI
     runs-on: ubuntu-latest
     defaults:
       run:

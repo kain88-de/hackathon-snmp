@@ -2,7 +2,6 @@ name: Traceformat CI
 
 on:
   pull_request:
-    paths: [traceformat/**]
   push:
     branches: [main]
     paths: [traceformat/**]
@@ -16,6 +15,7 @@ concurrency:
 
 jobs:
   ci:
+    name: Traceformat CI
     runs-on: ubuntu-latest
     defaults:
       run:
