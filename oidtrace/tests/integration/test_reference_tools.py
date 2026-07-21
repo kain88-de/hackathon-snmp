@@ -112,10 +112,14 @@ async def test_snmpbulkwalk_crosswalk(
 
     assert ref_oids, f"snmpbulkwalk produced no output. stderr: {proc_result.stderr!r}"
 
-    # Parse our trace: exchange varbinds in order, excluding EndOfMibView
+    # Parse our trace: exchange varbinds in order, excluding EndOfMibView.
+    # Skip the system-info Gets (pdu == "get") -- they probe an unrelated,
+    # disjoint OID range and aren't part of the GetBulk walk being crosswalked.
     our_oids: list[str] = []
     for record in read_trace(trace_path):
         if record.type == "exchange" and record.response is not None:
+            if record.request.pdu.value == "get":
+                continue
             for vb in record.response.varbinds:
                 if vb.vtype != "EndOfMibView":
                     our_oids.append(vb.oid.root)
@@ -232,10 +236,15 @@ async def test_snmpwalk_v1_crosswalk(
 
     assert ref_oids, f"snmpwalk produced no output. stderr: {proc_result.stderr!r}"
 
-    # Parse our trace: exchange varbinds in order, excluding Null/noSuchName varbinds
+    # Parse our trace: exchange varbinds in order, excluding Null/noSuchName varbinds.
+    # Skip the system-info Gets (pdu == "get") -- v1 sends one per allowlisted OID
+    # (RFC 1157 has no per-varbind exceptions), all NoSuchObject against a device
+    # with no system_info configured, and disjoint from the GetNext walk anyway.
     our_oids: list[str] = []
     for record in read_trace(trace_path):
         if record.type == "exchange" and record.response is not None:
+            if record.request.pdu.value == "get":
+                continue
             for vb in record.response.varbinds:
                 if vb.vtype != "Null":
                     our_oids.append(vb.oid.root)
@@ -357,11 +366,13 @@ async def test_v3_oidtrace_vs_snmpwalk_crosswalk(
     assert ref_oids, f"snmpwalk -v3 produced no output. stderr: {proc_result.stderr!r}"
 
     # Parse our trace: exchange varbinds in order, excluding EndOfMibView
-    # Skip the discovery exchange (pdu == "discovery")
+    # Skip the discovery exchange (pdu == "discovery") and the system-info
+    # Gets (pdu == "get") -- neither is part of the GetBulk walk being
+    # crosswalked against snmpwalk.
     our_oids: list[str] = []
     for record in read_trace(trace_path):
         if record.type == "exchange" and record.response is not None:
-            if record.request.pdu.value == "discovery":
+            if record.request.pdu.value in ("discovery", "get"):
                 continue
             for vb in record.response.varbinds:
                 if vb.vtype != "EndOfMibView":
@@ -506,13 +517,14 @@ async def test_snmpwalk_v3_authnopriv_crosswalk(
     assert ref_oids, f"snmpwalk -v3 produced no output. stderr: {proc_result.stderr!r}"
 
     # Parse our trace: exchange varbinds in order, excluding EndOfMibView
-    # Skip the discovery exchange (pdu == "discovery")
+    # Skip the discovery exchange (pdu == "discovery") and the system-info
+    # Gets (pdu == "get") -- neither is a GetBulk exchange.
     our_oids: list[str] = []
     getbulk_exchanges_with_response = 0
     getbulk_exchanges_total = 0
     for record in read_trace(trace_path):
         if record.type == "exchange":
-            if record.request.pdu.value == "discovery":
+            if record.request.pdu.value in ("discovery", "get"):
                 continue
             getbulk_exchanges_total += 1
             if record.response is not None:

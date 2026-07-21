@@ -732,7 +732,7 @@ class OidtraceLibrary:
         for record in read_trace(self._trace_path):
             if (
                 isinstance(record, Exchange)
-                and record.request.pdu.value != "discovery"
+                and record.request.pdu.value not in ("discovery", "get")
                 and record.response is not None
             ):
                 for vb in record.response.varbinds:
