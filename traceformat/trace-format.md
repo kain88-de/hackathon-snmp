@@ -27,9 +27,11 @@ sequence of self-describing JSON records. Design goals, in priority order:
 - **Encoding**: gzip-compressed JSON Lines. Each line is one UTF-8 JSON object terminated
   by `\n`. No blank lines.
 - **File extension**: `.oidtrace.jsonl.gz`.
-- **Record order**: `header` first; `system_info` (point `start`) if present comes next;
-  then `exchange` and `event` records in capture order; `system_info` (point `end`) and
-  `summary` last, both best-effort.
+- **Record order**: `header` first (written before any wire activity); every other record
+  — `system_info`, `exchange`, `event` — in capture order, i.e. the order the writer
+  produced them, including the underlying `exchange` record for each `system_info` Get;
+  `summary` last, since it aggregates the whole walk and can only be computed once it's
+  done. No reader may assume `system_info` (either point) appears at a fixed position.
 - **Truncation semantics**: readers MUST accept a file that ends mid-line or without
   `summary`/`system_info(end)` records; all complete lines before the truncation point are
   valid. Writers flush after every record.
