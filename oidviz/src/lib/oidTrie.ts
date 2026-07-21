@@ -11,17 +11,28 @@ import { lookupOidName } from "./oidNames.gen.ts";
 
 const AUTO_EXPAND_MAX_CHILDREN = 10;
 
-function makeNode(arc: string, fullOid: OidString): TrieNode {
+function makeNode(
+	arc: string,
+	fullOid: OidString,
+	parent: TrieNode | null,
+): TrieNode {
 	const info = lookupOidName(fullOid);
+	// A node with no more specific entry than its parent inherits the parent's
+	// name via longest-prefix match (e.g. an unknown vendor's sub-branch under
+	// "enterprises") — showing that inherited name again reads as a duplicated,
+	// no-op tree level rather than "nothing more specific is known here".
+	const parentInfo = parent === null ? null : lookupOidName(parent.fullOid);
+	const inheritsParentName =
+		info !== null && parentInfo !== null && info.name === parentInfo.name;
 	return {
 		arc,
 		children: new Map(),
-		description: info?.description ?? null,
+		description: inheritsParentName ? null : (info?.description ?? null),
 		expanded: false,
 		flags: { retry: false, slow: false, violation: false },
 		fullOid,
 		leaves: [],
-		name: info?.name ?? null,
+		name: inheritsParentName ? null : (info?.name ?? null),
 		stats: { count: 0, maxRtt: 0, violationCount: 0 },
 	};
 }
@@ -44,7 +55,7 @@ function insertResponseOid(args: InsertArgs): void {
 
 		let child = current.children.get(arc);
 		if (child === undefined) {
-			child = makeNode(arc, fullOid);
+			child = makeNode(arc, fullOid, current);
 			current.children.set(arc, child);
 		}
 		current = child;
@@ -61,7 +72,7 @@ function insertResponseOid(args: InsertArgs): void {
 }
 
 export function buildTrie(exchanges: readonly DomainExchange[]): TrieNode {
-	const root = makeNode("", asOid(""));
+	const root = makeNode("", asOid(""), null);
 	root.expanded = true;
 
 	for (const exchange of exchanges) {
