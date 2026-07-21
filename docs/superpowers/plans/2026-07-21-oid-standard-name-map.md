@@ -1,881 +1,227 @@
 # OID Standard Name Map Implementation Plan
 
-> **For agentic workers:** REQUIRED SUB-SKILL: Use superpowers:subagent-driven-development (recommended) or superpowers:executing-plans to implement this plan task-by-task. Steps use checkbox (`- [ ]`) syntax for tracking.
+> **For agentic workers:** REQUIRED SUB-SKILL: Use superpowers:subagent-driven-development
+> (recommended) or superpowers:executing-plans to implement this plan task-by-task. Steps use
+> checkbox (`- [ ]`) syntax for tracking.
+>
+> **Deviation from the usual plan format:** per explicit instruction, this plan does not embed
+> full code. Tasks describe the contract/outcome each change must satisfy; the implementer writes
+> the actual code, following existing patterns in the codebase, and leans on `just types` / `just
+> lint` / the test suite as the correctness gate rather than on this document. Code appears only
+> where a fact would otherwise be easy to get subtly wrong or to re-derive expensively (an external
+> library's actual behavior, an exact expected string) — never as a full implementation to copy.
 
-**Goal:** Replace oidviz's hand-written, ~50-entry MIB-group label table with a
-~950-entry table compiled from real standard (IETF) MIBs, giving both the OID Tree
-and the Minimap+Detail hover tooltip exact object names (`sysDescr`, `ifDescr`, ...)
-and short descriptions instead of coarse group labels.
+**Goal:** Replace oidviz's hand-written, ~50-entry MIB-group label table with a ~950-entry table
+compiled from real standard (IETF) MIBs, giving both the OID Tree and the Minimap+Detail hover
+tooltip exact object names (`sysDescr`, `ifDescr`, ...) and short descriptions instead of coarse
+group labels.
 
-**Architecture:** A one-off Python script (`oidviz/scripts/gen_oid_names.py`, run via
-`uv run`, no persistent dependency) compiles 14 standard MIB modules with `pysmi` and
-writes a committed, generated TypeScript file (`oidviz/src/lib/oidNames.gen.ts`) that
-fully replaces today's hand-written `oidNames.ts`. `lookupOidName()`'s return type
-gains a `description` field; `TrieNode` and `FlatRow`'s leaf variant gain matching
-fields; `OidTree.vue` and `MinimapDetail.vue` render them.
+**Architecture:** A one-off Python script (`oidviz/scripts/gen_oid_names.py`, run via `uv run`, no
+persistent dependency) compiles 14 standard MIB modules with `pysmi` and writes a committed,
+generated TypeScript file (`oidviz/src/lib/oidNames.gen.ts`) that fully replaces today's
+hand-written `oidNames.ts`. `lookupOidName()`'s return type gains a `description` field;
+`TrieNode` and `FlatRow`'s leaf variant gain matching fields; `OidTree.vue` and `MinimapDetail.vue`
+render them.
 
-**Tech Stack:** Python 3.11+ / `pysmi` / `pysnmp` (generation only, via `uv run` PEP
-723 inline deps) · TypeScript / Vue 3 / Vitest (oidviz itself, unchanged).
+**Tech Stack:** Python 3.11+ / `pysmi` / `pysnmp` (generation only, via `uv run` PEP 723 inline
+deps) · TypeScript / Vue 3 / Vitest (oidviz itself, unchanged). Full design context:
+`docs/superpowers/specs/2026-07-21-oid-standard-name-map-design.md`.
 
 ## Global Constraints
 
-- Scope is standard (IETF/RFC) MIBs only — the 14 modules listed in Task 1, Step 3.
-  No vendor/enterprise MIBs, no user-uploaded MIBs, no runtime MIB compilation.
-- `oidviz/src/lib/oidNames.ts` is deleted; `oidviz/src/lib/oidNames.gen.ts` (generated,
-  committed to git, never hand-edited) is its sole replacement.
-- `lookupOidName(oid: OidString)` returns `{ name: string; description: string | null }
-  | null` (previously `string | null`).
-- The generator script has no `pyproject.toml` and is not added to the root
-  `uv.workspace.members` — it's a self-contained PEP 723 script.
-- All spec source: `docs/superpowers/specs/2026-07-21-oid-standard-name-map-design.md`.
+- Scope is standard (IETF/RFC) MIBs only — the 14 modules named in Task 1. No vendor/enterprise
+  MIBs, no user-uploaded MIBs, no runtime MIB compilation (that non-goal, from `docs/oidviz.md`,
+  is unaffected by this work — generation happens ahead of time, once, by a maintainer).
+- `oidviz/src/lib/oidNames.ts` is deleted; `oidviz/src/lib/oidNames.gen.ts` (generated, committed to
+  git, never hand-edited — same treatment as `types.gen.ts` and `traceValidator.gen.js`) is its
+  sole replacement.
+- `lookupOidName(oid: OidString)` returns `{ name: string; description: string | null } | null`
+  (previously `string | null`) — same longest-prefix-match algorithm as today, unchanged.
+- The generator script has no `pyproject.toml` and is not added to the root `uv.workspace.members`
+  — it's a self-contained PEP 723 script (`# /// script` inline metadata), matching this project's
+  established preference for `uv run` one-off scripts over full packages.
+- `cd oidviz && just hook` (fmt-check, lint, types, vitest) must stay green after every task's
+  commit; run `just ci` (adds Playwright e2e + a11y) once all three tasks land.
 
-All commands below assume the repo root as cwd unless a step says otherwise.
+## Files
 
----
-
-## Task 1: Compile the standard-MIB table and swap the data source
-
-**Files:**
-- Create: `oidviz/scripts/gen_oid_names.py`
-- Create (generated by running the script in Step 4): `oidviz/src/lib/oidNames.gen.ts`
+- Create: `oidviz/scripts/gen_oid_names.py`, `oidviz/src/lib/oidNames.gen.ts` (generated)
 - Delete: `oidviz/src/lib/oidNames.ts`
-- Modify: `oidviz/src/lib/model.ts`
-- Modify: `oidviz/src/lib/oidTrie.ts`
-- Modify: `oidviz/tests/component/helpers.ts`
-- Modify: `oidviz/tests/component/OidTree.test.ts` (mechanical type fix only — no new
-  test yet, that's Task 2)
-- Modify: `oidviz/tests/unit/oidNames.test.ts`
-- Modify: `oidviz/tests/unit/oidTrie.test.ts`
-- Modify: `oidviz/Justfile`
-- Modify: `oidviz/biome.json`
-- Modify: `oidviz/.oxlintrc.json`
-
-**Interfaces:**
-- Produces: `lookupOidName(oid: OidString): { name: string; description: string | null
-  } | null`, exported from `oidviz/src/lib/oidNames.gen.ts`. Consumed by Task 2
-  (`OidTree.vue` via `oidTrie.ts`) and Task 3 (`MinimapDetail.vue` directly).
-- Produces: `TrieNode.description: string | null` and `FlatRow`'s leaf variant's
-  `name: string | null` / `description: string | null`, both in `model.ts`. Consumed
-  by Task 2's template edits.
-
-- [ ] **Step 1: Rewrite `oidviz/tests/unit/oidNames.test.ts` for the new shape**
-
-This import will fail until Step 4 generates the file — that's the point.
-
-```ts
-import { describe, expect, test } from "vitest";
-import { asOid } from "../../src/lib/model.ts";
-import { lookupOidName } from "../../src/lib/oidNames.gen.ts";
-
-describe("lookupOidName", () => {
-	test("returns name and description for a known scalar OID", () => {
-		expect(lookupOidName(asOid("1.3.6.1.2.1.1.1.0"))).toEqual({
-			name: "sysDescr",
-			description: "A textual description of the entity.",
-		});
-	});
-
-	test("returns null for a totally unrecognized OID", () => {
-		expect(lookupOidName(asOid("9.9.9.9"))).toBeNull();
-	});
-
-	test("returns the most-specific (longest) prefix match", () => {
-		// 1.3.6.1.2.1.2.2.1.2 (ifDescr) is more specific than its parent table
-		// row entry 1.3.6.1.2.1.2.2.1 (ifEntry).
-		expect(lookupOidName(asOid("1.3.6.1.2.1.2.2.1.2.1"))).toEqual({
-			name: "ifDescr",
-			description: "A textual string containing information about the interface.",
-		});
-	});
-
-	test("does not match a shorter prefix at a non-arc boundary (digit run)", () => {
-		// 1.3.6.1.20 must resolve through 1.3.6.1 ("internet"), not the
-		// numerically-similar-but-arc-invalid 1.3.6.1.2 ("mgmt").
-		expect(lookupOidName(asOid("1.3.6.1.20"))).toEqual({
-			name: "internet",
-			description: null,
-		});
-	});
-
-	test("matches exact OID that equals a prefix", () => {
-		expect(lookupOidName(asOid("1.3.6.1.2.1.1"))).toEqual({
-			name: "system",
-			description: null,
-		});
-	});
-
-	test("structural OBJECT IDENTIFIER nodes resolve with description: null", () => {
-		// enterprises (1.3.6.1.4.1) is a plain OBJECT IDENTIFIER assignment in
-		// SNMPv2-SMI — it has no DESCRIPTION clause, unlike a real OBJECT-TYPE.
-		expect(lookupOidName(asOid("1.3.6.1.4.1"))).toEqual({
-			name: "enterprises",
-			description: null,
-		});
-	});
-
-	test("a dropped vendor OID resolves through the generic enterprises node, not null", () => {
-		// Vendor MIBs are out of scope (see the design spec), but the OID still
-		// falls under enterprises (1.3.6.1.4.1) via longest-prefix match — it
-		// is not indistinguishable from a truly unrecognized OID like 9.9.9.9.
-		expect(lookupOidName(asOid("1.3.6.1.4.1.9.1.1"))).toEqual({
-			name: "enterprises",
-			description: null,
-		});
-	});
-});
-```
-
-- [ ] **Step 2: Run the test to verify it fails**
-
-Run: `cd oidviz && bunx vitest run tests/unit/oidNames.test.ts`
-Expected: FAIL — `Cannot find module '../../src/lib/oidNames.gen.ts'` (the file doesn't
-exist yet).
-
-- [ ] **Step 3: Write `oidviz/scripts/gen_oid_names.py`**
-
-```python
-# /// script
-# requires-python = ">=3.11"
-# dependencies = ["pysmi>=1.7", "pysnmp>=7.1.27"]
-# ///
-import json
-import re
-import sys
-import tempfile
-from pathlib import Path
-
-from pysmi.codegen import JsonCodeGen
-from pysmi.compiler import MibCompiler
-from pysmi.parser import SmiV1CompatParser
-from pysmi.reader import get_readers_from_urls
-from pysmi.searcher import AnyFileSearcher
-from pysmi.writer import FileWriter
-
-MIB_SOURCE = "https://mibs.pysnmp.com/asn1/@mib@"
-
-# Priority order: the first module to define a given OID wins. Modern modules
-# come before RFC1213-MIB, which they obsolete — RFC1213-MIB only fills gaps
-# such as ICMP objects, which have no standalone modern MIB.
-MODULES = [
-    "SNMPv2-SMI",
-    "SNMPv2-MIB",
-    "IF-MIB",
-    "IP-MIB",
-    "TCP-MIB",
-    "UDP-MIB",
-    "HOST-RESOURCES-MIB",
-    "BRIDGE-MIB",
-    "ENTITY-MIB",
-    "SNMP-FRAMEWORK-MIB",
-    "SNMP-USER-BASED-SM-MIB",
-    "SNMP-VIEW-BASED-ACM-MIB",
-    "SNMP-COMMUNITY-MIB",
-    "RFC1213-MIB",
-]
-
-OUTPUT = Path(__file__).parent.parent / "src" / "lib" / "oidNames.gen.ts"
-
-HEADER = """// GENERATED FILE. DO NOT EDIT BY HAND.
-// Regenerate with: just gen-oid-names
-// Compiled from standard IETF MIB modules via pysmi — see scripts/gen_oid_names.py.
-import type { OidString } from "./model.ts";
-
-export interface OidNameEntry {
-\tname: string;
-\tdescription: string | null;
-}
-
-const RAW_ENTRIES: [string, string, string | null][] = [
-"""
-
-FOOTER = """];
-
-// Sorted descending by prefix length at module init — most-specific match wins.
-const SORTED_ENTRIES: [string, string, string | null][] = [...RAW_ENTRIES].sort(
-\t(a, b): number => b[0].length - a[0].length,
-);
-
-export function lookupOidName(oid: OidString): OidNameEntry | null {
-\tfor (const [prefix, name, description] of SORTED_ENTRIES) {
-\t\tif (
-\t\t\toid.startsWith(prefix) &&
-\t\t\t(oid.length === prefix.length || oid[prefix.length] === ".")
-\t\t) {
-\t\t\treturn { name, description };
-\t\t}
-\t}
-\treturn null;
-}
-"""
-
-
-def first_sentence(text: str) -> str:
-    sentence = re.split(r"(?<=[.!?])\s+", text.strip(), maxsplit=1)[0].strip()
-    if sentence and sentence[-1] not in ".!?":
-        sentence += "."
-    return sentence
-
-
-def compile_mibs(dst: str) -> dict:
-    compiler = MibCompiler(
-        SmiV1CompatParser(), JsonCodeGen(), FileWriter(dst).set_options(suffix=".json")
-    )
-    compiler.add_sources(*get_readers_from_urls(MIB_SOURCE))
-    compiler.add_searchers(AnyFileSearcher(dst).set_options(exts=[".json"]))
-    processed = compiler.compile(*MODULES, genTexts=True, ignoreErrors=True)
-
-    failed = [m for m in MODULES if processed.get(m) != "compiled"]
-    if failed:
-        sys.exit(f"gen_oid_names: failed to compile {failed}: {processed}")
-
-    modules_json = {}
-    for module in MODULES:
-        with open(Path(dst) / f"{module}.json") as f:
-            modules_json[module] = json.load(f)
-    return modules_json
-
-
-def extract_entries(modules_json: dict) -> list:
-    seen_oids = set()
-    entries = []
-    for module in MODULES:
-        for name, symbol in modules_json[module].items():
-            if not isinstance(symbol, dict) or "oid" not in symbol:
-                continue
-            oid = symbol["oid"]
-            if oid in seen_oids:
-                continue
-            seen_oids.add(oid)
-            description = symbol.get("description")
-            entries.append(
-                (oid, name, first_sentence(description) if description else None)
-            )
-    return entries
-
-
-def render_ts(entries: list) -> str:
-    lines = [HEADER]
-    for oid, name, description in sorted(entries):
-        desc_literal = "null" if description is None else json.dumps(description)
-        lines.append(f"\t[{json.dumps(oid)}, {json.dumps(name)}, {desc_literal}],\n")
-    lines.append(FOOTER)
-    return "".join(lines)
-
-
-def main() -> None:
-    with tempfile.TemporaryDirectory() as tmp:
-        modules_json = compile_mibs(tmp)
-    entries = extract_entries(modules_json)
-    OUTPUT.write_text(render_ts(entries))
-    print(f"wrote {len(entries)} entries to {OUTPUT}")
-
-
-if __name__ == "__main__":
-    main()
-```
-
-- [ ] **Step 4: Run the generator**
-
-Run: `cd oidviz && uv run scripts/gen_oid_names.py`
-Expected: network fetch to `mibs.pysnmp.com`, then `wrote 948 entries to
-.../oidviz/src/lib/oidNames.gen.ts` (the exact count may drift slightly if pysmi or
-the MIB repository changes; anywhere in the 900s is expected — investigate if it's
-wildly different, e.g. under 500 or over 2000).
-
-- [ ] **Step 5: Run the test again to verify it passes**
-
-Run: `cd oidviz && bunx vitest run tests/unit/oidNames.test.ts`
-Expected: PASS (7 tests).
-
-- [ ] **Step 6: Delete the old hand-written table**
-
-Run: `git rm oidviz/src/lib/oidNames.ts`
-
-- [ ] **Step 7: Update `oidviz/src/lib/model.ts`**
-
-In the `TrieNode` interface, add `description` immediately after `name`:
-
-```ts
-export interface TrieNode {
-	arc: string; // arc label — plain string, not OidString
-	fullOid: OidString;
-	name: string | null;
-	description: string | null;
-	children: Map<string, TrieNode>;
-	leaves: TrieLeaf[];
-	expanded: boolean; // intentionally mutable — only mutable domain field
-	stats: { count: number; maxRtt: number; violationCount: number };
-	flags: TrieNodeFlags; // OR-rolled from children + own leaves
-}
-```
-
-In the `FlatRow` union, add `name` and `description` to the leaf variant:
-
-```ts
-export type FlatRow =
-	| { kind: "node"; depth: number; node: TrieNode }
-	| {
-			kind: "leaf";
-			depth: number;
-			exchange: DomainExchange;
-			oid: OidString;
-			shared: boolean;
-			name: string | null;
-			description: string | null;
-	  };
-```
-
-- [ ] **Step 8: Update `oidviz/src/lib/oidTrie.ts`**
-
-Change the import:
-
-```ts
-import { lookupOidName } from "./oidNames.gen.ts";
-```
-
-Update `makeNode`:
-
-```ts
-function makeNode(arc: string, fullOid: OidString): TrieNode {
-	const resolved = lookupOidName(fullOid);
-	return {
-		arc,
-		children: new Map(),
-		description: resolved?.description ?? null,
-		expanded: false,
-		flags: { retry: false, slow: false, violation: false },
-		fullOid,
-		leaves: [],
-		name: resolved?.name ?? null,
-		stats: { count: 0, maxRtt: 0, violationCount: 0 },
-	};
-}
-```
-
-In `flatten()`, update the child-leaves loop inside `visit()`:
-
-```ts
-		for (const leaf of node.leaves) {
-			const resolved = lookupOidName(leaf.oid);
-			rows.push({
-				depth: depth + 1,
-				description: resolved?.description ?? null,
-				exchange: leaf.exchange,
-				kind: "leaf",
-				name: resolved?.name ?? null,
-				oid: leaf.oid,
-				shared: leaf.shared,
-			});
-		}
-```
-
-And the root-level no-response-leaves loop right below it:
-
-```ts
-	// Root-level no-response leaves (responseOids === [])
-	for (const leaf of root.leaves) {
-		const resolved = lookupOidName(leaf.oid);
-		rows.push({
-			depth: 0,
-			description: resolved?.description ?? null,
-			exchange: leaf.exchange,
-			kind: "leaf",
-			name: resolved?.name ?? null,
-			oid: leaf.oid,
-			shared: leaf.shared,
-		});
-	}
-```
-
-- [ ] **Step 9: Add regression tests proving the real wiring (not just types) works, to `oidviz/tests/unit/oidTrie.test.ts`**
-
-These prove `oidTrie.ts` actually calls the real `lookupOidName` and populates the new
-fields correctly — Task 2's tests only prove the Vue template renders synthetic props
-correctly, never that the real data flows into them. Add this test inside the
-existing `describe("buildTrie", ...)` block, after the
-`"one exchange with one responseOid..."` test:
-
-```ts
-	test("node name/description resolve through the real oidNames.gen.ts table", () => {
-		const ex = makeExchange({
-			responseOids: [asOid("1.3.6.1.2.1.1.1.0")],
-		});
-		const root = buildTrie([ex]);
-
-		// Navigate to the "1.3.6.1.2.1.1" node (the system group)
-		let cur = root;
-		for (const arc of ["1", "3", "6", "1", "2", "1", "1"]) {
-			cur = cur.children.get(arc)!;
-		}
-		expect(cur.fullOid).toBe(asOid("1.3.6.1.2.1.1"));
-		expect(cur.name).toBe("system");
-		expect(cur.description).toBeNull();
-	});
-```
-
-Add this test inside the existing `describe("flatten", ...)` block, after the
-`"leaf row oid is the response OID, not the request OID"` test:
-
-```ts
-	test("leaf row name/description resolve through the real oidNames.gen.ts table", () => {
-		const ex = makeExchange({
-			responseOids: [asOid("1.3.6.1.2.1.1.1.0")],
-		});
-		const root = buildTrie([ex]);
-		autoExpand(root);
-		const rows = flatten(root);
-
-		const leafRows = rows.filter((r) => r.kind === "leaf");
-		expect(leafRows).toHaveLength(1);
-		if (leafRows[0]!.kind === "leaf") {
-			expect(leafRows[0]!.name).toBe("sysDescr");
-			expect(leafRows[0]!.description).toBe(
-				"A textual description of the entity.",
-			);
-		}
-	});
-```
-
-Run: `cd oidviz && bunx vitest run tests/unit/oidTrie.test.ts`
-Expected: PASS (both new tests, plus all pre-existing tests in the file, green — Step
-8's implementation already makes these pass, so this step is a coverage addition
-rather than a red/green cycle).
-
-- [ ] **Step 10: Fix the now-incomplete `TrieNode` factory in `oidviz/tests/component/helpers.ts`**
-
-`makeTrieNode`'s default object literal must satisfy the new `TrieNode` shape:
-
-```ts
-export function makeTrieNode(overrides: Partial<TrieNode> = {}): TrieNode {
-	return {
-		arc: "1",
-		fullOid: asOid("1"),
-		name: null,
-		description: null,
-		children: new Map(),
-		leaves: [],
-		expanded: false,
-		stats: { count: 0, maxRtt: 0, violationCount: 0 },
-		flags: { slow: false, violation: false, retry: false },
-		...overrides,
-	};
-}
-```
-
-- [ ] **Step 11: Fix the one hand-written `FlatRow` leaf literal in `oidviz/tests/component/OidTree.test.ts`**
-
-This is the literal inside the `"leaf rows"` describe block's
-`"renders oid, rtt, violation-count badge, and shared badge"` test. Add the two new
-required fields (this test isn't about names, so both are `null`):
-
-```ts
-			const wrapper = mountOidTree({
-				flatRows: [
-					{
-						kind: "leaf",
-						depth: 0,
-						exchange,
-						oid: asOid("1.3.6.1.2.1.1.5.0"),
-						shared: true,
-						name: null,
-						description: null,
-					},
-				],
-			});
-```
-
-- [ ] **Step 12: Run the full type check**
-
-Run: `cd oidviz && bunx vue-tsc --noEmit --skipLibCheck`
-Expected: PASS, no errors.
-
-- [ ] **Step 13: Run the full unit + component test suite**
-
-Run: `cd oidviz && bunx vitest run`
-Expected: PASS, all existing tests plus the new `oidNames.test.ts`/`oidTrie.test.ts`
-tests green.
-
-- [ ] **Step 14: Add the `gen-oid-names` Justfile target**
-
-In `oidviz/Justfile`, add a new target near `gen-validator`:
-
-```
-gen-oid-names:
-    uv run scripts/gen_oid_names.py
-```
-
-- [ ] **Step 15: Exempt the generated file from lint/format, matching `types.gen.ts`**
-
-In `oidviz/Justfile`'s `lint` recipe, add a third `--ignore-pattern` flag to the
-`oxlint` line:
-
-```
-lint:
-    bunx oxlint -D all -c .oxlintrc.json --ignore-pattern "src/lib/types.gen.ts" --ignore-pattern "src/lib/traceValidator.gen.js" --ignore-pattern "src/lib/oidNames.gen.ts" src/
-    bunx biome check --formatter-enabled=false --error-on-warnings src/
-    bunx eslint --max-warnings 0 --no-error-on-unmatched-pattern src/ tests/e2e/ tests/component/
-```
-
-In `oidviz/.oxlintrc.json`, add the file to `ignorePatterns`:
-
-```json
-{
-  "rules": {
-    "no-magic-numbers": ["warn", { "ignoreEnums": true, "ignore": [0, 1, -1] }],
-    "max-lines": "off",
-    "max-params": ["error", { "max": 6 }],
-    "no-ternary": "off",
-    "no-undefined": "off",
-    "no-null": "off",
-    "consistent-type-definitions": "off",
-    "consistent-indexed-object-style": "off",
-    "no-optional-chaining": "off",
-    "sort-imports": "off"
-  },
-  "ignorePatterns": ["src/lib/types.gen.ts", "src/lib/traceValidator.gen.js", "src/lib/oidNames.gen.ts"]
-}
-```
-
-In `oidviz/biome.json`, add the file to the existing override's `include` array:
-
-```json
-    {
-      "include": ["src/lib/types.gen.ts", "src/lib/traceValidator.gen.js", "src/lib/oidNames.gen.ts"],
-      "linter": {
-        "enabled": false
-      },
-      "formatter": {
-        "enabled": false
-      }
-    },
-```
-
-- [ ] **Step 16: Run lint to confirm the generated file is exempted correctly**
-
-Run: `cd oidviz && just lint`
-Expected: PASS.
-
-- [ ] **Step 17: Commit**
-
-```bash
-git add oidviz/scripts/gen_oid_names.py oidviz/src/lib/oidNames.gen.ts \
-  oidviz/src/lib/model.ts oidviz/src/lib/oidTrie.ts \
-  oidviz/tests/component/helpers.ts oidviz/tests/component/OidTree.test.ts \
-  oidviz/tests/unit/oidNames.test.ts oidviz/tests/unit/oidTrie.test.ts \
-  oidviz/Justfile oidviz/biome.json oidviz/.oxlintrc.json
-# oidviz/src/lib/oidNames.ts's deletion is already staged from Step 6's `git rm`
-git commit -m "feat(oidviz): compile standard-MIB OID name/description table
-
-Replace the hand-written ~50-entry MIB-group table with a ~950-entry
-table compiled from 14 standard IETF MIBs via pysmi. lookupOidName()
-now returns a name+description pair instead of a bare label string."
-```
+- Modify: `oidviz/src/lib/model.ts`, `oidviz/src/lib/oidTrie.ts`, `oidviz/src/components/OidTree.vue`,
+  `oidviz/src/components/MinimapDetail.vue`
+- Modify: `oidviz/tests/unit/oidNames.test.ts`, `oidviz/tests/unit/oidTrie.test.ts`,
+  `oidviz/tests/component/helpers.ts`, `oidviz/tests/component/OidTree.test.ts`,
+  `oidviz/tests/component/MinimapDetail.test.ts`
+- Modify: `oidviz/Justfile`, `oidviz/biome.json`, `oidviz/.oxlintrc.json`
+
+## Recommended models
+
+| Task | Model | Why |
+| --- | --- | --- |
+| 1. Compile the standard-MIB table and swap the data source | Opus | `pysmi` is an obscure, sparsely-documented library with behavior that's easy to get subtly and silently wrong (see the facts below) — no type-checker or linter catches a Python script that runs cleanly but emits quietly-wrong data. Highest correctness risk in this plan. |
+| 2. Show names and descriptions in the OID Tree | Sonnet | Well-specified template edit following an exact existing pattern already in the file (the leaf-oid span's `:title` binding). Low ambiguity, tight test contract. |
+| 3. Show the resolved name in the Minimap+Detail tooltip | Sonnet | Same shape as Task 2 — one function, one existing pattern (`escHtml`/`showTooltip`) to extend, tight test contract. |
 
 ---
 
-## Task 2: Show names and descriptions in the OID Tree
+## Task 1: Compile the standard-MIB table and swap the data source *(model: Opus)*
 
-**Files:**
-- Modify: `oidviz/src/components/OidTree.vue`
-- Modify: `oidviz/tests/component/OidTree.test.ts`
+**Outcome:** `oidviz/src/lib/oidNames.gen.ts` exists, generated, and exports `lookupOidName(oid:
+OidString): { name: string; description: string | null } | null`. `oidviz/src/lib/oidNames.ts` is
+gone. Everything that touched the old `name: string | null` shape (`TrieNode`, `FlatRow`'s leaf
+variant, `oidTrie.ts`, and the test/helper files that construct them) is updated to the new shape.
+`cd oidviz && just hook` is green.
 
-**Interfaces:**
-- Consumes: `TrieNode.name` / `TrieNode.description` and `FlatRow`'s leaf `name` /
-  `description` fields, both from Task 1.
+**Key facts, discovered by hands-on testing against the real `mibs.pysnmp.com` repository — treat
+these as ground truth, not a starting hypothesis:**
 
-- [ ] **Step 1: Add three new tests to `oidviz/tests/component/OidTree.test.ts`**
+- Compile with `pysmi.compiler.MibCompiler`, using `pysmi.parser.SmiV1CompatParser`,
+  `pysmi.codegen.JsonCodeGen` as the code generator, a `pysmi.writer.FileWriter` (JSON suffix), MIB
+  sources from `pysmi.reader.get_readers_from_urls("https://mibs.pysnmp.com/asn1/@mib@")`, and a
+  `pysmi.searcher.AnyFileSearcher` over the destination directory.
+- `MibCompiler.compile(*modules, genTexts=True, ignoreErrors=True)` — **`genTexts=True` is
+  required** or every symbol's `description` field is omitted entirely (not `null` — absent).
+- Do **not** register a `StubSearcher`. `SNMPv2-SMI` is one of `JsonCodeGen.baseMibs` — pysmi's
+  default assumption is that it's already known and doesn't need compiling, which silently skips
+  emitting the structural nodes we actually want (`internet`, `mgmt`, `enterprises`, `private`,
+  `security`, `directory`, `org`, `dod`). Compiling it directly (no stub searcher at all) is what
+  makes those appear.
+- There is no standalone `ICMP-MIB` module in this repository (compiling it reports `"missing"`).
+  ICMP objects (`icmpInMsgs` etc.) live in `RFC1213-MIB` instead.
+- The 14 modules to compile, verified to all succeed together via `ignoreErrors=True` (unrelated
+  transitive-dependency modules like `RFC-1212`/`RFC-1215` may report `"failed"` as a side effect —
+  that's expected noise, not a failure of the modules actually requested):
+  `SNMPv2-SMI, SNMPv2-MIB, IF-MIB, IP-MIB, TCP-MIB, UDP-MIB, HOST-RESOURCES-MIB, BRIDGE-MIB,
+  ENTITY-MIB, SNMP-FRAMEWORK-MIB, SNMP-USER-BASED-SM-MIB, SNMP-VIEW-BASED-ACM-MIB,
+  SNMP-COMMUNITY-MIB, RFC1213-MIB`.
+- `compile()`'s return value is a dict keyed by module name; each value is a string-like status
+  object safely comparable with `== "compiled"`. Treat anything else, **for the 14 modules above
+  specifically**, as a hard failure: exit non-zero and write nothing (never a partial or
+  silently-wrong `oidNames.gen.ts`).
+- Each compiled module's JSON is a flat dict; every entry that has an `"oid"` key (a plain dotted
+  string, e.g. `"1.3.6.1.2.1.1.1"`) is a real symbol worth keeping — the only keys without one are
+  the fixed `"imports"` and `"meta"` entries. `"description"` is present only for real
+  `OBJECT-TYPE`/`MODULE-IDENTITY`/compliance nodes — plain `OBJECT IDENTIFIER` assignments (the
+  structural nodes above) have none, so `description: null` for those is correct, not a bug.
+- **Different modules define the same OID.** `RFC1213-MIB` and `SNMPv2-MIB` both define `sysDescr`
+  at `1.3.6.1.2.1.1.1` (with different description text). Process the 14 modules in the order
+  listed above and keep the *first* definition seen per OID — that order puts every modern module
+  before `RFC1213-MIB`, which they obsolete, so `RFC1213-MIB` only fills real gaps (ICMP).
+- Truncate each kept description to its first sentence (split on sentence-ending punctuation) —
+  full RFC prose is multiple sentences and this is a hover-tooltip label, not documentation.
+- The generated file's shape mirrors today's `oidNames.ts` almost exactly — a `[prefix, name,
+  description][]` array plus the same longest-prefix-match `lookupOidName`, sorted by prefix length
+  descending at module load — just wider (3-tuples instead of 2-, ~950 entries instead of ~50), and
+  now self-contained/generated rather than hand-written. Give it the same generated-file banner and
+  git/lint treatment as `types.gen.ts`/`traceValidator.gen.js`: a `// GENERATED FILE. DO NOT EDIT BY
+  HAND.` header naming the regenerate command, committed to git, and added to the existing
+  `types.gen.ts`/`traceValidator.gen.js` exemption lists in `oidviz/Justfile`'s `lint` recipe,
+  `oidviz/.oxlintrc.json`'s `ignorePatterns`, and `oidviz/biome.json`'s override `include`.
+- Wire it up as `just gen-oid-names` (a new Justfile target, invoking `uv run
+  scripts/gen_oid_names.py`) — a manually-run, rarely-needed step, same as `gen-types` and
+  `gen-validator` are today (neither is part of `hook`/`ci`).
 
-Add this test inside the existing `describe("node rows", ...)` block, after the
-`"toggle glyph and aria-expanded..."` test:
+**Test contract — `oidviz/tests/unit/oidNames.test.ts`** (rewrite for the new return shape; every
+value below is real, verified against the actual compiled output):
 
-```ts
-		// a node with description set — the description must render as the
-		// row's native hover tooltip (title attribute) so a user can see what
-		// the OID means without leaving the tree.
-		test("node row description renders as a title attribute", () => {
-			const node = makeTrieNode({
-				arc: "1",
-				fullOid: asOid("1"),
-				name: "sysDescr",
-				description: "A textual description of the entity.",
-			});
-			const wrapper = mountOidTree({
-				flatRows: [{ kind: "node", depth: 0, node }],
-			});
+| Input OID | Expected result |
+| --- | --- |
+| `1.3.6.1.2.1.1.1.0` | `{ name: "sysDescr", description: "A textual description of the entity." }` |
+| `9.9.9.9` | `null` (genuinely unrecognized — outside every compiled module) |
+| `1.3.6.1.2.1.2.2.1.2.1` | `{ name: "ifDescr", description: "A textual string containing information about the interface." }` — proves longest-prefix match picks the column entry over its parent table-row entry |
+| `1.3.6.1.20` | `{ name: "internet", description: null }`, **not** a false match against `1.3.6.1.2` ("mgmt") — proves the arc-boundary check still holds, not just a raw string-prefix check |
+| `1.3.6.1.2.1.1` | `{ name: "system", description: null }` — exact-OID-equals-prefix match |
+| `1.3.6.1.4.1` | `{ name: "enterprises", description: null }` — a structural node with no DESCRIPTION clause |
+| `1.3.6.1.4.1.9.1.1` | `{ name: "enterprises", description: null }` — a dropped vendor OID (Cisco) resolves through the generic ancestor, **not** `null`; distinguish this from the truly-unrecognized case above |
 
-			const nameEl = wrapper.find(".trie-name");
-			expect(nameEl.attributes("title")).toBe(
-				"A textual description of the entity.",
-			);
-		});
-```
+**Test contract — `oidviz/tests/unit/oidTrie.test.ts`** (add to the existing `buildTrie` and
+`flatten` describe blocks — these prove the *real* wiring works, since the component tests in Tasks
+2–3 only prove Vue renders synthetic props correctly): building a trie from an exchange whose
+response OID is `1.3.6.1.2.1.1.1.0` must produce a leaf row with `name: "sysDescr"` and `description:
+"A textual description of the entity."`, and its ancestor node at `1.3.6.1.2.1.1` must have `name:
+"system"`, `description: null`.
 
-Add these two tests inside the existing `describe("leaf rows", ...)` block, after the
-`"renders oid, rtt, violation-count badge, and shared badge"` test:
-
-```ts
-		// a leaf row with name/description set (as flatten() now populates from
-		// the response OID) — the name must render as its own label next to the
-		// OID, and the description must be the row's tooltip. The OID itself is
-		// already visible as text, so repeating it in the tooltip (today's
-		// behavior) would be redundant once a description is available.
-		test("leaf row renders a name label and shows its description in the tooltip", () => {
-			const exchange = makeExchange({ requestOid: asOid("1.3.6.1.2.1.1.1.0") });
-			const wrapper = mountOidTree({
-				flatRows: [
-					{
-						kind: "leaf",
-						depth: 0,
-						exchange,
-						oid: asOid("1.3.6.1.2.1.1.1.0"),
-						shared: false,
-						name: "sysDescr",
-						description: "A textual description of the entity.",
-					},
-				],
-			});
-
-			const row = wrapper.find(".trie-leaf");
-			expect(row.find(".trie-leaf-name").text()).toBe("sysDescr");
-			expect(row.find(".trie-leaf-oid").attributes("title")).toBe(
-				"A textual description of the entity.",
-			);
-		});
-
-		// a leaf row with name: null (the OID has no compiled entry) — the name
-		// label must not render at all, matching how a missing value is omitted
-		// elsewhere in this component (e.g. maxRtt when zero) rather than shown
-		// empty, and the tooltip must fall back to no title rather than "null".
-		test("leaf row omits the name label when unresolved", () => {
-			const exchange = makeExchange({ requestOid: asOid("9.9.9.9") });
-			const wrapper = mountOidTree({
-				flatRows: [
-					{
-						kind: "leaf",
-						depth: 0,
-						exchange,
-						oid: asOid("9.9.9.9"),
-						shared: false,
-						name: null,
-						description: null,
-					},
-				],
-			});
-
-			expect(wrapper.find(".trie-leaf-name").exists()).toBe(false);
-			expect(wrapper.find(".trie-leaf-oid").attributes("title")).toBeUndefined();
-		});
-```
-
-- [ ] **Step 2: Run the new tests to verify they fail**
-
-Run: `cd oidviz && bunx vitest run tests/component/OidTree.test.ts`
-Expected: FAIL — the two new assertions expecting a `title` attribute and a
-`.trie-leaf-name` element don't find them yet (the first new test may partially pass
-by coincidence on the `.trie-name` text check, but the `title` assertion fails).
-
-- [ ] **Step 3: Update `oidviz/src/components/OidTree.vue`'s template**
-
-Replace the node-name span (currently a single line):
-
-```html
-						<span v-if="row.node.name" class="trie-name">{{ row.node.name }}</span>
-```
-
-with:
-
-```html
-						<span
-							v-if="row.node.name"
-							class="trie-name"
-							:title="row.node.description ?? undefined"
-						>{{ row.node.name }}</span>
-```
-
-Replace the leaf-oid span (currently a single line):
-
-```html
-						<span class="trie-leaf-oid" :title="row.exchange.requestOid">{{ row.exchange.requestOid }}</span>
-```
-
-with (note the OID's own text is unchanged — only its tooltip source changes — and a
-new name label is added right after it):
-
-```html
-						<span
-							class="trie-leaf-oid"
-							:title="row.description ?? undefined"
-						>{{ row.exchange.requestOid }}</span>
-						<span v-if="row.name" class="trie-leaf-name">{{ row.name }}</span>
-```
-
-- [ ] **Step 4: Add the `.trie-leaf-name` style**
-
-In the `<style scoped>` block, add this rule immediately after `.trie-leaf-oid`
-(mirrors `.trie-name`'s declaration exactly):
-
-```css
-.trie-leaf-name {
-	color: var(--color-text-muted);
-	font-size: 11px;
-	overflow: hidden;
-	text-overflow: ellipsis;
-}
-```
-
-- [ ] **Step 5: Run the tests again to verify they pass**
-
-Run: `cd oidviz && bunx vitest run tests/component/OidTree.test.ts`
-Expected: PASS, all tests in the file (existing + 3 new) green.
-
-- [ ] **Step 6: Run lint and type check on the touched files**
-
-Run: `cd oidviz && bunx vue-tsc --noEmit --skipLibCheck && just lint`
-Expected: PASS.
-
-- [ ] **Step 7: Commit**
-
-```bash
-git add oidviz/src/components/OidTree.vue oidviz/tests/component/OidTree.test.ts
-git commit -m "feat(oidviz): show OID names and descriptions in the OID Tree
-
-Node rows show their description as a hover tooltip; leaf rows gain
-a name label next to the OID and show the description in the OID's
-tooltip (the OID text itself is already visible, so echoing it back
-in the tooltip is redundant once a description is available)."
-```
+- [ ] **Step 1:** Write both test files above against the not-yet-existing `oidNames.gen.ts` /
+      not-yet-updated `TrieNode`/`FlatRow` shape. Run them; confirm they fail (module not found /
+      type errors) — this is the TDD baseline this task fills in.
+- [ ] **Step 2:** Write `gen_oid_names.py` per the facts above, run it, and confirm the generated
+      file's entry count is in the same order of magnitude as verified (roughly 900–1000 entries —
+      investigate if wildly different).
+- [ ] **Step 3:** Delete `oidNames.ts`. Propagate the new `TrieNode.description` and `FlatRow`
+      leaf `name`/`description` fields through `model.ts`, `oidTrie.ts` (import path, `makeNode`,
+      both leaf-push sites in `flatten`), and the two mechanical call sites that break as a result
+      — `helpers.ts`'s `makeTrieNode` factory default, and the one hand-written `FlatRow` leaf
+      literal in `OidTree.test.ts`'s `"renders oid, rtt, violation-count badge, and shared badge"`
+      test (both just need `name: null, description: null` added; neither is testing names).
+- [ ] **Step 4:** Wire up `just gen-oid-names` and the three lint/format exemptions.
+- [ ] **Step 5:** Run both test files from Step 1 again; confirm they pass. Run `cd oidviz && just
+      hook`; confirm fully green.
+- [ ] **Step 6:** Commit.
 
 ---
 
-## Task 3: Show the resolved name in the Minimap+Detail hover tooltip
+## Task 2: Show names and descriptions in the OID Tree *(model: Sonnet)*
 
-**Files:**
-- Modify: `oidviz/src/components/MinimapDetail.vue`
-- Modify: `oidviz/tests/component/MinimapDetail.test.ts`
+**Outcome:** In `OidTree.vue`, a node row's description (when present) shows as its native hover
+tooltip on the existing name label. A leaf row gains a name label next to the OID, and its tooltip
+switches from repeating the already-visible OID to showing the description instead (the OID text
+is redundant as a tooltip once a description exists). Absent name/description behaves exactly like
+today's absent-name case — no label, no tooltip, nothing shown as literal `"null"`.
 
-**Interfaces:**
-- Consumes: `lookupOidName(oid: OidString): { name: string; description: string | null
-  } | null` from `oidviz/src/lib/oidNames.gen.ts` (Task 1), called directly — this
-  component has no `TrieNode`/`FlatRow`, only `DomainExchange`.
+**Test contract — add to `oidviz/tests/component/OidTree.test.ts`**, following this file's
+existing per-test-comment convention:
 
-- [ ] **Step 1: Add two new tests to `oidviz/tests/component/MinimapDetail.test.ts`**
+| Test | Synthetic setup | Assertion |
+| --- | --- | --- |
+| node row shows description as a tooltip | a node with `name: "sysDescr"`, `description` set | the `.trie-name` element's `title` attribute equals the description |
+| leaf row shows a name label and description tooltip | a leaf row with `name`/`description` set | a new `.trie-leaf-name` element's text equals the name; `.trie-leaf-oid`'s `title` equals the description (not the OID) |
+| leaf row omits the name label when unresolved | a leaf row with `name: null, description: null` | no `.trie-leaf-name` element exists; `.trie-leaf-oid` has no `title` attribute at all |
 
-Add these inside the existing `describe("detail interaction", ...)` block, after the
-`"the detail tooltip truncates OIDs longer than 40 characters"` test:
+- [ ] **Step 1:** Write the three tests above. Run them; confirm they fail (the assertions about
+      `title`/`.trie-leaf-name` don't hold against today's template).
+- [ ] **Step 2:** Update `OidTree.vue`'s template: bind the node-name span's `title` to its
+      description, add a `.trie-leaf-name` label span next to the leaf-oid span (styled like the
+      existing `.trie-name` class), and switch the leaf-oid span's `title` from the OID to the
+      description.
+- [ ] **Step 3:** Run the tests again; confirm they pass, along with the rest of the file. Run `cd
+      oidviz && just hook`; confirm green.
+- [ ] **Step 4:** Commit.
 
-```ts
-			// a single exchange whose requestOid is sysDescr.0, a real compiled
-			// OID — the detail hover tooltip must show the resolved name
-			// alongside the OID, RTT, and status, so an operator scrubbing the
-			// timeline can tell what spec object they're looking at.
-			test("hovering a detail row with a recognized OID shows its resolved name", () => {
-				const wrapper = mountMinimap([
-					makeExchange({ requestOid: asOid("1.3.6.1.2.1.1.1.0"), sentAtMs: 0 }),
-				]);
-				const detail = wrapper.find(".detail-canvas");
+---
 
-				dispatchMouse(detail.element, "mousemove", 50, detailRowY(0));
+## Task 3: Show the resolved name in the Minimap+Detail tooltip *(model: Sonnet)*
 
-				const tooltip = wrapper.find(".canvas-tooltip");
-				expect(tooltip.element.innerHTML).toBe(
-					"<strong>1.3.6.1.2.1.1.1.0</strong><br>sysDescr<br>RTT: 100.0ms<br>Status: Normal",
-				);
-			});
+**Outcome:** Hovering a Detail-canvas row whose OID resolves to a known name shows that name as an
+extra line in the existing floating tooltip, between the OID and the RTT line, HTML-escaped the
+same way the OID already is. An unresolved OID's tooltip is unchanged from today (OID, RTT, status
+only — no empty gap where a name would go).
 
-			// an exchange whose requestOid has no compiled entry at all — the
-			// tooltip must show only OID, RTT, and status, proving the name
-			// line is additive (present only when resolved) rather than an
-			// always-rendered slot that would otherwise show an empty gap.
-			test("hovering a detail row with an unrecognized OID shows no name line", () => {
-				const wrapper = mountMinimap([
-					makeExchange({ requestOid: asOid("9.9.9.9"), sentAtMs: 0 }),
-				]);
-				const detail = wrapper.find(".detail-canvas");
+**Test contract — add to `oidviz/tests/component/MinimapDetail.test.ts`**'s `"detail interaction"`
+block, following this file's existing per-test-comment convention. Both exercise a single exchange
+at `sentAtMs: 0`, hovered at `detailRowY(0)` — the same setup the existing detail-hover tests
+already use:
 
-				dispatchMouse(detail.element, "mousemove", 50, detailRowY(0));
+| Test | requestOid | Expected tooltip `innerHTML` |
+| --- | --- | --- |
+| recognized OID shows its name | `1.3.6.1.2.1.1.1.0` (`sysDescr`) | `<strong>1.3.6.1.2.1.1.1.0</strong><br>sysDescr<br>RTT: 100.0ms<br>Status: Normal` |
+| unrecognized OID shows no name line | `9.9.9.9` | `<strong>9.9.9.9</strong><br>RTT: 100.0ms<br>Status: Normal` |
 
-				const tooltip = wrapper.find(".canvas-tooltip");
-				expect(tooltip.element.innerHTML).toBe(
-					"<strong>9.9.9.9</strong><br>RTT: 100.0ms<br>Status: Normal",
-				);
-			});
-```
-
-- [ ] **Step 2: Run the new tests to verify they fail**
-
-Run: `cd oidviz && bunx vitest run tests/component/MinimapDetail.test.ts`
-Expected: FAIL — both new tests' `innerHTML` assertions mismatch (no name line is
-produced yet, so the first test's expected string doesn't match the actual output,
-which lacks `<br>sysDescr`).
-
-- [ ] **Step 3: Update `oidviz/src/components/MinimapDetail.vue`**
-
-Add the import (alongside the existing `model.ts` type import):
-
-```ts
-import { lookupOidName } from "../lib/oidNames.gen.ts";
-```
-
-Update `onDetailHover`:
-
-```ts
-function onDetailHover(e: MouseEvent): void {
-	const rowIdx = detailRowFromMouseY(e.clientY);
-	if (rowIdx === null) {
-		hideTooltip();
-		return;
-	}
-	const ex = currentWindowExchanges[rowIdx];
-	if (ex === undefined) {
-		hideTooltip();
-		return;
-	}
-	const oid =
-		ex.requestOid.length > OID_TRUNCATE_LEN
-			? `${ex.requestOid.slice(0, OID_TRUNCATE_LEN)}…`
-			: ex.requestOid;
-	const status = exchangeStatus(ex, props.facetState.slowMs);
-	const resolved = lookupOidName(ex.requestOid);
-	const nameLine = resolved ? `<br>${escHtml(resolved.name)}` : "";
-	const html =
-		`<strong>${escHtml(oid)}</strong>${nameLine}<br>` +
-		`RTT: ${ex.rtt.toFixed(1)}ms<br>` +
-		`Status: ${status}`;
-	showTooltip(html, e.clientX, e.clientY);
-}
-```
-
-- [ ] **Step 4: Run the tests again to verify they pass**
-
-Run: `cd oidviz && bunx vitest run tests/component/MinimapDetail.test.ts`
-Expected: PASS, all tests in the file (existing + 2 new) green. In particular, the two
-pre-existing tests that happen to hover a `sysDescr.0`/vendor-OID exchange
-(`"hovering a detail row shows the full OID, RTT, and status"` and
-`"the detail tooltip truncates OIDs longer than 40 characters"`) still pass unchanged
-— they only use `toContain`, which tolerates the new name line being present
-(`sysDescr` / `enterprises`) since neither asserts its absence.
-
-- [ ] **Step 5: Run the full suite, lint, and type check**
-
-Run: `cd oidviz && bunx vitest run && bunx vue-tsc --noEmit --skipLibCheck && just lint`
-Expected: PASS.
-
-- [ ] **Step 6: Commit**
-
-```bash
-git add oidviz/src/components/MinimapDetail.vue oidviz/tests/component/MinimapDetail.test.ts
-git commit -m "feat(oidviz): show resolved OID name in the Minimap+Detail tooltip
-
-Fast timeline scrubbing now surfaces the symbolic object name
-(e.g. sysDescr) alongside OID/RTT/status, answering \"where am I in
-the spec\" without switching to the OID Tree view."
-```
+- [ ] **Step 1:** Write both tests above. Run them; confirm they fail (today's tooltip has no name
+      line, so neither `innerHTML` matches).
+- [ ] **Step 2:** In `MinimapDetail.vue`'s `onDetailHover`, resolve the exchange's `requestOid` via
+      `lookupOidName` (new import from `oidNames.gen.ts`) and, when resolved, insert an extra
+      `<br>`-separated line for the name — escaped through the existing `escHtml` helper, same as
+      the OID already is — between the OID line and the RTT line.
+- [ ] **Step 3:** Run the tests again; confirm they pass, along with the rest of the file. Two
+      pre-existing tests already hover `sysDescr.0`/a vendor OID and use loose `toContain`
+      assertions — confirm they still pass unchanged (they don't assert the *absence* of a name
+      line, so the new text is additive, not breaking). Run `cd oidviz && just hook`; confirm
+      green.
+- [ ] **Step 4:** Commit.
 
 ---
 
 ## Final verification
 
-- [ ] Run the full CI-equivalent suite once all three tasks are committed:
-
-Run: `cd oidviz && just ci`
-Expected: PASS (`lint types fmt-check test e2e a11y`).
+- [ ] Once all three tasks are committed, run `cd oidviz && just ci` (adds Playwright e2e + a11y
+      on top of `just hook`) and confirm it's green.
