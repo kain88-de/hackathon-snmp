@@ -55,6 +55,8 @@ export interface TrieLeaf {
 	exchange: DomainExchange;
 	oid: OidString; // placement path (response OID), not requestOid
 	shared: boolean;
+	name: string | null;
+	description: string | null;
 }
 
 export type FlatRow =

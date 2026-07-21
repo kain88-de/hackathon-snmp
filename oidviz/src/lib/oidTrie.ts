@@ -50,7 +50,14 @@ function insertResponseOid(args: InsertArgs): void {
 		current = child;
 	}
 
-	current.leaves.push({ exchange, oid: responseOid, shared });
+	const info = lookupOidName(responseOid);
+	current.leaves.push({
+		description: info?.description ?? null,
+		exchange,
+		name: info?.name ?? null,
+		oid: responseOid,
+		shared,
+	});
 }
 
 export function buildTrie(exchanges: readonly DomainExchange[]): TrieNode {
@@ -59,8 +66,11 @@ export function buildTrie(exchanges: readonly DomainExchange[]): TrieNode {
 
 	for (const exchange of exchanges) {
 		if (exchange.responseOids.length === 0) {
+			const info = lookupOidName(exchange.requestOid);
 			root.leaves.push({
+				description: info?.description ?? null,
 				exchange,
+				name: info?.name ?? null,
 				oid: exchange.requestOid,
 				shared: false,
 			});
@@ -164,13 +174,12 @@ export function flatten(root: TrieNode): FlatRow[] {
 		}
 
 		for (const leaf of node.leaves) {
-			const info = lookupOidName(leaf.oid);
 			rows.push({
 				depth: depth + 1,
-				description: info?.description ?? null,
+				description: leaf.description,
 				exchange: leaf.exchange,
 				kind: "leaf",
-				name: info?.name ?? null,
+				name: leaf.name,
 				oid: leaf.oid,
 				shared: leaf.shared,
 			});
@@ -184,13 +193,12 @@ export function flatten(root: TrieNode): FlatRow[] {
 
 	// Root-level no-response leaves (responseOids === [])
 	for (const leaf of root.leaves) {
-		const info = lookupOidName(leaf.oid);
 		rows.push({
 			depth: 0,
-			description: info?.description ?? null,
+			description: leaf.description,
 			exchange: leaf.exchange,
 			kind: "leaf",
-			name: info?.name ?? null,
+			name: leaf.name,
 			oid: leaf.oid,
 			shared: leaf.shared,
 		});
