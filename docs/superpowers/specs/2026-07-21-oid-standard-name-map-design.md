@@ -24,13 +24,6 @@ MIB compilation, MIB browser UI, or user-supplied MIB files remain non-goals per
 `docs/oidviz.md` — this generates a static table from a fixed, curated MIB set
 **ahead of time**; nothing is compiled at runtime and users still cannot upload MIBs.
 
-## Considered and rejected: oid-base.com
-
-A public crowdsourced OID repository was considered as a data source. Rejected: no
-bulk export (one scraped page per OID), "all rights reserved" with no reuse license
-for the crowdsourced descriptions, and no bulk-download would mean oidviz calling out
-to a third party at runtime — a real regression from its "client-side only, no
-server round-trip" design and its no-device-identity privacy story.
 
 ## Generation
 
