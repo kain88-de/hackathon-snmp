@@ -43,6 +43,7 @@ export interface TrieNode {
 	arc: string; // arc label — plain string, not OidString
 	fullOid: OidString;
 	name: string | null;
+	description: string | null;
 	children: Map<string, TrieNode>;
 	leaves: TrieLeaf[];
 	expanded: boolean; // intentionally mutable — only mutable domain field
@@ -64,6 +65,8 @@ export type FlatRow =
 			exchange: DomainExchange;
 			oid: OidString;
 			shared: boolean;
+			name: string | null;
+			description: string | null;
 	  };
 
 export interface WorkerRequest {

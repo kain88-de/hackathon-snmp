@@ -40,6 +40,8 @@ function makeFlatRows(count: number): FlatRow[] {
 		kind: "leaf",
 		oid: asOid(String(i)),
 		shared: false,
+		name: null,
+		description: null,
 	}));
 }
 

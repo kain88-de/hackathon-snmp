@@ -67,6 +67,21 @@ describe("buildTrie", () => {
 		expect(root.leaves[0]!.oid).toBe(asOid("1.3.6.1.2.1.1.1.0"));
 	});
 
+	test("ancestor node carries the standard name and null description from the OID map", () => {
+		const ex = makeExchange({
+			responseOids: [asOid("1.3.6.1.2.1.1.1.0")],
+		});
+		const root = buildTrie([ex]);
+
+		let cur = root;
+		for (const arc of ["1", "3", "6", "1", "2", "1", "1"]) {
+			cur = cur.children.get(arc)!;
+		}
+		expect(cur.fullOid).toBe(asOid("1.3.6.1.2.1.1"));
+		expect(cur.name).toBe("system");
+		expect(cur.description).toBeNull();
+	});
+
 	test("exchange with multiple responseOids → shared: true on both placements", () => {
 		const ex = makeExchange({
 			responseOids: [
@@ -220,6 +235,24 @@ describe("flatten", () => {
 		if (leafRows[0]!.kind === "leaf") {
 			expect(leafRows[0]!.oid).toBe(responseOid);
 			expect(leafRows[0]!.oid).not.toBe(requestOid);
+		}
+	});
+
+	test("leaf row carries the standard object name and description from the OID map", () => {
+		const ex = makeExchange({
+			responseOids: [asOid("1.3.6.1.2.1.1.1.0")],
+		});
+		const root = buildTrie([ex]);
+		autoExpand(root);
+		const rows = flatten(root);
+
+		const leafRows = rows.filter((r) => r.kind === "leaf");
+		expect(leafRows).toHaveLength(1);
+		if (leafRows[0]!.kind === "leaf") {
+			expect(leafRows[0]!.name).toBe("sysDescr");
+			expect(leafRows[0]!.description).toBe(
+				"A textual description of the entity.",
+			);
 		}
 	});
 

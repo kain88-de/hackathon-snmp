@@ -7,19 +7,21 @@ import type {
 	TrieNodeFlags,
 } from "./model.ts";
 import { asOid } from "./model.ts";
-import { lookupOidName } from "./oidNames.ts";
+import { lookupOidName } from "./oidNames.gen.ts";
 
 const AUTO_EXPAND_MAX_CHILDREN = 10;
 
 function makeNode(arc: string, fullOid: OidString): TrieNode {
+	const info = lookupOidName(fullOid);
 	return {
 		arc,
 		children: new Map(),
+		description: info?.description ?? null,
 		expanded: false,
 		flags: { retry: false, slow: false, violation: false },
 		fullOid,
 		leaves: [],
-		name: lookupOidName(fullOid),
+		name: info?.name ?? null,
 		stats: { count: 0, maxRtt: 0, violationCount: 0 },
 	};
 }
@@ -162,10 +164,13 @@ export function flatten(root: TrieNode): FlatRow[] {
 		}
 
 		for (const leaf of node.leaves) {
+			const info = lookupOidName(leaf.oid);
 			rows.push({
 				depth: depth + 1,
+				description: info?.description ?? null,
 				exchange: leaf.exchange,
 				kind: "leaf",
+				name: info?.name ?? null,
 				oid: leaf.oid,
 				shared: leaf.shared,
 			});
@@ -179,10 +184,13 @@ export function flatten(root: TrieNode): FlatRow[] {
 
 	// Root-level no-response leaves (responseOids === [])
 	for (const leaf of root.leaves) {
+		const info = lookupOidName(leaf.oid);
 		rows.push({
 			depth: 0,
+			description: info?.description ?? null,
 			exchange: leaf.exchange,
 			kind: "leaf",
+			name: info?.name ?? null,
 			oid: leaf.oid,
 			shared: leaf.shared,
 		});
