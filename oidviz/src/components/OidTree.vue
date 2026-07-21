@@ -134,7 +134,11 @@ function nodeRttClass(rtt: number): string {
 					>
 						<span class="trie-toggle">{{ row.node.expanded ? '▾' : '▸' }}</span>
 						<span class="trie-arc">{{ row.node.arc }}</span>
-						<span v-if="row.node.name" class="trie-name">{{ row.node.name }}</span>
+						<span
+							v-if="row.node.name"
+							class="trie-name"
+							:title="row.node.description ?? undefined"
+						>{{ row.node.name }}</span>
 						<span class="trie-stats">
 							<span class="trie-count">{{ row.node.stats.count }}</span>
 							<span
@@ -154,7 +158,8 @@ function nodeRttClass(rtt: number): string {
 						:style="{ paddingLeft: (row.depth * 16 + 8) + 'px' }"
 						:data-trie-row="true"
 					>
-						<span class="trie-leaf-oid" :title="row.exchange.requestOid">{{ row.exchange.requestOid }}</span>
+						<span class="trie-leaf-oid" :title="row.description ?? undefined">{{ row.exchange.requestOid }}</span>
+						<span v-if="row.name" class="trie-leaf-name">{{ row.name }}</span>
 						<span
 							class="trie-leaf-rtt"
 							:class="leafRttClass(row.exchange)"
@@ -279,6 +284,13 @@ function nodeRttClass(rtt: number): string {
 	overflow: hidden;
 	text-overflow: ellipsis;
 	color: var(--color-text);
+}
+
+.trie-leaf-name {
+	color: var(--color-text-muted);
+	font-size: 11px;
+	overflow: hidden;
+	text-overflow: ellipsis;
 }
 
 .trie-leaf-rtt {

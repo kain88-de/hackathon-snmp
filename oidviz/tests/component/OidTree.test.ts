@@ -112,6 +112,23 @@ describe("OidTree", () => {
 			expect(rows[1]!.attributes("aria-expanded")).toBe("false");
 		});
 
+		// makeTrieNode({ name: "sysDescr", description: "A textual description
+		// of the entity" }) — a node with a description must expose it as the
+		// native title tooltip on the name label, not just render the name.
+		test("node row shows its description as a tooltip on the name", () => {
+			const node = makeTrieNode({
+				name: "sysDescr",
+				description: "A textual description of the entity",
+			});
+			const wrapper = mountOidTree({
+				flatRows: [{ kind: "node", depth: 0, node }],
+			});
+
+			expect(wrapper.find(".trie-name").attributes("title")).toBe(
+				"A textual description of the entity",
+			);
+		});
+
 		// node starting expanded: false — clicking its row must emit
 		// reflatten and mutate the SAME TrieNode object's .expanded field to
 		// true. OidTree.vue mutates the prop's nested TrieNode directly
@@ -260,6 +277,58 @@ describe("OidTree", () => {
 			expect(rtt.classes()).toContain("dim-slow");
 			expect(row.find(".badge-violation").text()).toBe("2 viol");
 			expect(row.find(".badge-shared").exists()).toBe(true);
+		});
+
+		// a leaf row with name: "sysDescr.0" and description: "A textual
+		// description of the entity" — the row must gain a name label
+		// showing the resolved name, and the oid's tooltip must show the
+		// description instead of repeating the already-visible OID text.
+		test("leaf row with a resolved name shows a name label and description tooltip", () => {
+			const exchange = makeExchange({ requestOid: asOid("1.3.6.1.2.1.1.1.0") });
+			const wrapper = mountOidTree({
+				flatRows: [
+					{
+						kind: "leaf",
+						depth: 0,
+						exchange,
+						oid: asOid("1.3.6.1.2.1.1.1.0"),
+						shared: false,
+						name: "sysDescr.0",
+						description: "A textual description of the entity",
+					},
+				],
+			});
+
+			const row = wrapper.find(".trie-leaf");
+			expect(row.find(".trie-leaf-name").text()).toBe("sysDescr.0");
+			expect(row.find(".trie-leaf-oid").attributes("title")).toBe(
+				"A textual description of the entity",
+			);
+		});
+
+		// a leaf row with name: null, description: null (the unresolved case)
+		// — no name label must render at all, and the oid must carry no
+		// title attribute whatsoever (not even an empty one), matching
+		// today's absent-name behavior rather than showing literal "null".
+		test("leaf row omits the name label and tooltip when unresolved", () => {
+			const exchange = makeExchange({ requestOid: asOid("1.3.6.1.2.1.1.1.0") });
+			const wrapper = mountOidTree({
+				flatRows: [
+					{
+						kind: "leaf",
+						depth: 0,
+						exchange,
+						oid: asOid("1.3.6.1.2.1.1.1.0"),
+						shared: false,
+						name: null,
+						description: null,
+					},
+				],
+			});
+
+			const row = wrapper.find(".trie-leaf");
+			expect(row.find(".trie-leaf-name").exists()).toBe(false);
+			expect(row.find(".trie-leaf-oid").attributes("title")).toBeUndefined();
 		});
 	});
 });
