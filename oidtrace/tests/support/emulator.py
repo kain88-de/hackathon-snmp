@@ -25,6 +25,7 @@ from oidtrace.codec import (
     Malformed,
     Message,
     V3Params,
+    Varbind,
     authenticate_msg,
     decode_message,
     decode_v3_message,
@@ -35,6 +36,8 @@ from oidtrace.codec import (
 from oidtrace.oid import Oid
 
 if TYPE_CHECKING:
+    from collections.abc import Mapping
+
     from oidtrace.auth import AuthProto
 
 EMU_ENGINE_ID: bytes = b"\x80\x00\x00\x00\x01testemu\x00"
@@ -72,6 +75,7 @@ _IF_TABLE = Oid.from_str("1.3.6.1.2.1.2.2.1")
 _N_COLUMNS = 10
 _INTEGER_TAG = 0x02
 _TAG_NULL = 0x05
+_TAG_NO_SUCH_OBJECT = 0x80  # v2c exception: Get for an OID the device does not expose
 
 
 @dataclass(frozen=True, slots=True)
@@ -82,11 +86,16 @@ class EmuDevice:
         tree: Sorted tuple of (oid, tag, value_length) entries.
         quirks: Behavioral modifiers.
         auth_users: Maps username (bytes) to (proto, kul) for authenticated v3.
+        system_info: Maps system-group OID -> (tag, value_bytes) for plain Get
+            requests (sysDescr/sysObjectID/sysUpTime/sysName). An OID absent from
+            this map models a device that does not expose that field: a Get for it
+            comes back NoSuchObject.
     """
 
     tree: tuple[_TreeEntry, ...]
     quirks: Quirks = field(default_factory=Quirks)
     auth_users: dict[bytes, tuple[AuthProto, bytes]] = field(default_factory=dict)
+    system_info: Mapping[Oid, tuple[int, bytes]] = field(default_factory=dict)
 
     @classmethod
     def simple(
@@ -94,6 +103,7 @@ class EmuDevice:
         n_oids: int = 100,
         quirks: Quirks | None = None,
         auth_users: dict[bytes, tuple[AuthProto, bytes]] | None = None,
+        system_info: Mapping[Oid, tuple[int, bytes]] | None = None,
     ) -> EmuDevice:
         """Build a sorted ifTable-like tree with n_oids entries.
 
@@ -111,6 +121,7 @@ class EmuDevice:
         return cls(
             tree=tuple(entries),
             quirks=quirks or Quirks(),
+            system_info=system_info or {},
             auth_users=auth_users or {},
         )
 
@@ -160,6 +171,33 @@ class EmuProtocol(asyncio.DatagramProtocol):
     @override
     def connection_lost(self, exc: Exception | None) -> None:  # pragma: no cover
         pass
+
+    @staticmethod
+    def _get_varbinds(
+        varbinds_in: tuple[Varbind, ...],
+        system_info: Mapping[Oid, tuple[int, bytes]],
+    ) -> list[tuple[Oid, int, bytes]]:
+        """Map requested OIDs to exact-match values, or NoSuchObject if unknown.
+
+        Shared by the v1/v2c and v3 Get handlers so both stay wire-consistent.
+        """
+        return [
+            (vb.oid, *system_info[vb.oid])
+            if vb.oid in system_info
+            else (vb.oid, _TAG_NO_SUCH_OBJECT, b"")
+            for vb in varbinds_in
+        ]
+
+    def _get_response(
+        self,
+        varbinds_in: tuple[Varbind, ...],
+        system_info: Mapping[Oid, tuple[int, bytes]],
+        rid: int,
+        version: int = 0,
+    ) -> bytes:
+        """Build a Get response: exact-match value if the device has it, else NoSuchObject."""
+        varbinds = self._get_varbinds(varbinds_in, system_info)
+        return encode_response(rid, varbinds, version=version)
 
     def _getnext_response(
         self,
@@ -242,8 +280,12 @@ class EmuProtocol(asyncio.DatagramProtocol):
         idx = bisect.bisect_right(keys, request_oid)
         rid = quirks.fixed_request_id if quirks.fixed_request_id is not None else msg.request_id
 
-        if msg.pdu_tag == PDU_GETNEXT:
-            response = self._getnext_response(request_oid, idx, tree, rid, version=0)
+        if msg.pdu_tag in (PDU_GET, PDU_GETNEXT):
+            response = (
+                self._get_response(msg.varbinds, device.system_info, rid, version=0)
+                if msg.pdu_tag == PDU_GET
+                else self._getnext_response(request_oid, idx, tree, rid, version=0)
+            )
             assert self._transport is not None
             self._transport.sendto(response, addr)
             return
@@ -261,7 +303,7 @@ class EmuProtocol(asyncio.DatagramProtocol):
         if quirks.duplicate_responses:
             self._transport.sendto(response, addr)
 
-    async def _handle_v3(  # noqa: PLR0911, PLR0912
+    async def _handle_v3(  # noqa: PLR0911, PLR0912, PLR0915
         self,
         msg: Message,
         params: V3Params,
@@ -299,6 +341,30 @@ class EmuProtocol(asyncio.DatagramProtocol):
                 username=params.username,
                 pdu_tag=PDU_REPORT,
             )
+            assert self._transport is not None
+            self._transport.sendto(response, addr)
+            return
+
+        # Get with varbinds (e.g. the walker's system-info allowlist probe):
+        # reuse the same exact-match/NoSuchObject mapping as the v1/v2c handler.
+        if msg.pdu_tag == PDU_GET and msg.varbinds:
+            varbinds = self._get_varbinds(msg.varbinds, self._device.system_info)
+            response = encode_v3_response(
+                msg_id=params.msg_id,
+                request_id=msg.request_id,
+                varbinds=varbinds,
+                engine_id=EMU_ENGINE_ID,
+                username=params.username,
+                proto=auth_proto,
+            )
+            if needs_auth:
+                assert auth_kul is not None and auth_proto is not None
+                sign_kul = (
+                    auth_kul[:-1] + bytes([auth_kul[-1] ^ 0xFF])
+                    if self._device.quirks.corrupt_auth_responses
+                    else auth_kul
+                )
+                response = authenticate_msg(response, sign_kul, auth_proto)
             assert self._transport is not None
             self._transport.sendto(response, addr)
             return
@@ -407,7 +473,9 @@ def _run_emulator_on_thread(
 class EmulatorThread:
     """Context manager: starts an emulator on a daemon thread, tears it down on exit."""
 
-    def __init__(self, quirks: object = None, auth_users: object = None) -> None:
+    def __init__(
+        self, quirks: object = None, auth_users: object = None, system_info: object = None
+    ) -> None:
         self._port_ready: threading.Event = threading.Event()
         self._port_holder: list[int] = []
         self._state: dict[str, object] = {}
@@ -417,6 +485,7 @@ class EmulatorThread:
             n_oids=20,
             quirks=quirks if isinstance(quirks, Quirks) else None,
             auth_users=auth_users if isinstance(auth_users, dict) else None,
+            system_info=system_info if isinstance(system_info, dict) else None,
         )
 
     def __enter__(self) -> tuple[str, int]:

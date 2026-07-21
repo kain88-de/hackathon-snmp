@@ -27,9 +27,11 @@ sequence of self-describing JSON records. Design goals, in priority order:
 - **Encoding**: gzip-compressed JSON Lines. Each line is one UTF-8 JSON object terminated
   by `\n`. No blank lines.
 - **File extension**: `.oidtrace.jsonl.gz`.
-- **Record order**: `header` first; `system_info` (point `start`) if present comes next;
-  then `exchange` and `event` records in capture order; `system_info` (point `end`) and
-  `summary` last, both best-effort.
+- **Record order**: `header` first (written before any wire activity); every other record
+  — `system_info`, `exchange`, `event` — in capture order, i.e. the order the writer
+  produced them, including the underlying `exchange` record for each `system_info` Get;
+  `summary` last, since it aggregates the whole walk and can only be computed once it's
+  done. No reader may assume `system_info` (either point) appears at a fixed position.
 - **Truncation semantics**: readers MUST accept a file that ends mid-line or without
   `summary`/`system_info(end)` records; all complete lines before the truncation point are
   valid. Writers flush after every record.
@@ -113,8 +115,8 @@ with `request.pdu: "discovery"` (§ 4.3), same as every other request.
 
 ### 4.2 `system_info`
 
-Admin-approved values for the system-OID allowlist, captured by a dedicated Get at walk
-start and again at walk end. Absent entirely when the admin hides system info.
+Values for the system-OID allowlist, captured unconditionally by a dedicated Get at walk
+start and again at walk end — every walk, no flag to disable it.
 
 | Field    | Type   | Req. | Meaning                                   |
 | -------- | ------ | ---- | ----------------------------------------- |
@@ -124,13 +126,13 @@ start and again at walk end. Absent entirely when the admin hides system info.
 | `values` | object | yes  | OID → value; only allowlisted OIDs appear |
 
 Allowlist in format version 1: sysDescr.0 (`1.3.6.1.2.1.1.1.0`, string), sysObjectID.0
-(`1.3.6.1.2.1.1.2.0`, OID string), sysUpTime.0 (`1.3.6.1.2.1.1.3.0`, integer ticks).
+(`1.3.6.1.2.1.1.2.0`, OID string), sysUpTime.0 (`1.3.6.1.2.1.1.3.0`, integer ticks),
+sysName.0 (`1.3.6.1.2.1.1.5.0`, string).
 A sysUpTime at `end` lower than at `start` proves a mid-walk device reboot.
 
-The underlying Get requests are real wire traffic and are **also recorded as ordinary
-`exchange` records** (participating in `seq`) — their timing and any violations are
-evidence too. The `system_info` record carries only the admin-approved values; hiding
-system info removes the `system_info` records but the (value-free) exchanges remain.
+The underlying Get requests are real wire traffic like any other exchange in the walk:
+they are **also recorded as ordinary `exchange` records** (participating in `seq`), with
+their own timing and violations as evidence.
 
 ```json
 {
@@ -140,7 +142,8 @@ system info removes the `system_info` records but the (value-free) exchanges rem
   "values": {
     "1.3.6.1.2.1.1.1.0": "Cisco IOS 15.2",
     "1.3.6.1.2.1.1.2.0": "1.3.6.1.4.1.9.1.516",
-    "1.3.6.1.2.1.1.3.0": 492711442
+    "1.3.6.1.2.1.1.3.0": 492711442,
+    "1.3.6.1.2.1.1.5.0": "switch-floor3"
   }
 }
 ```
@@ -309,8 +312,8 @@ A format-version-1 trace never contains:
 - the target host name, IP address, or port;
 - the SNMP community string;
 - packet bytes;
-- SNMP values — with one exception: the admin-approved `system_info` allowlist shown to
-  the admin at capture time.
+- SNMP values — with one exception: the `system_info` allowlist (§ 4.2), captured on
+  every walk.
 
 It does contain: OID names and tree structure (reveals device vendor/MIBs and table
 cardinalities), value types and lengths, timing, and the optional admin-chosen `label`.

@@ -139,6 +139,29 @@ def _response_exchange(oids: list[Oid]) -> Callable[[bytes], ExchangeIO]:
     return factory
 
 
+def _nosuchobject_exchange(oids: list[Oid]) -> Callable[[bytes], ExchangeIO]:
+    """Return a dynamic factory answering every requested OID with NoSuchObject.
+
+    Models "device exposes none of these OIDs" for the system-info placeholders
+    below — semantically inert regardless of what decode_values' vocabulary
+    covers, unlike an Integer-tagged varbind that happens to be inert only
+    because Integer isn't in that vocabulary today.
+    """
+
+    def factory(raw: bytes) -> ExchangeIO:
+        decoded = decode_message(raw)
+        request_id = 42 if isinstance(decoded, Malformed) else decoded.request_id
+        varbinds = [(oid, 0x80, b"") for oid in oids]
+        response_raw = encode_response(request_id, varbinds)
+        return ExchangeIO(
+            attempts=(Attempt(sent_at=0.001, received_at=0.002),),
+            response=(0.002, response_raw),
+            strays=(),
+        )
+
+    return factory
+
+
 def _eom_exchange(after_oid: Oid) -> Callable[[bytes], ExchangeIO]:
     """Return a dynamic EOM factory that echoes the request_id."""
 
@@ -183,6 +206,30 @@ def _no_response_exchange() -> ExchangeIO:
         response=None,
         strays=(),
     )
+
+
+def _system_info_placeholder() -> Callable[[bytes], ExchangeIO]:
+    """Neutral response for walker.py's unconditional system-info Get.
+
+    Every v2c walk now sends one of these at start and again at end
+    (trace-format.md § 4.2), so every FakeTransport script needs one scripted
+    response per point even when the test itself has nothing to do with system
+    info. NoSuchObject never produces a SystemInfo record regardless of what
+    decode_values' type vocabulary covers — a clean no-op for tests that don't
+    care about it. v1 needs four of these per point instead of one — see
+    _v1_system_info_placeholders.
+    """
+    return _nosuchobject_exchange([_OID_A])
+
+
+def _v1_system_info_placeholders() -> list[Callable[[bytes], ExchangeIO]]:
+    """Four neutral responses: v1's system-info capture is one Get per OID.
+
+    Unlike v2c/v3 (one Get, four varbinds), v1 has no per-varbind exceptions
+    (RFC 1157), so walker.py sends one single-OID Get per allowlisted OID —
+    four scripted responses are needed per point, not one.
+    """
+    return [_system_info_placeholder() for _ in range(4)]
 
 
 def _validate_all(records: list[TraceRecord], validator: Draft202012Validator) -> None:
@@ -232,8 +279,10 @@ async def test_record_order_header_first_summary_last(
     """Header is always first; Summary is always last."""
     transport = FakeTransport(
         responses=[
+            _system_info_placeholder(),
             _response_exchange([_OID_A]),
             _eom_exchange(_OID_A),
+            _system_info_placeholder(),
         ]
     )
     records = await _collect(transport)
@@ -250,15 +299,17 @@ async def test_summary_stats_match_exchanges(
     """Summary.exchanges and oids_seen match what was observed."""
     transport = FakeTransport(
         responses=[
+            _system_info_placeholder(),
             _response_exchange([_OID_A, _OID_B]),
             _eom_exchange(_OID_B),
+            _system_info_placeholder(),
         ]
     )
     records = await _collect(transport)
 
     summary = records[-1]
     assert summary.type == "summary"
-    assert summary.exchanges == 2
+    assert summary.exchanges == 4
     assert summary.oids_seen == 2
     assert summary.end_reason == str(EndReason.COMPLETED)
     _validate_all(records, record_validator)
@@ -319,8 +370,10 @@ async def test_end_of_mib_view_completed(
     """EndOfMibView (tag 0x82) terminates with COMPLETED."""
     transport = FakeTransport(
         responses=[
+            _system_info_placeholder(),
             _response_exchange([_OID_A]),
             _eom_exchange(_OID_A),
+            _system_info_placeholder(),
         ]
     )
     records = await _collect(transport)
@@ -340,7 +393,9 @@ async def test_left_subtree_oid_completed(
     outside_oid = Oid.from_str("1.3.6.2.1.1.1.0")  # outside 1.3.6.1 subtree
     transport = FakeTransport(
         responses=[
+            _system_info_placeholder(),
             _response_exchange([outside_oid]),
+            _system_info_placeholder(),
         ]
     )
     records = await _collect(transport, settings=WalkSettings(start_oid=_START_OID))
@@ -359,8 +414,10 @@ async def test_oid_not_increasing_loop(
     # First response goes forward; second wraps back
     transport = FakeTransport(
         responses=[
+            _system_info_placeholder(),
             _response_exchange([_OID_B]),
             _response_exchange([_OID_A]),  # non-increasing: _OID_A < _OID_B
+            _system_info_placeholder(),
         ]
     )
     records = await _collect(transport)
@@ -386,8 +443,10 @@ async def test_give_up_unresponsive(
     settings = WalkSettings(give_up_after=2, timeout_s=0.01, retries=0)
     transport = FakeTransport(
         responses=[
+            _system_info_placeholder(),
             _no_response_exchange(),
             _no_response_exchange(),
+            _system_info_placeholder(),
         ]
     )
     records = await _collect(transport, settings=settings)
@@ -407,10 +466,12 @@ async def test_give_up_with_recovery_resets_count(
     settings = WalkSettings(give_up_after=2, timeout_s=0.01, retries=0)
     transport = FakeTransport(
         responses=[
+            _system_info_placeholder(),
             _no_response_exchange(),  # 1 miss
             _response_exchange([_OID_A]),  # recovery — resets counter
             _no_response_exchange(),  # 1 miss again
             _no_response_exchange(),  # 2 misses → UNRESPONSIVE
+            _system_info_placeholder(),
         ]
     )
     records = await _collect(transport, settings=settings)
@@ -418,7 +479,7 @@ async def test_give_up_with_recovery_resets_count(
     assert isinstance(records[-1], Summary)
     summary = records[-1]
     assert summary.end_reason == str(EndReason.UNRESPONSIVE)
-    assert summary.exchanges == 4
+    assert summary.exchanges == 6
     _validate_all(records, record_validator)
 
 
@@ -435,14 +496,16 @@ async def test_malformed_response_adds_violation(
     )
     transport = FakeTransport(
         responses=[
+            _system_info_placeholder(),
             malformed_exchange,
             _eom_exchange(_START_OID),
+            _system_info_placeholder(),
         ]
     )
     records = await _collect(transport)
 
     exchange_records = [r for r in records if r.type == "exchange"]
-    first_exchange = exchange_records[0]
+    first_exchange = exchange_records[1]  # [0] is the system-info-at-start placeholder
     assert first_exchange.violations is not None
     assert str(Violation.MALFORMED_BER) in first_exchange.violations
     assert first_exchange.malformed is not None
@@ -459,6 +522,7 @@ async def test_malformed_increments_give_up_count(
     junk = b"\x00" * 5
     transport = FakeTransport(
         responses=[
+            _system_info_placeholder(),
             ExchangeIO(
                 attempts=(Attempt(sent_at=0.001, received_at=0.002),),
                 response=(0.002, junk),
@@ -469,6 +533,7 @@ async def test_malformed_increments_give_up_count(
                 response=(0.004, junk),
                 strays=(),
             ),
+            _system_info_placeholder(),
         ]
     )
     records = await _collect(transport, settings=settings)
@@ -491,9 +556,11 @@ async def test_icmp_attempts_appear_in_exchange(
     )
     transport = FakeTransport(
         responses=[
+            _system_info_placeholder(),
             icmp_exchange,
             icmp_exchange,
             icmp_exchange,
+            _system_info_placeholder(),
         ]
     )
 
@@ -501,7 +568,7 @@ async def test_icmp_attempts_appear_in_exchange(
     records = await _collect(transport, settings=settings)
 
     exchange_records = [r for r in records if r.type == "exchange"]
-    first = exchange_records[0]
+    first = exchange_records[1]  # [0] is the system-info-at-start placeholder
     # Attempt has error set
     assert first.attempts[0].error is not None
     assert first.attempts[0].received_at is None
@@ -566,7 +633,9 @@ async def test_logging_privacy_no_community_in_logs(
     settings = WalkSettings(community=secret_community)
     transport = FakeTransport(
         responses=[
+            _system_info_placeholder(),
             _eom_exchange(_START_OID),
+            _system_info_placeholder(),
         ]
     )
     with caplog.at_level(logging.DEBUG):
@@ -589,7 +658,9 @@ async def test_logging_info_start_and_end(
     """Walker emits INFO log at start and end of walk."""
     transport = FakeTransport(
         responses=[
+            _system_info_placeholder(),
             _eom_exchange(_START_OID),
+            _system_info_placeholder(),
         ]
     )
     with caplog.at_level(logging.INFO, logger="oidtrace.walker"):
@@ -613,8 +684,10 @@ async def test_walkstats_observe_accumulates(
 
     transport = FakeTransport(
         responses=[
+            _system_info_placeholder(),
             _response_exchange([_OID_A, _OID_B]),
             _eom_exchange(_OID_B),
+            _system_info_placeholder(),
         ]
     )
     stats = WalkStats()
@@ -624,7 +697,9 @@ async def test_walkstats_observe_accumulates(
             stats.observe(r)
             records_collected.append(r)
 
-    assert stats.exchanges == 2
+    assert stats.exchanges == 4
+    # _system_info_placeholder() reuses _OID_A, already counted from the main
+    # response below, so it adds no new distinct OID to the set.
     assert stats.oids_seen == 2
     _validate_all(records_collected, record_validator)
 
@@ -648,9 +723,11 @@ async def test_time_budget_exceeded(
     settings = WalkSettings(time_budget_s=0.1)
     transport = FakeTransport(
         responses=[
+            _system_info_placeholder(),
             _response_exchange([_OID_A]),
             _response_exchange([_OID_B]),
             _response_exchange([_OID_C]),
+            _system_info_placeholder(),
         ]
     )
     records = await _collect(transport, rel=fast_clock, settings=settings)
@@ -667,6 +744,33 @@ async def test_time_budget_exceeded(
 
 
 @pytest.mark.asyncio
+async def test_time_budget_already_expired_still_captures_system_info(
+    record_validator: Draft202012Validator,
+) -> None:
+    """An already-expired budget skips the GetBulk/GetNext loop, not system-info.
+
+    trace-format.md § 4.2: system-info capture is unconditional, "every walk,
+    no flag to disable it" — the time budget only ever governs the walk loop.
+    """
+    settings = WalkSettings(time_budget_s=0.001)
+    transport = FakeTransport(
+        responses=[
+            _system_info_placeholder(),
+            _system_info_placeholder(),
+        ]
+    )
+    records = await _collect(transport, rel=lambda: 1.0, settings=settings)
+
+    assert isinstance(records[-1], Summary)
+    assert records[-1].end_reason == str(EndReason.TIME_BUDGET_EXCEEDED)
+
+    exchange_records = [r for r in records if r.type == "exchange"]
+    assert len(exchange_records) == 2
+    assert all(r.request.pdu.value == "get" for r in exchange_records)
+    _validate_all(records, record_validator)
+
+
+@pytest.mark.asyncio
 async def test_walk_with_transport_returns_end_reason(
     record_validator: Draft202012Validator,
 ) -> None:
@@ -674,7 +778,9 @@ async def test_walk_with_transport_returns_end_reason(
 
     transport = FakeTransport(
         responses=[
+            _system_info_placeholder(),
             _eom_exchange(_START_OID),
+            _system_info_placeholder(),
         ]
     )
     sinks_received: list[TraceRecord] = []
@@ -703,7 +809,9 @@ async def test_no_data_response_completed(
         response=(0.002, empty_raw),
         strays=(),
     )
-    transport = FakeTransport(responses=[empty_exchange])
+    transport = FakeTransport(
+        responses=[_system_info_placeholder(), empty_exchange, _system_info_placeholder()]
+    )
     records = await _collect(transport)
 
     assert isinstance(records[-1], Summary)
@@ -760,14 +868,16 @@ async def test_duplicate_response_stray_violation(
     )
     transport = FakeTransport(
         responses=[
+            _system_info_placeholder(),
             dup_exchange,
             _eom_exchange(_OID_A),
+            _system_info_placeholder(),
         ]
     )
     records = await _collect(transport)
 
     exchange_records = [r for r in records if r.type == "exchange"]
-    first = exchange_records[0]
+    first = exchange_records[1]  # [0] is the system-info-at-start placeholder
     assert first.violations is not None
     assert str(Violation.DUPLICATE_RESPONSE) in first.violations
     _validate_all(records, record_validator)
@@ -813,7 +923,9 @@ async def test_all_exception_tag_varbinds_completed(
         response=(0.002, raw),
         strays=(),
     )
-    transport = FakeTransport(responses=[exc_exchange])
+    transport = FakeTransport(
+        responses=[_system_info_placeholder(), exc_exchange, _system_info_placeholder()]
+    )
     records = await _collect(transport)
 
     summary = records[-1]
@@ -838,8 +950,10 @@ async def test_varbind_outside_subtree_not_counted(
 
     transport = FakeTransport(
         responses=[
+            _system_info_placeholder(),
             _response_exchange([inside_oid, next_oid]),
             _eom_exchange(next_oid),
+            _system_info_placeholder(),
         ]
     )
     records = await _collect(transport, settings=WalkSettings(start_oid=start))
@@ -862,8 +976,10 @@ async def test_oids_seen_counts_distinct_only(
     # should be counted only once in oids_seen.
     transport = FakeTransport(
         responses=[
+            _system_info_placeholder(),
             _response_exchange([_OID_A]),  # exchange 1: cursor advances to _OID_A
             _response_exchange([_OID_A]),  # exchange 2: non-increasing → OID_LOOP
+            _system_info_placeholder(),
         ]
     )
     records = await _collect(transport)
@@ -883,8 +999,10 @@ async def test_v1_walk_header_version_is_1(
     """SNMP v1 walk: one data reply then noSuchName → Header.snmp.version == '1'."""
     transport = FakeTransport(
         responses=[
+            *_v1_system_info_placeholders(),
             _response_exchange([_OID_A]),
             _nosuchname_exchange(_OID_A),
+            *_v1_system_info_placeholders(),
         ]
     )
     records = await _collect(transport, settings=WalkSettings(snmp_version="1"))
@@ -902,8 +1020,10 @@ async def test_v1_walk_nosuchname_completed(
     """SNMP v1 walk: one data reply then noSuchName → Summary.end_reason == 'completed'."""
     transport = FakeTransport(
         responses=[
+            *_v1_system_info_placeholders(),
             _response_exchange([_OID_A]),
             _nosuchname_exchange(_OID_A),
+            *_v1_system_info_placeholders(),
         ]
     )
     records = await _collect(transport, settings=WalkSettings(snmp_version="1"))
@@ -918,18 +1038,26 @@ async def test_v1_walk_nosuchname_completed(
 async def test_v1_walk_exchange_pdu_is_getnext(
     record_validator: Draft202012Validator,
 ) -> None:
-    """SNMP v1 walk: any exchange uses Request.pdu == 'getnext'."""
+    """SNMP v1 walk: main-loop exchanges use Request.pdu == 'getnext'.
+
+    The eight system-info Gets (four at start, four at end — one per
+    allowlisted OID on v1) are 'get', not 'getnext' — this checks only the
+    exchanges the main loop itself sends.
+    """
     transport = FakeTransport(
         responses=[
+            *_v1_system_info_placeholders(),
             _response_exchange([_OID_A]),
             _nosuchname_exchange(_OID_A),
+            *_v1_system_info_placeholders(),
         ]
     )
     records = await _collect(transport, settings=WalkSettings(snmp_version="1"))
 
     exchange_records = [r for r in records if r.type == "exchange"]
-    assert exchange_records
-    for exch in exchange_records:
+    main_loop_exchanges = exchange_records[4:-4]  # exclude the eight system-info Gets
+    assert main_loop_exchanges
+    for exch in main_loop_exchanges:
         assert exch.request.pdu == Pdu.getnext
     _validate_all(records, record_validator)
 
@@ -1013,6 +1141,28 @@ def _v3_response_exchange(oids: list[Oid]) -> Callable[[bytes], ExchangeIO]:
     return factory
 
 
+def _v3_nosuchobject_exchange(oids: list[Oid]) -> Callable[[bytes], ExchangeIO]:
+    """v3 counterpart of _nosuchobject_exchange — see its docstring."""
+
+    def factory(raw: bytes) -> ExchangeIO:
+        decoded = decode_v3_message(raw)
+        request_id = 42 if isinstance(decoded, Malformed) else decoded[0].request_id
+        varbinds = [(oid, 0x80, b"") for oid in oids]
+        response_raw = encode_v3_response(
+            msg_id=1,
+            request_id=request_id,
+            varbinds=varbinds,
+            engine_id=_V3_ENGINE_ID,
+        )
+        return ExchangeIO(
+            attempts=(Attempt(sent_at=0.001, received_at=0.002),),
+            response=(0.002, response_raw),
+            strays=(),
+        )
+
+    return factory
+
+
 def _v3_eom_exchange(after_oid: Oid) -> Callable[[bytes], ExchangeIO]:
     """Return a dynamic factory for an EndOfMibView response over v3.
 
@@ -1037,6 +1187,17 @@ def _v3_eom_exchange(after_oid: Oid) -> Callable[[bytes], ExchangeIO]:
     return factory
 
 
+def _v3_system_info_placeholder() -> Callable[[bytes], ExchangeIO]:
+    """v3 counterpart of _system_info_placeholder — see its docstring.
+
+    Works for authenticated v3 tests too: it doesn't check incoming
+    auth_params, and decode_v3_message parses a signed request's structure
+    fine without verifying the MAC (the walker never verifies response MACs
+    either — see walker.py's comment on that).
+    """
+    return _v3_nosuchobject_exchange([_OID_A])
+
+
 def test_walk_settings_v3_requires_user() -> None:
     """snmp_version='3' without v3_user raises ValueError mentioning v3_user."""
     with pytest.raises(ValueError, match="v3_user"):
@@ -1057,7 +1218,9 @@ async def test_v3_walk_header_version_is_3(
     transport = FakeTransport(
         responses=[
             _v3_discovery_exchange(),
+            _v3_system_info_placeholder(),
             _v3_eom_exchange(_START_OID),
+            _v3_system_info_placeholder(),
         ]
     )
     records = await _collect(transport, settings=WalkSettings(snmp_version="3", v3_user="probe"))
@@ -1076,7 +1239,9 @@ async def test_v3_walk_first_exchange_is_discovery(
     transport = FakeTransport(
         responses=[
             _v3_discovery_exchange(),
+            _v3_system_info_placeholder(),
             _v3_eom_exchange(_START_OID),
+            _v3_system_info_placeholder(),
         ]
     )
     records = await _collect(transport, settings=WalkSettings(snmp_version="3", v3_user="probe"))
@@ -1093,20 +1258,26 @@ async def test_v3_walk_first_exchange_is_discovery(
 async def test_v3_walk_second_exchange_is_getbulk(
     record_validator: Draft202012Validator,
 ) -> None:
-    """Second exchange is the first GetBulk: seq=2, pdu=getbulk."""
+    """Third exchange is the first GetBulk: seq=3, pdu=getbulk.
+
+    seq=1 is discovery, seq=2 is the system-info-at-start Get — the GetBulk
+    loop starts one exchange later than it would without system-info capture.
+    """
     transport = FakeTransport(
         responses=[
             _v3_discovery_exchange(),
+            _v3_system_info_placeholder(),
             _v3_response_exchange([_OID_A]),
             _v3_eom_exchange(_OID_A),
+            _v3_system_info_placeholder(),
         ]
     )
     records = await _collect(transport, settings=WalkSettings(snmp_version="3", v3_user="probe"))
 
     exchanges = [r for r in records if r.type == "exchange"]
-    second = exchanges[1]
-    assert second.seq == 2
-    assert second.request.pdu == Pdu.getbulk
+    third = exchanges[2]
+    assert third.seq == 3
+    assert third.request.pdu == Pdu.getbulk
     _validate_all(records, record_validator)
 
 
@@ -1118,14 +1289,17 @@ async def test_v3_getbulk_clean_path_no_violations(
     transport = FakeTransport(
         responses=[
             _v3_discovery_exchange(),
+            _v3_system_info_placeholder(),
             _v3_response_exchange([_OID_A, _OID_B]),
             _v3_eom_exchange(_OID_B),
+            _v3_system_info_placeholder(),
         ]
     )
     records = await _collect(transport, settings=WalkSettings(snmp_version="3", v3_user="probe"))
 
     exchanges = [r for r in records if r.type == "exchange"]
-    # All three exchanges (discovery + 2 GetBulk) must be violation-free.
+    # All five exchanges (discovery + 2 system-info Gets + 2 GetBulk) must be
+    # violation-free.
     for exch in exchanges:
         assert exch.violations is None or exch.violations == [], (
             f"Unexpected violations on seq={exch.seq}: {exch.violations}"
@@ -1205,7 +1379,9 @@ async def test_v3_discovery_request_id_mismatch_adds_violation(
     transport = FakeTransport(
         responses=[
             _v3_discovery_wrong_request_id_exchange(),
+            _v3_system_info_placeholder(),
             _v3_eom_exchange(_START_OID),
+            _v3_system_info_placeholder(),
         ]
     )
     records = await _collect(transport, settings=WalkSettings(snmp_version="3", v3_user="probe"))
@@ -1223,11 +1399,18 @@ async def test_logging_debug_exchange(
     caplog: pytest.LogCaptureFixture,
     record_validator: Draft202012Validator,
 ) -> None:
-    """A per-exchange DEBUG record is emitted mentioning seq or exchange."""
+    """A per-exchange DEBUG record is emitted mentioning seq or exchange.
+
+    Only the main GetBulk loop logs this way; _capture_system_info doesn't, so
+    the count below reflects just the 2 main-loop exchanges even though the
+    walk now also sends system-info Gets at start and end.
+    """
     transport = FakeTransport(
         responses=[
+            _system_info_placeholder(),
             _response_exchange([_OID_A]),
             _eom_exchange(_OID_A),
+            _system_info_placeholder(),
         ]
     )
     with caplog.at_level(logging.DEBUG, logger="oidtrace.walker"):
@@ -1366,8 +1549,10 @@ async def test_v3_authnopriv_walk_sends_authenticated_getbulks(
     transport = FakeTransport(
         responses=[
             _v3_auth_discovery_exchange(_V3_AUTH_ENGINE_ID),
+            _v3_system_info_placeholder(),
             _v3_auth_response_exchange([_OID_A, _OID_B], _V3_AUTH_ENGINE_ID, kul),
             _v3_auth_eom_exchange(_OID_B, _V3_AUTH_ENGINE_ID, kul),
+            _v3_system_info_placeholder(),
         ]
     )
     settings = WalkSettings(

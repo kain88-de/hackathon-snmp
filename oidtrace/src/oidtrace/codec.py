@@ -10,6 +10,12 @@ SNMPv1 GetNext message structure (BER SEQUENCE):
     community   OCTET STRING
     data        PDU
 
+Get PDU (tag 0xA0):
+    request-id        INTEGER
+    error-status      INTEGER (0)
+    error-index       INTEGER (0)
+    variable-bindings SEQUENCE OF SEQUENCE(OID, NULL), one per requested OID
+
 GetBulk PDU (tag 0xA5):
     request-id        INTEGER
     non-repeaters     INTEGER
@@ -194,6 +200,36 @@ def encode_getbulk(
     return tlv(
         _TAG_SEQUENCE,
         encode_int(1) + tlv(_TAG_OCTET_STRING, community) + pdu,
+    )
+
+
+def encode_get(
+    request_id: int,
+    oids: Sequence[Oid],
+    community: bytes = b"public",
+    version: int = 1,
+) -> bytes:
+    """Encode an SNMP GetRequest carrying one or more varbinds.
+
+    Returns a complete BER-encoded SNMP message.
+
+    Args:
+        request_id: Integer request identifier.
+        oids: OIDs to fetch (NULL-valued varbinds), in request order.
+        community: Community string (default b"public").
+        version: SNMP version byte (0 = v1, 1 = v2c; default 1).
+    """
+    varbind_list = tlv(
+        _TAG_SEQUENCE,
+        b"".join(tlv(_TAG_SEQUENCE, encode_oid(oid) + tlv(_TAG_NULL, b"")) for oid in oids),
+    )
+    pdu = tlv(
+        PDU_GET,
+        encode_int(request_id) + encode_int(0) + encode_int(0) + varbind_list,
+    )
+    return tlv(
+        _TAG_SEQUENCE,
+        encode_int(version) + tlv(_TAG_OCTET_STRING, community) + pdu,
     )
 
 
@@ -465,6 +501,56 @@ def encode_v3_discovery(msg_id: int, request_id: int) -> bytes:
     msg_global = _encode_msg_global_data(msg_id)
 
     # Outer SEQUENCE: version 3, msgGlobalData, USM params, ScopedPDU
+    return tlv(
+        _TAG_SEQUENCE,
+        encode_int(3) + msg_global + usm_params + scoped_pdu,
+    )
+
+
+def encode_v3_get(  # noqa: PLR0913
+    msg_id: int,
+    request_id: int,
+    oids: Sequence[Oid],
+    engine_id: bytes,
+    engine_boots: int,
+    engine_time: int,
+    username: bytes,
+    proto: AuthProto | None = None,
+) -> bytes:
+    """Encode an SNMPv3 GetRequest carrying one or more varbinds.
+
+    Args:
+        msg_id: Message identifier.
+        request_id: Request identifier.
+        oids: OIDs to fetch (NULL-valued varbinds), in request order.
+        engine_id: AuthoritativeEngineID (from discovery).
+        engine_boots: AuthoritativeEngineBoots (from discovery).
+        engine_time: AuthoritativeEngineTime (from discovery).
+        username: Username for this request.
+        proto: AuthProto | None — if not None, set msgFlags auth bit and embed
+            zero-filled auth placeholder of the correct length.
+
+    Returns:
+        Complete SNMPv3 message bytes.
+    """
+    varbind_list = tlv(
+        _TAG_SEQUENCE,
+        b"".join(tlv(_TAG_SEQUENCE, encode_oid(oid) + tlv(_TAG_NULL, b"")) for oid in oids),
+    )
+    pdu = tlv(
+        PDU_GET,
+        encode_int(request_id) + encode_int(0) + encode_int(0) + varbind_list,
+    )
+
+    scoped_pdu = _encode_scoped_pdu(engine_id, pdu)
+
+    auth_params_bytes = bytes(proto.mac_length) if proto is not None else b""
+    usm_params = _encode_usm_params(
+        engine_id, engine_boots, engine_time, username, auth_params_bytes
+    )
+
+    msg_global = _encode_msg_global_data(msg_id, auth=proto is not None)
+
     return tlv(
         _TAG_SEQUENCE,
         encode_int(3) + msg_global + usm_params + scoped_pdu,

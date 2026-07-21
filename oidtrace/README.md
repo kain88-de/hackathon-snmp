@@ -105,16 +105,16 @@ Implemented today:
 - `-v/--verbose` counting flag (WARNING → INFO → DEBUG) to stderr; the `\r` progress
   line shows only at default verbosity. Log lines obey trace privacy (never values,
   never the community string).
+- **System-OID allowlist** (`system_info` records for sysDescr/sysObjectID/sysUpTime/sysName,
+  trace-format.md §4.2) — a dedicated Get at walk start and again at walk end, on every
+  walk, no flag to disable it. Values the device doesn't expose (e.g. no sysName) are
+  simply absent from the record, never fabricated.
 
 Not implemented (the format leaves room; the tooling does not emit or accept these):
 
 - **SNMPv3 privacy (authPriv)** — `--priv-proto`/`--priv-pass` are parsed but warn and
   are ignored. Full priv requires storing decrypted PDU bytes and is format-v2/reuse
   territory.
-- **System-OID allowlist** (`system_info` records for sysDescr/sysObjectID/sysUpTime).
-  The format and the record builder support it; the walk tool does not emit it and has
-  no `--hide-system-info` approval flow. (A consumer may still display `system_info`
-  records from traces produced by other means.)
 - **`show` subcommand** — a trace is `zcat`/`jq`-readable, so this stayed post-MVP.
 - **Settings-matrix CLI, multiple `--start-oid`, `--resume`** — one walk per
   invocation; the trace schema is one-walk-per-file and the format reserves
