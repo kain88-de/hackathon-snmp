@@ -18,7 +18,10 @@ represented at group level in today's table.
 
 Vendor/enterprise OIDs (Cisco, Juniper, HP/Aruba, ...) are dropped, not replaced —
 explicit tradeoff, decided over an uncertain hand-picked list rather than kept for
-false confidence. They resolve to `null`, same as any other unrecognized OID.
+false confidence. In practice they resolve to the generic `enterprises` structural
+node (`1.3.6.1.4.1`, inherited from SNMPv2-SMI, no description) via longest-prefix
+match, not `null` — genuinely unrecognized OIDs (outside the compiled modules
+entirely) are the ones that resolve to `null`.
 
 MIB compilation, MIB browser UI, or user-supplied MIB files remain non-goals per
 `docs/oidviz.md` — this generates a static table from a fixed, curated MIB set
