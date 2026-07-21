@@ -487,7 +487,9 @@ async def walk_records(  # noqa: PLR0912, PLR0913, PLR0915
     - oid-not-increasing (non-exception varbind) → OID_LOOP_DETECTED event + OID_LOOP
     - give_up_after consecutive response-less or malformed exchanges → UNRESPONSIVE
       (valid decoded Message resets the consecutive counter)
-    - time_budget_s exceeded at loop top → TIME_BUDGET_EXCEEDED event + TIME_BUDGET_EXCEEDED
+    - time_budget_s exceeded at loop top → TIME_BUDGET_EXCEEDED event +
+      TIME_BUDGET_EXCEEDED, skipping only the GetBulk/GetNext loop — the
+      unconditional system-info Gets at start/end still happen regardless
 
     CancelledError: must NOT be caught here. The generator must not yield after
     GeneratorExit (illegal per Python async generator contract).
@@ -649,7 +651,10 @@ async def walk_records(  # noqa: PLR0912, PLR0913, PLR0915
             yield start_sysinfo
 
     while end_reason is None:
-        # --- Time budget check (at loop top — zero-exchange trace intentional) ---
+        # --- Time budget check (at loop top — zero GetBulk/GetNext exchanges
+        # intentional; the unconditional system-info capture above and below the
+        # loop is exempt by design, trace-format.md § 4.2: "every walk, no flag
+        # to disable it" — an expired budget still gets its start/end Gets) ---
         if settings.time_budget_s is not None and _now(rel) >= settings.time_budget_s:
             yield event_record(
                 at=_now(rel),

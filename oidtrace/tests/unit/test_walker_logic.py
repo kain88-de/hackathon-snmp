@@ -744,6 +744,33 @@ async def test_time_budget_exceeded(
 
 
 @pytest.mark.asyncio
+async def test_time_budget_already_expired_still_captures_system_info(
+    record_validator: Draft202012Validator,
+) -> None:
+    """An already-expired budget skips the GetBulk/GetNext loop, not system-info.
+
+    trace-format.md § 4.2: system-info capture is unconditional, "every walk,
+    no flag to disable it" — the time budget only ever governs the walk loop.
+    """
+    settings = WalkSettings(time_budget_s=0.001)
+    transport = FakeTransport(
+        responses=[
+            _system_info_placeholder(),
+            _system_info_placeholder(),
+        ]
+    )
+    records = await _collect(transport, rel=lambda: 1.0, settings=settings)
+
+    assert isinstance(records[-1], Summary)
+    assert records[-1].end_reason == str(EndReason.TIME_BUDGET_EXCEEDED)
+
+    exchange_records = [r for r in records if r.type == "exchange"]
+    assert len(exchange_records) == 2
+    assert all(r.request.pdu.value == "get" for r in exchange_records)
+    _validate_all(records, record_validator)
+
+
+@pytest.mark.asyncio
 async def test_walk_with_transport_returns_end_reason(
     record_validator: Draft202012Validator,
 ) -> None:
