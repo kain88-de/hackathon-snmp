@@ -183,6 +183,7 @@ const visibleItems = computed((): VisibleSlice => {
 					<span
 						v-if="item.exchange.violations.length > 0"
 						class="badge badge-violation"
+						:title="item.exchange.violations.join(', ')"
 						>{{ item.exchange.violations.length }} viol</span
 					>
 					<span

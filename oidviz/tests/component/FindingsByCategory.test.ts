@@ -159,6 +159,31 @@ describe("FindingsByCategory", () => {
 		expect(badge.text()).toBe("2 viol");
 	});
 
+	// Same two-violation exchange as above. The badge only tells you *how
+	// many* violations occurred; its title attribute must name *which* ones
+	// (joined, in array order), since that's the actual finding an operator
+	// needs — a bare count doesn't say whether it was oid-not-increasing,
+	// malformed-ber, or something else entirely.
+	test("the violation badge's tooltip names the specific violations", () => {
+		const exchanges = [
+			makeExchange({
+				seq: 1,
+				rtt: 300,
+				violations: ["oid-not-increasing", "duplicate-response"],
+			}),
+		];
+		const facetState = makeFacetState({ slowMs: 500 });
+
+		const wrapper = mount(FindingsByCategory, {
+			props: { exchanges, facetState },
+		});
+
+		const badge = wrapper.find(".badge-violation");
+		expect(badge.attributes("title")).toBe(
+			"oid-not-increasing, duplicate-response",
+		);
+	});
+
 	// makeExchange defaults to attemptCount: 1. Create an exchange with
 	// attemptCount: 3. The row must render a .badge-retry element with text
 	// "×3". By using 3 retries, we distinguish from exchanges with retries
