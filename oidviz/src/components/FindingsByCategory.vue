@@ -3,6 +3,7 @@ import { type Ref, computed, ref } from "vue";
 import { useVirtualScroll } from "../composables/useVirtualScroll.ts";
 import { categorise } from "../lib/findings.ts";
 import type { DomainExchange, FacetState } from "../lib/model.ts";
+import { lookupOidName } from "../lib/oidNames.gen.ts";
 import { rttCssClass } from "../lib/utils.ts";
 import {
 	computeOffsets,
@@ -87,6 +88,15 @@ function toggleSection(section: Section): void {
 	expanded[section].value = !expanded[section].value;
 }
 
+// Called only from the template, which iterates the virtualized (visible-only)
+// slice — never the full exchange list — so this stays cheap regardless of
+// trace size.
+function oidInfo(
+	exchange: DomainExchange,
+): { name: string; description: string | null } | null {
+	return lookupOidName(exchange.requestOid);
+}
+
 function itemHeight(item: VirtualItem): number {
 	return item.kind === "header" ? HEADER_HEIGHT : ROW_HEIGHT;
 }
@@ -159,8 +169,13 @@ const visibleItems = computed((): VisibleSlice => {
 					:data-seq="item.exchange.seq"
 					@click="emit('focus-exchange', item.exchange.seq)"
 				>
-					<span class="oid" :title="item.exchange.requestOid">{{
-						item.exchange.requestOid
+					<span
+						class="oid"
+						:title="oidInfo(item.exchange)?.description ?? undefined"
+						>{{ item.exchange.requestOid }}</span
+					>
+					<span v-if="oidInfo(item.exchange)?.name" class="oid-name">{{
+						oidInfo(item.exchange)?.name
 					}}</span>
 					<span class="rtt" :class="rttCssClass(item.exchange, facetState.slowMs)"
 						>{{ item.exchange.rtt.toFixed(1) }}ms</span
@@ -245,6 +260,13 @@ const visibleItems = computed((): VisibleSlice => {
 	text-overflow: ellipsis;
 	white-space: nowrap;
 	color: var(--color-text);
+}
+
+.oid-name {
+	color: var(--color-text-muted);
+	font-size: 11px;
+	overflow: hidden;
+	text-overflow: ellipsis;
 }
 
 .rtt {

@@ -1,6 +1,7 @@
 import { describe, expect, test } from "vitest";
 import { mount } from "@vue/test-utils";
 import FindingsByCategory from "../../src/components/FindingsByCategory.vue";
+import { asOid } from "../../src/lib/model.ts";
 import { makeExchange, makeFacetState } from "./helpers.ts";
 
 describe("FindingsByCategory", () => {
@@ -254,5 +255,46 @@ describe("FindingsByCategory", () => {
 		expect(timeoutRow).toBeDefined();
 		const timeoutRtt = timeoutRow!.find(".rtt");
 		expect(timeoutRtt.classes()).toContain("dim-timeout");
+	});
+
+	// requestOid sysDescr.0 (1.3.6.1.2.1.1.1.0), a real compiled OID — the row
+	// must show its resolved name as a label and its description as the OID's
+	// tooltip (not the OID text itself, which is already visible), so an
+	// operator scanning a slow/timeout section can tell what spec object a row
+	// is about without switching to the OID Tree view.
+	test("a row with a recognized requestOid shows its name and description", () => {
+		const exchanges = [
+			makeExchange({ seq: 1, rtt: 300, requestOid: asOid("1.3.6.1.2.1.1.1.0") }),
+		];
+		const facetState = makeFacetState({ slowMs: 500 });
+
+		const wrapper = mount(FindingsByCategory, {
+			props: { exchanges, facetState },
+		});
+
+		const row = wrapper.find(".exchange-row");
+		expect(row.find(".oid-name").text()).toBe("sysDescr");
+		expect(row.find(".oid").attributes("title")).toBe(
+			"A textual description of the entity.",
+		);
+	});
+
+	// requestOid 9.9.9.9, genuinely unrecognized — no compiled entry exists
+	// under it at all. The row must show no name label and no title on the OID
+	// span, matching how a missing value is omitted elsewhere (e.g. the Fast
+	// header) rather than shown empty or as literal "null".
+	test("a row with an unrecognized requestOid shows no name label or tooltip", () => {
+		const exchanges = [
+			makeExchange({ seq: 1, rtt: 300, requestOid: asOid("9.9.9.9") }),
+		];
+		const facetState = makeFacetState({ slowMs: 500 });
+
+		const wrapper = mount(FindingsByCategory, {
+			props: { exchanges, facetState },
+		});
+
+		const row = wrapper.find(".exchange-row");
+		expect(row.find(".oid-name").exists()).toBe(false);
+		expect(row.find(".oid").attributes("title")).toBeUndefined();
 	});
 });
