@@ -133,11 +133,12 @@ describe("FindingsByCategory", () => {
 
 	// makeExchange defaults to violations: []. Create an exchange with
 	// violations: ["oid-not-increasing", "duplicate-response"] (2 violations).
-	// The row for that exchange must render a .badge-violation element with
-	// text "2 viol". Use 2+ violations to distinguish from exchange count: if
-	// the component counted exchanges with violations instead of summing the
-	// violations array, it would read "1" instead of "2".
-	test("exchange with a violation shows a violation-count badge", () => {
+	// The row's .badge-violation element must show the specific violation
+	// names, joined — a bare count ("2 viol") doesn't say whether it was
+	// oid-not-increasing, malformed-ber, or something else entirely, which is
+	// the actual finding an operator needs. The title attribute repeats the
+	// same list, as a fallback for when the visible text is CSS-truncated.
+	test("exchange with a violation shows a badge naming the specific violations", () => {
 		const exchanges = [
 			makeExchange({
 				seq: 1,
@@ -156,29 +157,7 @@ describe("FindingsByCategory", () => {
 
 		const badge = row.find(".badge-violation");
 		expect(badge.exists()).toBe(true);
-		expect(badge.text()).toBe("2 viol");
-	});
-
-	// Same two-violation exchange as above. The badge only tells you *how
-	// many* violations occurred; its title attribute must name *which* ones
-	// (joined, in array order), since that's the actual finding an operator
-	// needs — a bare count doesn't say whether it was oid-not-increasing,
-	// malformed-ber, or something else entirely.
-	test("the violation badge's tooltip names the specific violations", () => {
-		const exchanges = [
-			makeExchange({
-				seq: 1,
-				rtt: 300,
-				violations: ["oid-not-increasing", "duplicate-response"],
-			}),
-		];
-		const facetState = makeFacetState({ slowMs: 500 });
-
-		const wrapper = mount(FindingsByCategory, {
-			props: { exchanges, facetState },
-		});
-
-		const badge = wrapper.find(".badge-violation");
+		expect(badge.text()).toBe("oid-not-increasing, duplicate-response");
 		expect(badge.attributes("title")).toBe(
 			"oid-not-increasing, duplicate-response",
 		);

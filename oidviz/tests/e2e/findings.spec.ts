@@ -95,8 +95,9 @@ test("collapsing a header hides its rows", async ({ page }) => {
 });
 
 // canonical seq 4: 20ms, 1 violation ("oid-not-increasing"), 1 attempt. An
-// exchange with violations must render a violation-count badge.
-test("exchange with a violation shows a violation-count badge", async ({
+// exchange with violations must render a badge naming the specific
+// violation, not just a count.
+test("exchange with a violation shows a badge naming the violation", async ({
 	page,
 }) => {
 	await loadCanonical(page);
@@ -104,7 +105,7 @@ test("exchange with a violation shows a violation-count badge", async ({
 	const seq4Row = page.locator('.exchange-row[data-seq="4"]');
 	const violationBadge = seq4Row.locator(".badge-violation");
 
-	await expect(violationBadge).toHaveText("1 viol");
+	await expect(violationBadge).toHaveText("oid-not-increasing");
 });
 
 // canonical seq 5: 2 attempts (first timed out, retry got the response). An

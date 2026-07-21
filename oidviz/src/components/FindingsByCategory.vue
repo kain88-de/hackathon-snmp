@@ -184,7 +184,7 @@ const visibleItems = computed((): VisibleSlice => {
 						v-if="item.exchange.violations.length > 0"
 						class="badge badge-violation"
 						:title="item.exchange.violations.join(', ')"
-						>{{ item.exchange.violations.length }} viol</span
+						>{{ item.exchange.violations.join(", ") }}</span
 					>
 					<span
 						v-if="item.exchange.attemptCount > 1"
@@ -298,6 +298,10 @@ const visibleItems = computed((): VisibleSlice => {
 .badge-violation {
 	color: var(--dim-violation);
 	background: var(--dim-violation-bg);
+	max-width: 200px;
+	overflow: hidden;
+	text-overflow: ellipsis;
+	flex-shrink: 0;
 }
 
 .badge-retry {
