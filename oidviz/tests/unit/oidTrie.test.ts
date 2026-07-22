@@ -67,6 +67,56 @@ describe("buildTrie", () => {
 		expect(root.leaves[0]!.oid).toBe(asOid("1.3.6.1.2.1.1.1.0"));
 	});
 
+	test("ancestor node carries the standard name and null description from the OID map", () => {
+		const ex = makeExchange({
+			responseOids: [asOid("1.3.6.1.2.1.1.1.0")],
+		});
+		const root = buildTrie([ex]);
+
+		let cur = root;
+		for (const arc of ["1", "3", "6", "1", "2", "1", "1"]) {
+			cur = cur.children.get(arc)!;
+		}
+		expect(cur.fullOid).toBe(asOid("1.3.6.1.2.1.1"));
+		expect(cur.name).toBe("system");
+		expect(cur.description).toBeNull();
+	});
+
+	test("a node with no more specific entry than its parent shows no name, instead of repeating the parent's", () => {
+		// 1.3.6.1.4.1.2604 (a specific vendor's enterprise branch) has no entry
+		// of its own — only its ancestor 1.3.6.1.4.1 ("enterprises") does.
+		// Without suppression this node would repeat "enterprises" too, making
+		// the tree show the same label at two consecutive levels.
+		const ex = makeExchange({
+			responseOids: [asOid("1.3.6.1.4.1.2604.5.1.2.2.0")],
+		});
+		const root = buildTrie([ex]);
+
+		let cur = root;
+		for (const arc of ["1", "3", "6", "1", "4", "1"]) {
+			cur = cur.children.get(arc)!;
+		}
+		expect(cur.fullOid).toBe(asOid("1.3.6.1.4.1"));
+		expect(cur.name).toBe("enterprises");
+
+		const vendorNode = cur.children.get("2604")!;
+		expect(vendorNode.fullOid).toBe(asOid("1.3.6.1.4.1.2604"));
+		expect(vendorNode.name).toBeNull();
+		expect(vendorNode.description).toBeNull();
+
+		// The leaf itself is unaffected by node-level suppression — it still
+		// carries the same best-available name, since that's the actual
+		// feature payload (Task 2/3 render leaf names, not node names, as the
+		// primary "what does this OID mean" signal).
+		autoExpand(root);
+		const rows = flatten(root);
+		const leafRow = rows.find((r) => r.kind === "leaf");
+		expect(leafRow).toBeDefined();
+		if (leafRow?.kind === "leaf") {
+			expect(leafRow.name).toBe("enterprises");
+		}
+	});
+
 	test("exchange with multiple responseOids → shared: true on both placements", () => {
 		const ex = makeExchange({
 			responseOids: [
@@ -220,6 +270,24 @@ describe("flatten", () => {
 		if (leafRows[0]!.kind === "leaf") {
 			expect(leafRows[0]!.oid).toBe(responseOid);
 			expect(leafRows[0]!.oid).not.toBe(requestOid);
+		}
+	});
+
+	test("leaf row carries the standard object name and description from the OID map", () => {
+		const ex = makeExchange({
+			responseOids: [asOid("1.3.6.1.2.1.1.1.0")],
+		});
+		const root = buildTrie([ex]);
+		autoExpand(root);
+		const rows = flatten(root);
+
+		const leafRows = rows.filter((r) => r.kind === "leaf");
+		expect(leafRows).toHaveLength(1);
+		if (leafRows[0]!.kind === "leaf") {
+			expect(leafRows[0]!.name).toBe("sysDescr");
+			expect(leafRows[0]!.description).toBe(
+				"A textual description of the entity.",
+			);
 		}
 	});
 

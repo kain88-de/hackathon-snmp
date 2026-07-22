@@ -17,6 +17,7 @@ import {
 	worstBucketStatus,
 } from "../lib/minimapDraw.ts";
 import type { DomainExchange, FacetState } from "../lib/model.ts";
+import { lookupOidName } from "../lib/oidNames.gen.ts";
 
 const props = defineProps<{
 	exchanges: DomainExchange[];
@@ -191,8 +192,10 @@ function onDetailHover(e: MouseEvent): void {
 			? `${ex.requestOid.slice(0, OID_TRUNCATE_LEN)}…`
 			: ex.requestOid;
 	const status = exchangeStatus(ex, props.facetState.slowMs);
+	const nameInfo = lookupOidName(ex.requestOid);
+	const nameLine = nameInfo === null ? "" : `${escHtml(nameInfo.name)}<br>`;
 	const html =
-		`<strong>${escHtml(oid)}</strong><br>` +
+		`<strong>${escHtml(oid)}</strong><br>${nameLine}` +
 		`RTT: ${ex.rtt.toFixed(1)}ms<br>` +
 		`Status: ${status}`;
 	showTooltip(html, e.clientX, e.clientY);

@@ -286,6 +286,46 @@ describe("MinimapDetail", () => {
 			expect((tooltip.element as HTMLElement).style.display).toBe("none");
 		});
 
+		// a single exchange with requestOid "1.3.6.1.2.1.1.1.0" (sysDescr) — an
+		// OID that resolves to a known name must show that name as an extra
+		// line between the OID and the RTT line.
+		test("hovering a detail row for a recognized OID shows its name", () => {
+			const wrapper = mountMinimap([
+				makeExchange({
+					requestOid: asOid("1.3.6.1.2.1.1.1.0"),
+					sentAtMs: 0,
+				}),
+			]);
+			const detail = wrapper.find(".detail-canvas");
+			const tooltip = wrapper.find(".canvas-tooltip");
+
+			dispatchMouse(detail.element, "mousemove", 50, detailRowY(0));
+
+			expect(tooltip.element.innerHTML).toBe(
+				"<strong>1.3.6.1.2.1.1.1.0</strong><br>sysDescr<br>RTT: 100.0ms<br>Status: Normal",
+			);
+		});
+
+		// a single exchange with requestOid "9.9.9.9" — an OID with no match
+		// in the name map must leave the tooltip unchanged from today (no
+		// empty name line between the OID and the RTT line).
+		test("hovering a detail row for an unrecognized OID shows no name line", () => {
+			const wrapper = mountMinimap([
+				makeExchange({
+					requestOid: asOid("9.9.9.9"),
+					sentAtMs: 0,
+				}),
+			]);
+			const detail = wrapper.find(".detail-canvas");
+			const tooltip = wrapper.find(".canvas-tooltip");
+
+			dispatchMouse(detail.element, "mousemove", 50, detailRowY(0));
+
+			expect(tooltip.element.innerHTML).toBe(
+				"<strong>9.9.9.9</strong><br>RTT: 100.0ms<br>Status: Normal",
+			);
+		});
+
 		// a single exchange whose requestOid is 50 chars — the detail tooltip
 		// must truncate OIDs over 40 chars to their first 40 chars plus "…"
 		// so long OIDs cannot blow up the fixed-position tooltip, while still

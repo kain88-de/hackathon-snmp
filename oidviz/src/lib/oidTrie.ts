@@ -7,19 +7,32 @@ import type {
 	TrieNodeFlags,
 } from "./model.ts";
 import { asOid } from "./model.ts";
-import { lookupOidName } from "./oidNames.ts";
+import { lookupOidName } from "./oidNames.gen.ts";
 
 const AUTO_EXPAND_MAX_CHILDREN = 10;
 
-function makeNode(arc: string, fullOid: OidString): TrieNode {
+function makeNode(
+	arc: string,
+	fullOid: OidString,
+	parent: TrieNode | null,
+): TrieNode {
+	const info = lookupOidName(fullOid);
+	// A node with no more specific entry than its parent inherits the parent's
+	// name via longest-prefix match (e.g. an unknown vendor's sub-branch under
+	// "enterprises") — showing that inherited name again reads as a duplicated,
+	// no-op tree level rather than "nothing more specific is known here".
+	const parentInfo = parent === null ? null : lookupOidName(parent.fullOid);
+	const inheritsParentName =
+		info !== null && parentInfo !== null && info.name === parentInfo.name;
 	return {
 		arc,
 		children: new Map(),
+		description: inheritsParentName ? null : (info?.description ?? null),
 		expanded: false,
 		flags: { retry: false, slow: false, violation: false },
 		fullOid,
 		leaves: [],
-		name: lookupOidName(fullOid),
+		name: inheritsParentName ? null : (info?.name ?? null),
 		stats: { count: 0, maxRtt: 0, violationCount: 0 },
 	};
 }
@@ -42,23 +55,33 @@ function insertResponseOid(args: InsertArgs): void {
 
 		let child = current.children.get(arc);
 		if (child === undefined) {
-			child = makeNode(arc, fullOid);
+			child = makeNode(arc, fullOid, current);
 			current.children.set(arc, child);
 		}
 		current = child;
 	}
 
-	current.leaves.push({ exchange, oid: responseOid, shared });
+	const info = lookupOidName(responseOid);
+	current.leaves.push({
+		description: info?.description ?? null,
+		exchange,
+		name: info?.name ?? null,
+		oid: responseOid,
+		shared,
+	});
 }
 
 export function buildTrie(exchanges: readonly DomainExchange[]): TrieNode {
-	const root = makeNode("", asOid(""));
+	const root = makeNode("", asOid(""), null);
 	root.expanded = true;
 
 	for (const exchange of exchanges) {
 		if (exchange.responseOids.length === 0) {
+			const info = lookupOidName(exchange.requestOid);
 			root.leaves.push({
+				description: info?.description ?? null,
 				exchange,
+				name: info?.name ?? null,
 				oid: exchange.requestOid,
 				shared: false,
 			});
@@ -164,8 +187,10 @@ export function flatten(root: TrieNode): FlatRow[] {
 		for (const leaf of node.leaves) {
 			rows.push({
 				depth: depth + 1,
+				description: leaf.description,
 				exchange: leaf.exchange,
 				kind: "leaf",
+				name: leaf.name,
 				oid: leaf.oid,
 				shared: leaf.shared,
 			});
@@ -181,8 +206,10 @@ export function flatten(root: TrieNode): FlatRow[] {
 	for (const leaf of root.leaves) {
 		rows.push({
 			depth: 0,
+			description: leaf.description,
 			exchange: leaf.exchange,
 			kind: "leaf",
+			name: leaf.name,
 			oid: leaf.oid,
 			shared: leaf.shared,
 		});

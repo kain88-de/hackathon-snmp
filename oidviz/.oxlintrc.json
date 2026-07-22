@@ -11,5 +11,5 @@
     "no-optional-chaining": "off",
     "sort-imports": "off"
   },
-  "ignorePatterns": ["src/lib/types.gen.ts", "src/lib/traceValidator.gen.js"]
+  "ignorePatterns": ["src/lib/types.gen.ts", "src/lib/traceValidator.gen.js", "src/lib/oidNames.gen.ts"]
 }

@@ -55,11 +55,14 @@ though several tests exercise instances of it.
 
 ## OID name resolution
 
-`src/lib/oidNames.ts` bundles a static build-time map of well-known OID prefixes → names (standard
-MIBs plus common vendor enterprise prefixes), resolved by longest-prefix match, used for tooltip
-and label display. This is the only OID-name list in the app — an earlier design had a second,
-separate list for incident-clustering region names, but that was removed along with the Incident
-Stack view (see Known gaps below).
+`src/lib/oidNames.gen.ts` is a generated build-time map of standard-MIB OID prefixes → name plus a
+one-sentence description, resolved by longest-prefix match, used for tooltip and label display.
+Scope is standard IETF MIBs only — vendor/enterprise OIDs resolve through their generic ancestor
+(e.g. `enterprises`), not a vendor-specific name. The table is compiled from standard MIB modules
+via `pysmi` (`scripts/gen_oid_names.py`); regenerate with `just gen-oid-names` whenever the module
+set changes. This is the only OID-name list in the app — an earlier design had a second, separate
+list for incident-clustering region names, but that was removed along with the Incident Stack view
+(see Known gaps below).
 
 ## Accessibility
 

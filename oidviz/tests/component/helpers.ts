@@ -71,6 +71,7 @@ export function makeTrieNode(overrides: Partial<TrieNode> = {}): TrieNode {
 		arc: "1",
 		fullOid: asOid("1"),
 		name: null,
+		description: null,
 		children: new Map(),
 		leaves: [],
 		expanded: false,
