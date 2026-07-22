@@ -279,6 +279,76 @@ describe("OidTree", () => {
 			expect(row.find(".badge-shared").exists()).toBe(true);
 		});
 
+		// Same two-violation exchange as above. The count badge alone can't say
+		// which violations occurred; a fold-out toggle must be present next to
+		// it, starting collapsed (no .violation-detail rendered yet).
+		test("a leaf with violations shows a collapsed fold-out toggle next to the count badge", () => {
+			const exchange = makeExchange({
+				requestOid: asOid("1.3.6.1.2.1.1.5.0"),
+				violations: ["oid-not-increasing", "duplicate-response"],
+			});
+			const wrapper = mountOidTree({
+				flatRows: [
+					{
+						kind: "leaf",
+						depth: 0,
+						exchange,
+						oid: asOid("1.3.6.1.2.1.1.5.0"),
+						shared: false,
+						name: null,
+						description: null,
+					},
+				],
+			});
+
+			const toggle = wrapper.find(".violation-toggle");
+			expect(toggle.exists()).toBe(true);
+			expect(toggle.attributes("aria-expanded")).toBe("false");
+			expect(wrapper.find(".violation-detail").exists()).toBe(false);
+		});
+
+		// Same setup. Clicking the toggle must reveal both specific violation
+		// names as their own lines — the actual finding an operator needs,
+		// which the count badge can't say on its own — flip aria-expanded, and
+		// emit no reflatten (the toggle is independent of node expand/collapse,
+		// which is the only thing that emits reflatten in this component).
+		// Clicking again must collapse it back away.
+		test("clicking the fold-out toggle reveals and hides the specific violation names", async () => {
+			const exchange = makeExchange({
+				requestOid: asOid("1.3.6.1.2.1.1.5.0"),
+				violations: ["oid-not-increasing", "duplicate-response"],
+			});
+			const wrapper = mountOidTree({
+				flatRows: [
+					{
+						kind: "leaf",
+						depth: 0,
+						exchange,
+						oid: asOid("1.3.6.1.2.1.1.5.0"),
+						shared: false,
+						name: null,
+						description: null,
+					},
+				],
+			});
+
+			await wrapper.find(".violation-toggle").trigger("click");
+
+			expect(wrapper.find(".violation-toggle").attributes("aria-expanded")).toBe(
+				"true",
+			);
+			const lines = wrapper.findAll(".violation-line");
+			expect(lines.map((l) => l.text())).toEqual([
+				"oid-not-increasing",
+				"duplicate-response",
+			]);
+			expect(wrapper.emitted("reflatten")).toBeUndefined();
+
+			await wrapper.find(".violation-toggle").trigger("click");
+
+			expect(wrapper.find(".violation-detail").exists()).toBe(false);
+		});
+
 		// a leaf row with name: "sysDescr.0" and description: "A textual
 		// description of the entity" — the row must gain a name label
 		// showing the resolved name, and the oid's tooltip must show the

@@ -1,13 +1,20 @@
 <script setup lang="ts">
-import { computed } from "vue";
+import { computed, ref } from "vue";
 import { useVirtualScroll } from "../composables/useVirtualScroll.ts";
 import type {
 	DomainExchange,
 	FacetState,
 	FlatRow,
+	OidString,
 	TrieNode,
 } from "../lib/model.ts";
 import { rttCssClass, rttCssClassFromRtt } from "../lib/utils.ts";
+import {
+	computeOffsets,
+	sumHeights,
+	varHeightEndIdx,
+	varHeightStartIdx,
+} from "../lib/virtualScroll.ts";
 
 const props = defineProps<{
 	flatRows: FlatRow[];
@@ -19,14 +26,77 @@ const emit = defineEmits<{ reflatten: []; "collapse-all": [] }>();
 
 const ROW_HEIGHT = 32;
 const VIRTUAL_OVERSCAN = 2;
+const VIOLATION_LINE_HEIGHT = 20;
+const VIOLATION_DETAIL_PADDING = 8;
 
 const { containerEl, containerHeight, onScroll, scrollTop } =
 	useVirtualScroll();
 
-const totalHeight = computed((): number => props.flatRows.length * ROW_HEIGHT);
+type DisplayRow =
+	| FlatRow
+	| {
+			kind: "violation-detail";
+			exchange: DomainExchange;
+			depth: number;
+			oid: OidString;
+	  };
+
+// Which exchanges (by seq) have their violation fold-out open. Keyed by seq
+// rather than tree position: a "shared" exchange can place the same
+// violations at multiple leaf rows, and they describe the one wire exchange
+// regardless of which placement the fold-out was opened from.
+const expandedViolations = ref<Set<number>>(new Set());
+
+function toggleViolations(seq: number): void {
+	const next = new Set(expandedViolations.value);
+	if (next.has(seq)) {
+		next.delete(seq);
+	} else {
+		next.add(seq);
+	}
+	expandedViolations.value = next;
+}
+
+const displayRows = computed((): DisplayRow[] => {
+	const rows: DisplayRow[] = [];
+	for (const row of props.flatRows) {
+		rows.push(row);
+		if (
+			row.kind === "leaf" &&
+			row.exchange.violations.length > 0 &&
+			expandedViolations.value.has(row.exchange.seq)
+		) {
+			rows.push({
+				depth: row.depth,
+				exchange: row.exchange,
+				kind: "violation-detail",
+				oid: row.oid,
+			});
+		}
+	}
+	return rows;
+});
+
+function rowHeight(row: DisplayRow): number {
+	if (row.kind === "violation-detail") {
+		return (
+			row.exchange.violations.length * VIOLATION_LINE_HEIGHT +
+			VIOLATION_DETAIL_PADDING
+		);
+	}
+	return ROW_HEIGHT;
+}
+
+const rowOffsets = computed((): number[] =>
+	computeOffsets(displayRows.value, rowHeight),
+);
+
+const totalHeight = computed((): number =>
+	sumHeights(displayRows.value, rowHeight),
+);
 
 interface VisibleSlice {
-	slice: FlatRow[];
+	slice: DisplayRow[];
 	startIdx: number;
 	topSpacerHeight: number;
 	bottomSpacerHeight: number;
@@ -35,23 +105,27 @@ interface VisibleSlice {
 const visibleItems = computed((): VisibleSlice => {
 	const scrollY = scrollTop.value;
 	const viewEnd = scrollY + containerHeight.value;
-	const count = props.flatRows.length;
+	const rows = displayRows.value;
+	const offsets = rowOffsets.value;
 	const total = totalHeight.value;
 
 	const startIdx = Math.max(
 		0,
-		Math.floor(scrollY / ROW_HEIGHT) - VIRTUAL_OVERSCAN,
+		varHeightStartIdx(rows, offsets, rowHeight, scrollY) - VIRTUAL_OVERSCAN,
 	);
 	const endIdx = Math.min(
-		count,
-		Math.ceil(viewEnd / ROW_HEIGHT) + VIRTUAL_OVERSCAN,
+		rows.length,
+		varHeightEndIdx(offsets, startIdx, rows.length, viewEnd) + VIRTUAL_OVERSCAN,
 	);
 
+	const topSpacerHeight = startIdx > 0 ? (offsets[startIdx] ?? 0) : 0;
+	const bottomStart = endIdx < rows.length ? (offsets[endIdx] ?? total) : total;
+
 	return {
-		bottomSpacerHeight: Math.max(0, total - endIdx * ROW_HEIGHT),
-		slice: props.flatRows.slice(startIdx, endIdx),
+		bottomSpacerHeight: total - bottomStart,
+		slice: rows.slice(startIdx, endIdx),
 		startIdx,
-		topSpacerHeight: startIdx * ROW_HEIGHT,
+		topSpacerHeight,
 	};
 });
 
@@ -61,7 +135,7 @@ function onNodeClick(node: TrieNode): void {
 	emit("reflatten");
 }
 
-function flagClass(row: FlatRow): string[] {
+function flagClass(row: DisplayRow): string[] {
 	if (row.kind !== "node") {
 		return [];
 	}
@@ -78,11 +152,14 @@ function flagClass(row: FlatRow): string[] {
 	return classes;
 }
 
-function rowKey(row: FlatRow, idx: number): string {
+function rowKey(row: DisplayRow, idx: number): string {
 	if (row.kind === "node") {
 		return `node-${row.node.fullOid}`;
 	}
-	return `leaf-${idx}-${row.oid}`;
+	if (row.kind === "leaf") {
+		return `leaf-${idx}-${row.oid}`;
+	}
+	return `violation-detail-${idx}-${row.oid}`;
 }
 
 function leafRttClass(ex: DomainExchange): string {
@@ -153,7 +230,7 @@ function nodeRttClass(rtt: number): string {
 					</div>
 
 					<div
-						v-else
+						v-else-if="row.kind === 'leaf'"
 						class="trie-row trie-leaf"
 						:style="{ paddingLeft: (row.depth * 16 + 8) + 'px' }"
 						:data-trie-row="true"
@@ -164,11 +241,37 @@ function nodeRttClass(rtt: number): string {
 							class="trie-leaf-rtt"
 							:class="leafRttClass(row.exchange)"
 						>{{ row.exchange.rtt.toFixed(1) }}ms</span>
-						<span
-							v-if="row.exchange.violations.length > 0"
-							class="badge badge-violation"
-						>{{ row.exchange.violations.length }} viol</span>
+						<template v-if="row.exchange.violations.length > 0">
+							<span class="badge badge-violation"
+								>{{ row.exchange.violations.length }} viol</span
+							>
+							<button
+								type="button"
+								class="violation-toggle"
+								:aria-expanded="expandedViolations.has(row.exchange.seq)"
+								:aria-label="`${expandedViolations.has(row.exchange.seq) ? 'Collapse' : 'Expand'} violation details`"
+								@click="toggleViolations(row.exchange.seq)"
+							>
+								<span class="chevron">{{
+									expandedViolations.has(row.exchange.seq) ? "▾" : "▸"
+								}}</span>
+							</button>
+						</template>
 						<span v-if="row.shared" class="badge badge-shared">shared</span>
+					</div>
+
+					<div
+						v-else
+						class="violation-detail"
+						:style="{ paddingLeft: (row.depth * 16 + 24) + 'px' }"
+					>
+						<div
+							v-for="violation in row.exchange.violations"
+							:key="violation"
+							class="violation-line"
+						>
+							{{ violation }}
+						</div>
 					</div>
 				</template>
 
@@ -338,5 +441,43 @@ function nodeRttClass(rtt: number): string {
 .badge-shared {
 	color: var(--color-text-muted);
 	background: var(--color-border);
+}
+
+.violation-toggle {
+	flex-shrink: 0;
+	width: 20px;
+	height: 100%;
+	display: flex;
+	align-items: center;
+	justify-content: center;
+	border: none;
+	background: transparent;
+	color: var(--color-text-muted);
+	cursor: pointer;
+}
+
+.violation-toggle .chevron {
+	font-size: 10px;
+}
+
+.violation-toggle:hover {
+	color: var(--color-text);
+}
+
+.violation-detail {
+	box-sizing: border-box;
+	padding-top: 4px;
+	padding-bottom: 4px;
+	background: var(--color-bg);
+	border-bottom: 1px solid var(--color-border);
+	display: flex;
+	flex-direction: column;
+	justify-content: center;
+}
+
+.violation-line {
+	font-size: 12px;
+	line-height: 20px;
+	color: var(--dim-violation);
 }
 </style>
