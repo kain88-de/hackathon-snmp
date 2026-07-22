@@ -95,17 +95,27 @@ test("collapsing a header hides its rows", async ({ page }) => {
 });
 
 // canonical seq 4: 20ms, 1 violation ("oid-not-increasing"), 1 attempt. An
-// exchange with violations must render a badge naming the specific
-// violation, not just a count.
-test("exchange with a violation shows a badge naming the violation", async ({
+// exchange with violations must render a count badge; clicking its fold-out
+// toggle must reveal the specific violation name, which a bare count can't
+// say on its own.
+test("clicking a violation's fold-out toggle shows the specific violation name", async ({
 	page,
 }) => {
 	await loadCanonical(page);
 
-	const seq4Row = page.locator('.exchange-row[data-seq="4"]');
-	const violationBadge = seq4Row.locator(".badge-violation");
+	const seq4Wrapper = page.locator('.exchange-row-wrapper[data-seq="4"]');
+	const violationBadge = seq4Wrapper.locator(".badge-violation");
+	await expect(violationBadge).toHaveText("1 viol");
+	await expect(page.locator(".violation-line")).toHaveCount(0);
 
-	await expect(violationBadge).toHaveText("oid-not-increasing");
+	// .violation-detail renders as its own row immediately after the
+	// wrapper, not nested inside it, so it's located from the page, not
+	// scoped under seq4Wrapper.
+	await seq4Wrapper.locator(".violation-toggle").click();
+
+	await expect(page.locator(".violation-line")).toHaveText(
+		"oid-not-increasing",
+	);
 });
 
 // canonical seq 5: 2 attempts (first timed out, retry got the response). An

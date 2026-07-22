@@ -133,12 +133,11 @@ describe("FindingsByCategory", () => {
 
 	// makeExchange defaults to violations: []. Create an exchange with
 	// violations: ["oid-not-increasing", "duplicate-response"] (2 violations).
-	// The row's .badge-violation element must show the specific violation
-	// names, joined — a bare count ("2 viol") doesn't say whether it was
-	// oid-not-increasing, malformed-ber, or something else entirely, which is
-	// the actual finding an operator needs. The title attribute repeats the
-	// same list, as a fallback for when the visible text is CSS-truncated.
-	test("exchange with a violation shows a badge naming the specific violations", () => {
+	// The badge (now a sibling of the row button, not nested inside it — see
+	// below) must show the count and a fold-out toggle must be present; the
+	// fold-out itself starts collapsed, so no violation-line detail renders
+	// yet.
+	test("exchange with a violation shows a count badge and a collapsed fold-out toggle", () => {
 		const exchanges = [
 			makeExchange({
 				seq: 1,
@@ -152,15 +151,72 @@ describe("FindingsByCategory", () => {
 			props: { exchanges, facetState },
 		});
 
-		const row = wrapper.find(".exchange-row");
-		expect(row.exists()).toBe(true);
-
-		const badge = row.find(".badge-violation");
+		const badge = wrapper.find(".badge-violation");
 		expect(badge.exists()).toBe(true);
-		expect(badge.text()).toBe("oid-not-increasing, duplicate-response");
-		expect(badge.attributes("title")).toBe(
-			"oid-not-increasing, duplicate-response",
+		expect(badge.text()).toBe("2 viol");
+
+		const toggle = wrapper.find(".violation-toggle");
+		expect(toggle.exists()).toBe(true);
+		expect(toggle.attributes("aria-expanded")).toBe("false");
+		expect(wrapper.find(".violation-detail").exists()).toBe(false);
+	});
+
+	// Same two-violation exchange. Clicking the fold-out toggle must reveal
+	// both specific violation names as their own lines — the actual finding
+	// an operator needs, which the count badge alone can't say — and flip
+	// aria-expanded; clicking it again must collapse the detail away.
+	test("clicking the fold-out toggle reveals and hides the specific violation names", async () => {
+		const exchanges = [
+			makeExchange({
+				seq: 1,
+				rtt: 300,
+				violations: ["oid-not-increasing", "duplicate-response"],
+			}),
+		];
+		const facetState = makeFacetState({ slowMs: 500 });
+
+		const wrapper = mount(FindingsByCategory, {
+			props: { exchanges, facetState },
+		});
+
+		await wrapper.find(".violation-toggle").trigger("click");
+
+		expect(wrapper.find(".violation-toggle").attributes("aria-expanded")).toBe(
+			"true",
 		);
+		const lines = wrapper.findAll(".violation-line");
+		expect(lines.map((l) => l.text())).toEqual([
+			"oid-not-increasing",
+			"duplicate-response",
+		]);
+
+		await wrapper.find(".violation-toggle").trigger("click");
+
+		expect(wrapper.find(".violation-detail").exists()).toBe(false);
+	});
+
+	// Same two-violation exchange. The fold-out toggle is a separate button
+	// from the row, specifically so it doesn't fight the row's own
+	// click-to-focus-exchange behavior. Clicking the toggle must NOT also
+	// emit focus-exchange (which would jump away from Findings unexpectedly
+	// just from expanding a detail).
+	test("clicking the fold-out toggle does not emit focus-exchange", async () => {
+		const exchanges = [
+			makeExchange({
+				seq: 1,
+				rtt: 300,
+				violations: ["oid-not-increasing"],
+			}),
+		];
+		const facetState = makeFacetState({ slowMs: 500 });
+
+		const wrapper = mount(FindingsByCategory, {
+			props: { exchanges, facetState },
+		});
+
+		await wrapper.find(".violation-toggle").trigger("click");
+
+		expect(wrapper.emitted("focus-exchange")).toBeUndefined();
 	});
 
 	// makeExchange defaults to attemptCount: 1. Create an exchange with
